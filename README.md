@@ -1,5 +1,5 @@
 # Protective Wards
-[logo](https://staticdelivery.nexusmods.com/mods/3667/images/2450/2450-1689565569-1699140464.png)
+![logo](https://staticdelivery.nexusmods.com/mods/3667/images/2450/2450-1689565569-1699140464.png)
 
 Configurable protection in active ward area. Creatures, rain, raids, plants, fall damage. Protect what you values.
 
