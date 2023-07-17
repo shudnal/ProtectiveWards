@@ -41,6 +41,7 @@ And yes the configuration is locked if you're playing on the server.
 
 ## Mirrors
 [Nexus](https://www.nexusmods.com/valheim/mods/2450)
+
 [Thunderstore](https://valheim.thunderstore.io/package/shudnal/ProtectiveWards/)
 
 ## Changelog
