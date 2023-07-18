@@ -1,6 +1,6 @@
 {
   "name": "ProtectiveWards",
-  "version_number": "1.0.0",
+  "version_number": "1.0.1",
   "website_url": "https://github.com/shudnal/ProtectiveWards",
   "description": "Configurable protection in active ward area. Creatures, rain, raids, plants, fall damage. Protect what you values.",
   "dependencies": ["denikson-BepInExPack_Valheim-5.4.2105"]

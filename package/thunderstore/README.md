@@ -42,5 +42,8 @@ And yes the configuration is locked if you're playing on the server.
 
 ## Changelog
 
+v 1.0.1
+* fixed exception in log when interacting with a ward
+
 v 1.0.0
 * Initial release

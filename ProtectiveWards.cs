@@ -15,7 +15,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.0.0";
+        const string pluginVersion = "1.0.1";
         public static ManualLogSource logger;
 
         private Harmony _harmony;
@@ -48,12 +48,14 @@ namespace ProtectiveWards
 
         private void Awake()
         {
-            ConfigInit();
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
 
             instance = this;
 
             logger = Logger;
+
+            ConfigInit();
+            _ = configSync.AddLockingConfigEntry(configLocked);
         }
 
         private void OnDestroy()
@@ -64,11 +66,10 @@ namespace ProtectiveWards
 
         private void ConfigInit()
         {
-            config("General", "NexusID", 2450, "Nexus mod ID for updates");
+            config("General", "NexusID", 2450, "Nexus mod ID for updates", false);
 
             modEnabled = config("General", "Enabled", defaultValue: true, "Enable the mod. Every option requires being in the zone of the active Ward.");
             configLocked = config("General", "Lock Configuration", defaultValue: true, "Configuration is locked and can be changed by server admins only.");
-            _ = configSync.AddLockingConfigEntry(configLocked);
 
             disableFlash = config("Misc", "Disable flash", defaultValue: false, "Disable flash on hit [Not Synced with Server]", false);
             showAreaMarker = config("Misc", "Always show radius", defaultValue: false, "Always show ward radius. Hover the ward for changes to take effect. [Not Synced with Server]", false);
