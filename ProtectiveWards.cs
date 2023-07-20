@@ -15,7 +15,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.0.1";
+        const string pluginVersion = "1.0.2";
         public static ManualLogSource logger;
 
         private Harmony _harmony;
@@ -161,7 +161,38 @@ namespace ProtectiveWards
             return;
         }
 
-        [HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.GetValidEventPoints))]
+        [HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.GetPossibleRandomEvents))]
+        public static class RandEventSystem_GetPossibleRandomEvents_SittingRaidProtection
+        {
+            public static void Postfix(ref List<KeyValuePair<RandomEvent, Vector3>> __result)
+            {
+                if (!modEnabled.Value) return;
+
+                if (!sittingRaidProtection.Value) return;
+
+                if (!ZNet.instance.IsServer()) return;
+
+                List<Vector3> protectedPositions = new List<Vector3>();
+
+                Player.GetAllPlayers().ForEach(player =>
+                {
+                    if (InsideEnabledPlayersArea(player.transform.position) && player.IsSitting() && player.m_attached && player.m_seman.HaveStatusEffect(Player.s_statusEffectCampFire))
+                        protectedPositions.Add(player.transform.position);
+                });
+
+                for (int i = __result.Count - 1; i >= 0; i--)
+                {
+                    foreach (Vector3 pos in protectedPositions)
+                    {
+                        if (Vector3.Distance(pos, __result[i].Value) < 1f)
+                            __result.RemoveAt(i);
+                    }
+                }
+            }
+        }
+
+        // RETURN TO THIS AFTER PUBLIC HILDIR UPDATE
+        /*[HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.GetValidEventPoints))]
         public static class RandEventSystem_GetValidEventPoints_SittingRaidProtection
         {
             public static void Prefix(ref List<Player> characters, ref List<Player> __state)
@@ -187,7 +218,7 @@ namespace ProtectiveWards
                         nonprotectedPlayers.Add(character);
                     }
                 }
-
+                
                 characters = nonprotectedPlayers;
             }
             public static void Postfix(ref List<Player> characters, List<Player> __state)
@@ -203,7 +234,7 @@ namespace ProtectiveWards
                     characters = __state;
                 }
             }
-        }
+        }*/
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.HideMarker))]
         public static class PrivateArea_HideMarker_showAreaMarker
