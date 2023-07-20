@@ -15,7 +15,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.0.2";
+        const string pluginVersion = "1.0.3";
         public static ManualLogSource logger;
 
         private Harmony _harmony;
@@ -326,7 +326,7 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(Character), nameof(Character.Damage))]
-        public static class Character_Damage_PlayerDamageMultiplier
+        public static class Character_Damage_DamageMultipliers
         {
             private static void Prefix(Character __instance, ref HitData hit, ZNetView ___m_nview)
             {
@@ -346,14 +346,44 @@ namespace ProtectiveWards
                     {
                         if (!(hit.GetAttacker() != null && hit.GetAttacker().IsPlayer()))
                         {
+                            if (hit.GetTotalDamage() != hit.m_damage.m_fire)
+                                area.FlashShield(false);
+
                             ModifyHitDamage(ref hit, 0f);
-                            area.FlashShield(false);
                         }
                     }
                 }
                 else
                 {
                     ModifyHitDamage(ref hit, playerDamageDealtMultiplier.Value);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), nameof(Character.AddFireDamage))]
+        public static class Character_AddFireDamage_IndirectFireDamageProtection
+        {
+            private static void Prefix(Character __instance, ref float damage)
+            {
+                if (!modEnabled.Value) return;
+
+                if (boarsHensProtection.Value && __instance.IsTamed() && (__instance.m_group == "boar" || __instance.m_group == "chicken") && InsideEnabledPlayersArea(__instance.transform.position)) 
+                {
+                    damage = 0f;
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Character), nameof(Character.UpdateSmoke))]
+        public static class Character_UpdateSmoke_IndirectSmokeDamageProtection
+        {
+            private static void Prefix(Character __instance, ref float dt)
+            {
+                if (!modEnabled.Value) return;
+
+                if (boarsHensProtection.Value && __instance.IsTamed() && (__instance.m_group == "boar" || __instance.m_group == "chicken") && InsideEnabledPlayersArea(__instance.transform.position))
+                {
+                    dt = 0f;
                 }
             }
         }

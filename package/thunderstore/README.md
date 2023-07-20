@@ -42,6 +42,9 @@ And yes the configuration is locked if you're playing on the server.
 
 ## Changelog
 
+v 1.0.3
+* boars and hens also protected from fire and smoke
+
 v 1.0.2
 * fixed implementation of raid protection to support both PTR and stable game version
 
