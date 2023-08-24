@@ -78,6 +78,7 @@ namespace ProtectiveWards
         internal static GameObject lightningAOE;
         internal static EffectList preLightning;
         internal static List<Turret.TrophyTarget> trophyTargets;
+        internal static int baseValueProtected = 999;
 
         public enum ShipDamageType
         {
@@ -380,52 +381,47 @@ namespace ProtectiveWards
             {
                 if (!modEnabled.Value) return;
 
+                areaCache.Clear();
+
                 wardIsHealing.Remove(__instance);
                 wardIsRepairing.Remove(__instance);
             }
         }
-        
-        [HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.GetValidEventPoints))]
-        public static class RandEventSystem_GetValidEventPoints_SittingRaidProtection
+
+        [HarmonyPatch(typeof(Player), nameof(Player.UpdateBaseValue))]
+        public static class Player_UpdateBaseValue_SittingRaidProtection
         {
-            public static void Prefix(ref List<Player> characters, ref List<Player> __state)
+            public static void Postfix(Player __instance, float ___m_baseValueUpdateTimer, ref int ___m_baseValue, ZNetView ___m_nview)
             {
-                if (!modEnabled.Value) return;
-
-                if (!sittingRaidProtection.Value) return;
-
-                if (!ZNet.instance.IsServer()) return;
-
-                __state = characters;
-
-                List<Player> nonprotectedPlayers = new List<Player>();
-
-                foreach (Player character in characters)
+                if (!modEnabled.Value || !sittingRaidProtection.Value)
+                    return; 
+                
+                if ((___m_baseValueUpdateTimer == 0f) && (___m_baseValue >= 3))
                 {
-                    if (InsideEnabledPlayersArea(character.transform.position) && character.IsSitting() && character.m_attached && character.m_seman.HaveStatusEffect(Player.s_statusEffectCampFire))
-                    {
-                        logger.LogInfo($"{character.GetPlayerName()} is in raid protected state.");
-                    }
-                    else
-                    {
-                        nonprotectedPlayers.Add(character);
-                    }
-                }
+                    if (!__instance.IsSitting() || !__instance.m_attached || !__instance.m_seman.HaveStatusEffect(Player.s_statusEffectCampFire) || !InsideEnabledPlayersArea(__instance.transform.position))
+                        return;
 
-                characters = nonprotectedPlayers;
+                    ___m_baseValue = baseValueProtected;
+
+                    ZNet.instance.m_serverSyncedPlayerData["baseValue"] = ___m_baseValue.ToString();
+                    ___m_nview.GetZDO().Set(ZDOVars.s_baseValue, ___m_baseValue);
+                }
             }
-            public static void Postfix(ref List<Player> characters, List<Player> __state)
+        }
+
+        [HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.CheckBase))]
+        public static class RandEventSystem_CheckBase_SittingRaidProtection
+        {
+            public static void Postfix(RandEventSystem.PlayerEventData player, ref bool __result)
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value || !sittingRaidProtection.Value || __result == false)
+                    return;
 
-                if (!sittingRaidProtection.Value) return;
+                if (player.baseValue != baseValueProtected)
+                    return;
 
-                if (!ZNet.instance.IsServer()) return;
-
-                if (__state.Count != characters.Count)
-                {
-                    characters = __state;
-                }
+                logger.LogInfo($"Player at {player.position.x} {player.position.z} is in raid protected state.");
+                __result = false;
             }
         }
 
@@ -440,7 +436,7 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
+       [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
         public static class PrivateArea_AddUserList_WardAltActionCaption
         {
             public static void Postfix(PrivateArea __instance, ref StringBuilder text)
@@ -897,7 +893,7 @@ namespace ProtectiveWards
                 {
                     ModifyHitDamage(ref hit, 0f);
                 }
-                else
+                else if (__instance.GetComponent<Piece>() != null)
                 {
                     ModifyHitDamage(ref hit, structureDamageTakenMultiplier.Value);
                 }
