@@ -79,6 +79,10 @@ And yes the configuration is locked if you're playing on the server.
 
 ## Changelog
 
+v 1.1.1
+* passive effect fix
+* options enabled by default
+
 v 1.1.0
 * activatable passive repair
 * active offering effects
