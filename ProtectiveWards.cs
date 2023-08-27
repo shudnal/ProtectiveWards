@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.0";
+        const string pluginVersion = "1.1.1";
         public static ManualLogSource logger;
 
         private Harmony _harmony;
@@ -73,7 +73,7 @@ namespace ProtectiveWards
         internal static long startTimeCached;
         internal static Dictionary<Vector3, PrivateArea> areaCache = new Dictionary<Vector3, PrivateArea>();
         internal static Dictionary<PrivateArea, int> wardIsRepairing = new Dictionary<PrivateArea, int>();
-        internal static Dictionary<PrivateArea, DateTime> wardIsHealing = new Dictionary<PrivateArea, DateTime>();
+        internal static Dictionary<PrivateArea, int> wardIsHealing = new Dictionary<PrivateArea, int>();
 
         internal static GameObject lightningAOE;
         internal static EffectList preLightning;
@@ -137,32 +137,32 @@ namespace ProtectiveWards
             fermentingSpeedMultiplier = config("Modifiers speed", "Fermenting speed multiplier", defaultValue: 1.0f, "Speed of fermenting");
             sapCollectingSpeedMultiplier = config("Modifiers speed", "Sap collecting speed multiplier", defaultValue: 1.0f, "Speed of sap collecting");
 
-            offeringActiveRepair = config("Offerings", "1 - Repair all pieces by surtling core offering", defaultValue: false, "Offer surtling core to ward to instantly repair all pieces in all connected areas" +
+            offeringActiveRepair = config("Offerings", "1 - Repair all pieces by surtling core offering", defaultValue: true, "Offer surtling core to ward to instantly repair all pieces in all connected areas" +
                                                                                                                                "\nCore will NOT be wasted if there is no piece to repair");
-            offeringAugmenting = config("Offerings", "2 - Augment all pieces by black core offering", defaultValue: false, "Offer black core to ward to double the health of every structural piece in all connected areas" +
+            offeringAugmenting = config("Offerings", "2 - Augment all pieces by black core offering", defaultValue: true, "Offer black core to ward to double the health of every structural piece in all connected areas" +
                                                                                                                             "\nCore will NOT be wasted if there is no piece to repair");
-            offeringFood = config("Offerings", "3 - Heal all allies for 3 min by food offering", defaultValue: false, "Offer food to ward to activate healing for 3 minutes in all connected areas. Better food means better heal."+
+            offeringFood = config("Offerings", "3 - Heal all allies for 3 min by food offering", defaultValue: true, "Offer food to ward to activate healing for 3 minutes in all connected areas. Better food means better heal."+
                                                                                                                        "\nYou can offer one food to one ward until 3 minutes are gone. But nothing stops you from offering food to several wards.");
-            offeringMead = config("Offerings", "4 - Share mead effect to all players by mead offering", defaultValue: false, "Offer mead to ward to share the effect to all players in all connected areas. " +
+            offeringMead = config("Offerings", "4 - Share mead effect to all players by mead offering", defaultValue: true, "Offer mead to ward to share the effect to all players in all connected areas. " +
                                                                                                                               "\nMead will NOT be wasted if no one can have effect.");
-            offeringThundertone = config("Offerings", "5 - Call the wrath of the Thor upon your enemies by thunderstone offering", defaultValue: false, "Offer thunderstone to ward to call the Thor's wrath upon your enemies in all connected areas" +
+            offeringThundertone = config("Offerings", "5 - Call the wrath of the Thor upon your enemies by thunderstone offering", defaultValue: true, "Offer thunderstone to ward to call the Thor's wrath upon your enemies in all connected areas" +
                                                                                                                                                         "\nThunderstone will be wasted even if no one gets hurt");
-            offeringTrophy = config("Offerings", "6 - Kill all enemies of the same type by trophy offering", defaultValue: false, "Offer trophy to ward to kill all enemies with type of the offered trophy in all connected areas" +
+            offeringTrophy = config("Offerings", "6 - Kill all enemies of the same type by trophy offering", defaultValue: true, "Offer trophy to ward to kill all enemies with type of the offered trophy in all connected areas" +
                                                                                                                                    "\nTrophy will NOT be wasted if no one gets hurt");
 
-            wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: false, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
+            wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
 
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
 
-            boarsHensProtection = config("Ward protects", "Boars and hens from damage", false, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
-            wardRainProtection = config("Ward protects", "Structures from rain damage", false, "Set whether an active Ward will protect nearby structures from rain and water damage");
+            boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
+            wardRainProtection = config("Ward protects", "Structures from rain damage", true, "Set whether an active Ward will protect nearby structures from rain and water damage");
             wardShipProtection = config("Ward protects", "Ship from damage", ShipDamageType.WaterDamage, "Set whether an active Ward will protect nearby ships from damage (waves and upsidedown for water damage option or any structural damage)");
-            wardPlantProtection = config("Ward protects", "Plants from any damage", false, "Set whether an active Ward will protect nearby plants from taking damage");
-            fireplaceProtection = config("Ward protects", "Fireplace from step damage", false, "Set whether an active Ward will protect nearby fire sources from taking damage from stepping on them");
-            wardTrapProtection = config("Ward protects", "Players from their traps", false, "Set whether an active Ward will protect players from stepping on traps");
-            sittingRaidProtection = config("Ward protects", "Players from raids when sitting on something near the fire (not floor)", false, "Set whether an active Ward will protect nearby players from raids when sitting next to an active fire"
+            wardPlantProtection = config("Ward protects", "Plants from any damage", true, "Set whether an active Ward will protect nearby plants from taking damage");
+            fireplaceProtection = config("Ward protects", "Fireplace from step damage", true, "Set whether an active Ward will protect nearby fire sources from taking damage from stepping on them");
+            wardTrapProtection = config("Ward protects", "Players from their traps", true, "Set whether an active Ward will protect players from stepping on traps");
+            sittingRaidProtection = config("Ward protects", "Players from raids when sitting on something near the fire (not floor)", true, "Set whether an active Ward will protect nearby players from raids when sitting next to an active fire"
                                                                                                                                            + "\nDo you want to go AFK in your base? Find a warm chair, bench, stool, throne whatever to sit on and go"
                                                                                                                                            + "\nIf the fire does not burn - you are vulnerable");
         }
@@ -258,6 +258,13 @@ namespace ProtectiveWards
             return;
         }
 
+        private static List<PrivateArea> ConnectedAreas(PrivateArea ward)
+        {
+            List<PrivateArea> areas = ward.GetConnectedAreas();
+            areas.Add(ward);
+            return areas.Where(area => area.IsEnabled()).Distinct().ToList();
+        }
+
         public static IEnumerator PassiveRepairEffect(PrivateArea ward, Player initiator)
         {
             while (true)
@@ -268,9 +275,12 @@ namespace ProtectiveWards
                 if (!ZNetScene.instance)
                     yield break;
 
+                if (Game.IsPaused())
+                    yield return new WaitForSeconds(2.0f);
+
                 List<Piece> pieces = new List<Piece>();
 
-                ward.GetConnectedAreas().ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
+                ConnectedAreas(ward).ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
                 List<Piece> piecesToRepair = pieces.Distinct().ToList().Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent<WearNTear>(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToList();
 
@@ -316,26 +326,34 @@ namespace ProtectiveWards
                 if (ward == null)
                     yield break;
 
-                if (!wardIsHealing.TryGetValue(ward, out DateTime endDate))
+                if (Game.IsPaused())
+                    yield return new WaitForSeconds(2.0f);
+
+                if (!wardIsHealing.TryGetValue(ward, out int secondsLeft))
                     yield break;
 
-                if (endDate < DateTime.Now)
+                if (secondsLeft <= 0)
                 {
                     wardIsHealing.Remove(ward);
                     logger.LogInfo($"Passive healing stopped");
                     yield break;
                 }
 
+                wardIsHealing[ward] -= seconds;
+
                 List<Player> players = new List<Player>();
-                ward.GetConnectedAreas().ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+                List<Character> characters = new List<Character>();
+
+                ConnectedAreas(ward).ForEach(area => 
+                {
+                    Player.GetPlayersInRange(area.transform.position, area.m_radius, players);
+                    Character.GetCharactersInRange(area.transform.position, area.m_radius, characters);
+                });
 
                 foreach (Player player in players.Distinct().ToList())
                 {
                     player.Heal(amount * seconds);
                 }
-
-                List<Character> characters = new List<Character>();
-                ward.GetConnectedAreas().ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
                 foreach (Character character in characters.Distinct().ToList())
                 {
@@ -353,17 +371,22 @@ namespace ProtectiveWards
                 yield break;
 
             List<Player> players = new List<Player>();
-            ward.GetConnectedAreas().ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
             foreach (Player player in players.Distinct().ToList())
             {
                 preLightning.Create(player.transform.position, player.transform.rotation);
             }
 
+            logger.LogInfo("Thor is preparing his strike");
+
             yield return new WaitForSeconds(UnityEngine.Random.Range(5f, 7f));
 
+            if (Game.IsPaused())
+                yield return new WaitForSeconds(1.0f);
+
             List<Character> characters = new List<Character>();
-            ward.GetConnectedAreas().ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
+            ConnectedAreas(ward).ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
             foreach (Character character in characters.Distinct().ToList())
             {
@@ -474,8 +497,8 @@ namespace ProtectiveWards
                         text.Insert(index, $"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] {actionCaption}");
                 }
 
-                if (wardIsHealing.TryGetValue(__instance, out DateTime endDate))
-                    status.Add($"$item_food_regen {endDate.Subtract(DateTime.Now).ToString(@"m\:ss")}");
+                if (wardIsHealing.TryGetValue(__instance, out int secondsLeft))
+                    status.Add($"$item_food_regen {TimeSpan.FromSeconds(secondsLeft).ToString(@"m\:ss")}");
 
                 if (status.Count > 0)
                 {
@@ -530,6 +553,8 @@ namespace ProtectiveWards
                 instance.ConfigUpdate();
 
                 if (!modEnabled.Value) return true;
+
+                if (!alt) areaCache.Clear();
 
                 if (!wardPassiveRepair.Value) return true;
 
@@ -659,7 +684,7 @@ namespace ProtectiveWards
                 }
 
                 List<Character> characters = new List<Character>();
-                ward.GetConnectedAreas().ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
+                ConnectedAreas(ward).ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
                 foreach (Character character in characters.Distinct().ToList())
                 {
@@ -711,9 +736,9 @@ namespace ProtectiveWards
                     return;
                 }
 
-                wardIsHealing.Add(ward, DateTime.Now.AddMinutes(3));
+                wardIsHealing.Add(ward, 180);
 
-                instance.StartCoroutine(PassiveHealingEffect(ward, amount:item.m_shared.m_foodRegen, seconds:2));
+                instance.StartCoroutine(PassiveHealingEffect(ward, amount:item.m_shared.m_foodRegen / 2, seconds:1));
                 logger.LogInfo("Passive healing begins");
 
                 initiator.GetInventory().RemoveOneItem(item);
@@ -728,7 +753,7 @@ namespace ProtectiveWards
 
             List<Player> players = new List<Player>();
 
-            ward.GetConnectedAreas().ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
             bool applied = false;
 
@@ -758,7 +783,7 @@ namespace ProtectiveWards
 
             List<Piece> pieces = new List<Piece>();
 
-            ward.GetConnectedAreas().ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
+            ConnectedAreas(ward).ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
             foreach (Piece piece in pieces)
             {
