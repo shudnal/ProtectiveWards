@@ -57,6 +57,9 @@ extract ProtectiveWards.dll file to your BepInEx\Plugins\ folder
 You can activate the ward to start passive repair process of all pieces in all connected areas.
 Ward will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.
 
+### Passive door auto closing
+All doors will be closed after specified time of the last door interaction
+
 ### Active offerings
 Offer the certain item to ward to have some handy effect.
 * surtling core to instantly repair everything
@@ -65,6 +68,8 @@ Offer the certain item to ward to have some handy effect.
 * mead to share the effect to all players in connected areas. 
 * thunderstone to call the Thor's wrath upon your enemies
 * trophy to instantly kill all enemies of that speccy
+* Ymir flesh to instantly grow every healthy plant
+* Eitr x5 to instantly grow every plant regardless the requirements (empty space or biome)
 
 Everything mentioned above works only inside of an active ward range. Yes you can change the range, disable the flash and always see the marker.
 And yes the configuration is locked if you're playing on the server.
@@ -78,6 +83,10 @@ And yes the configuration is locked if you're playing on the server.
 [Thunderstore](https://valheim.thunderstore.io/package/shudnal/ProtectiveWards/)
 
 ## Changelog
+
+v 1.1.2
+* auto closing doors
+* instant plant growth offerings
 
 v 1.1.1
 * passive effect fix
