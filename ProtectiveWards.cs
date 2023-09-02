@@ -18,8 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.1";
-        public static ManualLogSource logger;
+        const string pluginVersion = "1.1.2";
 
         private Harmony _harmony;
 
@@ -27,10 +26,11 @@ namespace ProtectiveWards
 
         private static ConfigEntry<bool> modEnabled;
         private static ConfigEntry<bool> configLocked;
-        private static ConfigEntry<int> refreshingTime;
 
         private static ConfigEntry<bool> disableFlash;
         private static ConfigEntry<bool> showAreaMarker;
+        private static ConfigEntry<bool> loggingEnabled;
+        private static ConfigEntry<int> refreshingTime;
 
         private static ConfigEntry<bool> offeringActiveRepair;
         private static ConfigEntry<bool> offeringAugmenting;
@@ -38,7 +38,11 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> offeringMead;
         private static ConfigEntry<bool> offeringThundertone;
         private static ConfigEntry<bool> offeringTrophy;
+        private static ConfigEntry<bool> offeringYmirRemains;
+        private static ConfigEntry<bool> offeringEitr;
+
         private static ConfigEntry<bool> wardPassiveRepair;
+        private static ConfigEntry<int> autoCloseDoorsTime;
 
         private static ConfigEntry<bool> setWardRange;
         private static ConfigEntry<float> wardRange;
@@ -74,6 +78,8 @@ namespace ProtectiveWards
         internal static Dictionary<Vector3, PrivateArea> areaCache = new Dictionary<Vector3, PrivateArea>();
         internal static Dictionary<PrivateArea, int> wardIsRepairing = new Dictionary<PrivateArea, int>();
         internal static Dictionary<PrivateArea, int> wardIsHealing = new Dictionary<PrivateArea, int>();
+        internal static Dictionary<PrivateArea, int> wardIsClosing = new Dictionary<PrivateArea, int>();
+        internal static Dictionary<PrivateArea, List<Door>> doorsToClose = new Dictionary<PrivateArea, List<Door>>();
 
         internal static GameObject lightningAOE;
         internal static EffectList preLightning;
@@ -94,8 +100,6 @@ namespace ProtectiveWards
 
             instance = this;
 
-            logger = Logger;
-
             ConfigInit();
             _ = configSync.AddLockingConfigEntry(configLocked);
         }
@@ -106,6 +110,12 @@ namespace ProtectiveWards
             _harmony?.UnpatchSelf();
         }
 
+        public static void LogInfo(object data)
+        {
+            if (loggingEnabled.Value)
+                instance.Logger.LogInfo(data);
+        }
+
         private void ConfigInit()
         {
             config("General", "NexusID", 2450, "Nexus mod ID for updates", false);
@@ -113,12 +123,15 @@ namespace ProtectiveWards
             modEnabled = config("General", "Enabled", defaultValue: true, "Enable the mod. Every option requires being in the zone of the active Ward.");
             configLocked = config("General", "Lock Configuration", defaultValue: true, "Configuration is locked and can be changed by server admins only.");
 
+            
             disableFlash = config("Misc", "Disable flash", defaultValue: false, "Disable flash on hit [Not Synced with Server]", false);
             showAreaMarker = config("Misc", "Always show radius", defaultValue: false, "Always show ward radius. Hover the ward for changes to take effect. [Not Synced with Server]", false);
             refreshingTime = config("Misc", "Ward protected status check time", defaultValue: 30, "Set how many seconds the \"inside the protected zone\" status is reset. [Not Synced with Server]" +
                                                                                                     "\nSetting more seconds can be helpful for fps for base with many objects and static untoggled wards. " +
                                                                                                     "\nDoesn't affect moving objects.", false);
+            loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
 
+            
             playerDamageDealtMultiplier = config("Modifiers damage", "Creatures damage taken multiplier", defaultValue: 1.0f, "Basically it means damage dealt by any creatures (players and tames included) to any creatures (players and tames excluded)");
             playerDamageTakenMultiplier = config("Modifiers damage", "Player damage taken multiplier", defaultValue: 1.0f, "Damage taken by players from creatures");
             fallDamageTakenMultiplier = config("Modifiers damage", "Player fall damage taken multiplier", defaultValue: 1.0f, "Player fall damage taken");
@@ -137,6 +150,7 @@ namespace ProtectiveWards
             fermentingSpeedMultiplier = config("Modifiers speed", "Fermenting speed multiplier", defaultValue: 1.0f, "Speed of fermenting");
             sapCollectingSpeedMultiplier = config("Modifiers speed", "Sap collecting speed multiplier", defaultValue: 1.0f, "Speed of sap collecting");
 
+            
             offeringActiveRepair = config("Offerings", "1 - Repair all pieces by surtling core offering", defaultValue: true, "Offer surtling core to ward to instantly repair all pieces in all connected areas" +
                                                                                                                                "\nCore will NOT be wasted if there is no piece to repair");
             offeringAugmenting = config("Offerings", "2 - Augment all pieces by black core offering", defaultValue: true, "Offer black core to ward to double the health of every structural piece in all connected areas" +
@@ -146,16 +160,24 @@ namespace ProtectiveWards
             offeringMead = config("Offerings", "4 - Share mead effect to all players by mead offering", defaultValue: true, "Offer mead to ward to share the effect to all players in all connected areas. " +
                                                                                                                               "\nMead will NOT be wasted if no one can have effect.");
             offeringThundertone = config("Offerings", "5 - Call the wrath of the Thor upon your enemies by thunderstone offering", defaultValue: true, "Offer thunderstone to ward to call the Thor's wrath upon your enemies in all connected areas" +
-                                                                                                                                                        "\nThunderstone will be wasted even if no one gets hurt");
+                                                                                                                                                        "\nThunderstone WILL be wasted even if no one gets hurt");
             offeringTrophy = config("Offerings", "6 - Kill all enemies of the same type by trophy offering", defaultValue: true, "Offer trophy to ward to kill all enemies with type of the offered trophy in all connected areas" +
                                                                                                                                    "\nTrophy will NOT be wasted if no one gets hurt");
+            offeringYmirRemains = config("Offerings", "7 - Grow all plants by Ymir flesh offering", defaultValue: true, "Offer Ymir flesh to instantly grow every plant in all connected areas" +
+                                                                                                                                   "\nYmir flesh will NOT be wasted if there is no plant to grow");
+            offeringEitr = config("Offerings", "8 - Grow all plants regardless the requirements by Eitr x5 offering", defaultValue: true, "Offer 5 Eitr to instantly grow every plant regardless the requirements in all connected areas" +
+                                                                                                                                   "\nEitr will NOT be wasted if there is no plant to grow");
+
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
+            autoCloseDoorsTime = config("Passive", "Auto close doors after", defaultValue: 0, "Automatically close doors after a specified number of seconds. 0 to disable. 5 recommended");
 
+                        
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
-
+                        
+            
             boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
             wardRainProtection = config("Ward protects", "Structures from rain damage", true, "Set whether an active Ward will protect nearby structures from rain and water damage");
             wardShipProtection = config("Ward protects", "Ship from damage", ShipDamageType.WaterDamage, "Set whether an active Ward will protect nearby ships from damage (waves and upsidedown for water damage option or any structural damage)");
@@ -286,7 +308,7 @@ namespace ProtectiveWards
 
                 if (piecesToRepair.Count == 0)
                 {
-                    logger.LogInfo($"Passive repairing stopped");
+                    LogInfo($"Passive repairing stopped");
                     wardIsRepairing.Remove(ward);
 
                     if (initiator != null)
@@ -335,7 +357,7 @@ namespace ProtectiveWards
                 if (secondsLeft <= 0)
                 {
                     wardIsHealing.Remove(ward);
-                    logger.LogInfo($"Passive healing stopped");
+                    LogInfo($"Passive healing stopped");
                     yield break;
                 }
 
@@ -378,7 +400,7 @@ namespace ProtectiveWards
                 preLightning.Create(player.transform.position, player.transform.rotation);
             }
 
-            logger.LogInfo("Thor is preparing his strike");
+            LogInfo("Thor is preparing his strike");
 
             yield return new WaitForSeconds(UnityEngine.Random.Range(5f, 7f));
 
@@ -397,6 +419,148 @@ namespace ProtectiveWards
             }
         }
 
+        public static IEnumerator AutoClosingDoors(PrivateArea ward)
+        {
+            while (true)
+            {
+                if (ward == null)
+                    yield break;
+
+                if (Game.IsPaused())
+                    yield return new WaitForSeconds(2.0f);
+
+                if (!wardIsClosing.TryGetValue(ward, out int secondsToClose))
+                    yield break;
+
+                if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
+                    yield break;
+
+                if (secondsToClose <= 0)
+                {
+                    if (doors.Count > 0)
+                    {
+                        LogInfo($"Closed {doors.Count} doors");
+                        doors.ForEach(door =>
+                        {
+                            if (door.m_nview.IsValid())
+                            {
+                                door.m_nview.GetZDO().Set(ZDOVars.s_state, 0);
+                                door.UpdateState();
+                            }
+                        });
+                    }
+
+                    wardIsClosing.Remove(ward);
+                    doorsToClose.Remove(ward);
+                    LogInfo($"Doors closing stopped");
+                    yield break;
+                }
+
+                wardIsClosing[ward] -= 1;
+
+                yield return new WaitForSeconds(1);
+            }
+        }
+
+        public static IEnumerator InstantGrowthEffect(PrivateArea ward, List<Plant> plants)
+        {
+            if (ward == null)
+                yield break;
+
+            LogInfo("Instant growth started");
+
+            yield return new WaitForSeconds(1);
+
+            foreach (Plant plant in plants.Distinct().ToList())
+            {
+                if (!plant.m_nview.IsOwner()) continue;
+
+                if (plant.m_status != 0)
+                {
+                    plant.UpdateHealth(0);
+                }
+                
+                plant.Grow();
+                yield return new WaitForSeconds(0.25f);
+            }
+
+            LogInfo("Instant growth ended");
+        }
+
+        private static void GetPlantsInRange(Vector3 point, float radius, List<Plant> plants, bool growableOnly)
+        {
+            List <SlowUpdate> allPlants = SlowUpdate.GetAllInstaces();
+
+            float num = radius * radius;
+            foreach (SlowUpdate su_plant in allPlants)
+            {
+                if (!su_plant.TryGetComponent<Plant>(out Plant plant)) continue;
+
+                if (Utils.DistanceSqr(su_plant.transform.position, point) < num && plant.m_nview.IsOwner() && (!growableOnly || plant.m_status == 0))
+                {
+                    plants.Add(plant);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
+        public static class Door_SetState_AutoClose
+        {
+            public static void Postfix(Door __instance, ZNetView ___m_nview, bool __result)
+            {
+                
+                if (!modEnabled.Value) return;
+
+                if (autoCloseDoorsTime.Value == 0) return;
+
+                if (!___m_nview.IsValid()) return;
+
+                if (!__result) return;
+
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward)) return;
+
+                if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
+                    doors = new List<Door>();
+
+                int state = ___m_nview.GetZDO().GetInt(ZDOVars.s_state);
+
+                if (state == 0)
+                {
+                    doors.Remove(__instance);
+                }
+                else if (!doors.Contains(__instance))
+                {
+                    doors.Add(__instance);
+                }
+
+                if (doors.Count == 0)
+                {
+                    wardIsClosing.Remove(ward);
+                    doorsToClose.Remove(ward);
+                    return;
+                }
+
+                if (state == 0) return;
+
+                doorsToClose[ward] = doors;
+
+                LogInfo(doors.Count);
+
+                if (wardIsClosing.ContainsKey(ward))
+                {
+                    wardIsClosing[ward] = Math.Max(autoCloseDoorsTime.Value, 2);
+                    LogInfo($"Doors closing reset to {wardIsClosing[ward]} seconds");
+                }
+                else
+                {
+                    wardIsClosing[ward] = Math.Max(autoCloseDoorsTime.Value, 2);
+                    ward.StartCoroutine(AutoClosingDoors(ward));
+                    LogInfo($"Doors closing started");
+                }
+
+            }
+        }
+
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.OnDestroy))]
         public static class PrivateArea_OnDestroy_ClearStatus
         {
@@ -408,6 +572,7 @@ namespace ProtectiveWards
 
                 wardIsHealing.Remove(__instance);
                 wardIsRepairing.Remove(__instance);
+                wardIsClosing.Remove(__instance);
             }
         }
 
@@ -443,7 +608,7 @@ namespace ProtectiveWards
                 if (player.baseValue != baseValueProtected)
                     return;
 
-                logger.LogInfo($"Player at {player.position.x} {player.position.z} is in raid protected state.");
+                LogInfo($"Player at {player.position.x} {player.position.z} is in raid protected state.");
                 __result = false;
             }
         }
@@ -520,6 +685,10 @@ namespace ProtectiveWards
                     offeringsList.Add("$item_thunderstone");
                 if (offeringTrophy.Value)
                     offeringsList.Add("$inventory_trophies");
+                if (offeringYmirRemains.Value && Player.m_localPlayer.IsMaterialKnown("$item_ymirremains"))
+                    offeringsList.Add("$item_ymirremains");
+                if (offeringEitr.Value && Player.m_localPlayer.IsMaterialKnown("$item_eitr"))
+                    offeringsList.Add("$item_eitr");
 
                 if (offeringsList.Count > 0)
                 {
@@ -568,7 +737,7 @@ namespace ProtectiveWards
 
                 if (wardIsRepairing.ContainsKey(__instance)) return true;
 
-                logger.LogInfo($"Passive repairing begins");
+                LogInfo($"Passive repairing begins");
                 instance.StartCoroutine(PassiveRepairEffect(__instance, human as Player));
 
                 return false;
@@ -639,12 +808,12 @@ namespace ProtectiveWards
 
                 if (!player)
                 {
-                    logger.LogInfo("UseItem user not a player");
+                    LogInfo("UseItem user not a player");
                     return;
                 }
 
-                bool repair = (item.m_shared.m_name == "$item_surtlingcore" && offeringActiveRepair.Value) || (item.m_shared.m_name == "$item_blackcore" && offeringAugmenting.Value);
                 bool augment = item.m_shared.m_name == "$item_blackcore" && offeringAugmenting.Value;
+                bool repair = augment || (item.m_shared.m_name == "$item_surtlingcore" && offeringActiveRepair.Value);
 
                 bool consumable = (offeringFood.Value || offeringMead.Value) && (item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Consumable);
 
@@ -652,7 +821,10 @@ namespace ProtectiveWards
 
                 bool trophy = offeringTrophy.Value && (item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Trophy);
 
-                if (!repair && !consumable && !thunderstrike && !trophy) return;
+                bool growAll = offeringYmirRemains.Value && item.m_shared.m_name == "$item_eitr";
+                bool growth = (offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
+
+                if (!repair && !consumable && !thunderstrike && !trophy && !growth) return;
 
                 if (repair)
                     RepairNearestStructures(augment, __instance, player, item);
@@ -665,6 +837,9 @@ namespace ProtectiveWards
 
                 if (trophy)
                     ApplyTrophyEffectOnNearbyEnemies(__instance, item, player);
+
+                if (growth)
+                    ApplyInstantGrowthEffectOnNearbyPlants(__instance, item, player, !growAll);
 
                 __result = true;
             }
@@ -739,7 +914,7 @@ namespace ProtectiveWards
                 wardIsHealing.Add(ward, 180);
 
                 instance.StartCoroutine(PassiveHealingEffect(ward, amount:item.m_shared.m_foodRegen / 2, seconds:1));
-                logger.LogInfo("Passive healing begins");
+                LogInfo("Passive healing begins");
 
                 initiator.GetInventory().RemoveOneItem(item);
                 initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_consumed"));
@@ -749,7 +924,7 @@ namespace ProtectiveWards
 
             if (!(bool)item.m_shared.m_consumeStatusEffect) return;
 
-            logger.LogInfo("Consumable effect offered");
+            LogInfo("Consumable effect offered");
 
             List<Player> players = new List<Player>();
 
@@ -832,7 +1007,44 @@ namespace ProtectiveWards
                 initiator.Message(MessageHud.MessageType.Center, char.ToUpper(str[0]) + str.Substring(1));
             }
         }
-        
+
+        private static void ApplyInstantGrowthEffectOnNearbyPlants(PrivateArea ward, ItemDrop.ItemData item, Player initiator, bool growableOnly = true)
+        {
+
+            List<Plant> plants = new List<Plant>();
+
+            ConnectedAreas(ward).ForEach(area => GetPlantsInRange(area.transform.position, area.m_radius, plants, growableOnly));
+
+            if (plants.Count == 0)
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                return;
+            }
+
+            Inventory inventory = initiator.GetInventory();
+            if (item.m_shared.m_name == "$item_eitr" && inventory.CountItems("$item_eitr") < 5)
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                return;
+            }
+
+            ward.StartCoroutine(InstantGrowthEffect(ward, plants));
+
+            if (item.m_shared.m_name == "$item_eitr")
+            {
+                initiator.GetInventory().RemoveItem("$item_eitr", 5);
+                LogInfo($"Offered {item.m_shared.m_name} x5");
+            }
+            else
+            {
+                initiator.GetInventory().RemoveOneItem(item);
+                LogInfo($"Offered {item.m_shared.m_name}");
+            }
+            
+            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+
+        }
+
         [HarmonyPatch(typeof(Character), nameof(Character.Damage))]
         public static class Character_Damage_DamageMultipliers
         {
@@ -840,7 +1052,7 @@ namespace ProtectiveWards
             {
                 if (!modEnabled.Value) return;
 
-                if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea area))
+                if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
                     return;
 
                 if (__instance.IsPlayer())
@@ -855,7 +1067,7 @@ namespace ProtectiveWards
                         if (!(hit.GetAttacker() != null && hit.GetAttacker().IsPlayer()))
                         {
                             if (hit.GetTotalDamage() != hit.m_damage.m_fire)
-                                area.FlashShield(false);
+                                ward.FlashShield(false);
 
                             ModifyHitDamage(ref hit, 0f);
                         }
