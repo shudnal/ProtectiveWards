@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.2";
+        const string pluginVersion = "1.1.3";
 
         private Harmony _harmony;
 
@@ -31,6 +31,7 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> showAreaMarker;
         private static ConfigEntry<bool> loggingEnabled;
         private static ConfigEntry<int> refreshingTime;
+        private static ConfigEntry<bool> showOfferingsInHover;
 
         private static ConfigEntry<bool> offeringActiveRepair;
         private static ConfigEntry<bool> offeringAugmenting;
@@ -40,6 +41,7 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> offeringTrophy;
         private static ConfigEntry<bool> offeringYmirRemains;
         private static ConfigEntry<bool> offeringEitr;
+        private static ConfigEntry<bool> offeringDragonEgg;
 
         private static ConfigEntry<bool> wardPassiveRepair;
         private static ConfigEntry<int> autoCloseDoorsTime;
@@ -130,8 +132,9 @@ namespace ProtectiveWards
                                                                                                     "\nSetting more seconds can be helpful for fps for base with many objects and static untoggled wards. " +
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
+            showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
 
-            
+
             playerDamageDealtMultiplier = config("Modifiers damage", "Creatures damage taken multiplier", defaultValue: 1.0f, "Basically it means damage dealt by any creatures (players and tames included) to any creatures (players and tames excluded)");
             playerDamageTakenMultiplier = config("Modifiers damage", "Player damage taken multiplier", defaultValue: 1.0f, "Damage taken by players from creatures");
             fallDamageTakenMultiplier = config("Modifiers damage", "Player fall damage taken multiplier", defaultValue: 1.0f, "Player fall damage taken");
@@ -167,6 +170,7 @@ namespace ProtectiveWards
                                                                                                                                    "\nYmir flesh will NOT be wasted if there is no plant to grow");
             offeringEitr = config("Offerings", "8 - Grow all plants regardless the requirements by Eitr x5 offering", defaultValue: true, "Offer 5 Eitr to instantly grow every plant regardless the requirements in all connected areas" +
                                                                                                                                    "\nEitr will NOT be wasted if there is no plant to grow");
+            offeringDragonEgg = config("Offerings", "9 - Activate Moder power by dragon egg offering", defaultValue: true, "Offer dragon egg to activate Moder power on all players in all connected areas.");
 
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
@@ -671,29 +675,34 @@ namespace ProtectiveWards
                     text.Append(String.Join(", ", status.ToArray()));
                 }
 
-                List<string> offeringsList = new List<string>();
-
-                if (offeringActiveRepair.Value && Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore"))
-                    offeringsList.Add("$item_surtlingcore");
-                if (offeringAugmenting.Value && Player.m_localPlayer.IsMaterialKnown("$item_blackcore"))
-                    offeringsList.Add("$item_blackcore");
-                if (offeringFood.Value)
-                    offeringsList.Add("$item_food");
-                if (offeringMead.Value)
-                    offeringsList.Add("$se_mead_name");
-                if (offeringThundertone.Value && Player.m_localPlayer.IsMaterialKnown("$item_thunderstone"))
-                    offeringsList.Add("$item_thunderstone");
-                if (offeringTrophy.Value)
-                    offeringsList.Add("$inventory_trophies");
-                if (offeringYmirRemains.Value && Player.m_localPlayer.IsMaterialKnown("$item_ymirremains"))
-                    offeringsList.Add("$item_ymirremains");
-                if (offeringEitr.Value && Player.m_localPlayer.IsMaterialKnown("$item_eitr"))
-                    offeringsList.Add("$item_eitr");
-
-                if (offeringsList.Count > 0)
+                if (showOfferingsInHover.Value)
                 {
-                    text.Append("\n\n$piece_offerbowl_offeritem: ");
-                    text.Append(String.Join(", ", offeringsList.ToArray()));
+                    List<string> offeringsList = new List<string>();
+
+                    if (offeringActiveRepair.Value && Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore"))
+                        offeringsList.Add("$item_surtlingcore");
+                    if (offeringAugmenting.Value && Player.m_localPlayer.IsMaterialKnown("$item_blackcore"))
+                        offeringsList.Add("$item_blackcore");
+                    if (offeringFood.Value)
+                        offeringsList.Add("$item_food");
+                    if (offeringMead.Value)
+                        offeringsList.Add("$se_mead_name");
+                    if (offeringThundertone.Value && Player.m_localPlayer.IsMaterialKnown("$item_thunderstone"))
+                        offeringsList.Add("$item_thunderstone");
+                    if (offeringTrophy.Value)
+                        offeringsList.Add("$inventory_trophies");
+                    if (offeringYmirRemains.Value && Player.m_localPlayer.IsMaterialKnown("$item_ymirremains"))
+                        offeringsList.Add("$item_ymirremains");
+                    if (offeringEitr.Value && Player.m_localPlayer.IsMaterialKnown("$item_eitr"))
+                        offeringsList.Add("$item_eitr");
+                    if (offeringDragonEgg.Value && Player.m_localPlayer.IsMaterialKnown("$item_dragonegg"))
+                        offeringsList.Add("$item_dragonegg");
+
+                    if (offeringsList.Count > 0)
+                    {
+                        text.Append("\n\n$piece_offerbowl_offeritem: ");
+                        text.Append(String.Join(", ", offeringsList.ToArray()));
+                    }
                 }
                 
             }
@@ -821,10 +830,12 @@ namespace ProtectiveWards
 
                 bool trophy = offeringTrophy.Value && (item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Trophy);
 
-                bool growAll = offeringYmirRemains.Value && item.m_shared.m_name == "$item_eitr";
+                bool growAll = offeringEitr.Value && item.m_shared.m_name == "$item_eitr";
                 bool growth = (offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
 
-                if (!repair && !consumable && !thunderstrike && !trophy && !growth) return;
+                bool moderPower = offeringDragonEgg.Value && item.m_shared.m_name == "$item_dragonegg";
+
+                if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower) return;
 
                 if (repair)
                     RepairNearestStructures(augment, __instance, player, item);
@@ -840,6 +851,9 @@ namespace ProtectiveWards
 
                 if (growth)
                     ApplyInstantGrowthEffectOnNearbyPlants(__instance, item, player, !growAll);
+
+                if (moderPower)
+                    ApplyModerPowerEffectToNearbyPlayers(__instance, item, player);
 
                 __result = true;
             }
@@ -1045,6 +1059,24 @@ namespace ProtectiveWards
 
         }
 
+        private static void ApplyModerPowerEffectToNearbyPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
+        {
+            LogInfo("Dragon egg offered");
+
+            List<Player> players = new List<Player>();
+
+            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+
+            foreach (Player player in players.Distinct().ToList())
+            {
+                int moderPowerHash = "GP_Moder".GetStableHashCode();
+                StatusEffect moderSE = ObjectDB.instance.GetStatusEffect(moderPowerHash);
+                player.GetSEMan().AddStatusEffect(moderSE.NameHash(), resetTime: true);
+            }
+
+            initiator.GetInventory().RemoveOneItem(item);
+        }
+
         [HarmonyPatch(typeof(Character), nameof(Character.Damage))]
         public static class Character_Damage_DamageMultipliers
         {
@@ -1053,6 +1085,9 @@ namespace ProtectiveWards
                 if (!modEnabled.Value) return;
 
                 if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
+                    return;
+
+                if (hit.HaveAttacker() && hit.GetAttacker().IsBoss())
                     return;
 
                 if (__instance.IsPlayer())
@@ -1064,7 +1099,7 @@ namespace ProtectiveWards
                     ModifyHitDamage(ref hit, tamedDamageTakenMultiplier.Value);
                     if (boarsHensProtection.Value && (__instance.m_group == "boar" || __instance.m_group == "chicken"))
                     {
-                        if (!(hit.GetAttacker() != null && hit.GetAttacker().IsPlayer()))
+                        if (!(hit.HaveAttacker() && hit.GetAttacker().IsPlayer()))
                         {
                             if (hit.GetTotalDamage() != hit.m_damage.m_fire)
                                 ward.FlashShield(false);
@@ -1132,6 +1167,9 @@ namespace ProtectiveWards
                 }
                 else if (__instance.GetComponent<Piece>() != null)
                 {
+                    if (hit.HaveAttacker() && hit.GetAttacker().IsBoss())
+                        return;
+
                     ModifyHitDamage(ref hit, structureDamageTakenMultiplier.Value);
                 }
             }
@@ -1155,7 +1193,7 @@ namespace ProtectiveWards
                 if (__instance.GetDestructibleType() != DestructibleType.Default || __instance.m_health != 1)
                     return;
 
-                if (hit.GetAttacker() == null) return;
+                if (!hit.HaveAttacker()) return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea area))
                     return;

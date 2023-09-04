@@ -65,11 +65,12 @@ Offer the certain item to ward to have some handy effect.
 * surtling core to instantly repair everything
 * black core to augment all structures (double the hp, ships included)
 * food to start 3 min passive healing in all connected areas. Players and tamed. Better food means better heal. Helpful if you are being raided
-* mead to share the effect to all players in connected areas. 
+* mead to share the effect to all players in connected areas
 * thunderstone to call the Thor's wrath upon your enemies
 * trophy to instantly kill all enemies of that speccy
 * Ymir flesh to instantly grow every healthy plant
-* Eitr x5 to instantly grow every plant regardless the requirements (empty space or biome)
+* eitr x5 to instantly grow every plant regardless the requirements (empty space or biome)
+* dragon egg to activate Moder power on all players in all connected areas
 
 Everything mentioned above works only inside of an active ward range. Yes you can change the range, disable the flash and always see the marker.
 And yes the configuration is locked if you're playing on the server.
@@ -83,6 +84,11 @@ And yes the configuration is locked if you're playing on the server.
 [Thunderstore](https://valheim.thunderstore.io/package/shudnal/ProtectiveWards/)
 
 ## Changelog
+
+v 1.1.3
+* bosses excluded from multipliers effects
+* dragon egg offering
+* hideable offering list
 
 v 1.1.2
 * auto closing doors
