@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.3";
+        const string pluginVersion = "1.1.4";
 
         private Harmony _harmony;
 
@@ -48,6 +48,7 @@ namespace ProtectiveWards
 
         private static ConfigEntry<bool> setWardRange;
         private static ConfigEntry<float> wardRange;
+        private static ConfigEntry<bool> supressSpawnInRange;
 
         private static ConfigEntry<float> playerDamageDealtMultiplier;
         private static ConfigEntry<float> playerDamageTakenMultiplier;
@@ -180,8 +181,9 @@ namespace ProtectiveWards
                         
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
-                        
-            
+            supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
+
+
             boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
             wardRainProtection = config("Ward protects", "Structures from rain damage", true, "Set whether an active Ward will protect nearby structures from rain and water damage");
             wardShipProtection = config("Ward protects", "Ship from damage", ShipDamageType.WaterDamage, "Set whether an active Ward will protect nearby ships from damage (waves and upsidedown for water damage option or any structural damage)");
@@ -278,7 +280,20 @@ namespace ProtectiveWards
             ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
         }
 
-        private static void ModifyHitDamage(ref HitData hit, float value)
+        private static void SetWardPlayerBase(ref PrivateArea __instance)
+        {
+            Transform playerBase = __instance.transform.Find("PlayerBase");
+            if (playerBase != null)
+            {
+                float scale = Math.Min(1f, 10f / Math.Max(wardRange.Value, 1f));
+                if (supressSpawnInRange.Value)
+                    scale = 1f;
+
+                playerBase.localScale = new Vector3(scale, scale, scale);
+            }
+    }
+
+    private static void ModifyHitDamage(ref HitData hit, float value)
         {
             hit.m_damage.Modify(Math.Max(value, 0));
             return;
@@ -756,9 +771,12 @@ namespace ProtectiveWards
             {
                 if (!modEnabled.Value) return;
 
-                if (setWardRange.Value && __instance.m_radius != wardRange.Value)
+                if (setWardRange.Value) 
                 {
-                    SetWardRange(ref __instance);
+                    if (__instance.m_radius != wardRange.Value) 
+                        SetWardRange(ref __instance);
+
+                    SetWardPlayerBase(ref __instance);
                 }
             }
         }
@@ -773,6 +791,8 @@ namespace ProtectiveWards
                 if (setWardRange.Value)
                 {
                     SetWardRange(ref __instance);
+
+                    SetWardPlayerBase(ref __instance);
                 }
             }
 
@@ -783,6 +803,8 @@ namespace ProtectiveWards
                 if (setWardRange.Value)
                 {
                     SetWardRange(ref __instance);
+
+                    SetWardPlayerBase(ref __instance);
                 }
 
                 if (showAreaMarker.Value)

@@ -85,6 +85,9 @@ And yes the configuration is locked if you're playing on the server.
 
 ## Changelog
 
+v 1.1.4
+* option to enable spawn in ward area
+
 v 1.1.3
 * bosses excluded from multipliers effects
 * dragon egg offering
