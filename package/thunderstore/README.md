@@ -123,6 +123,9 @@ Restrictions
 
 ## Changelog
 
+v 1.1.6
+* teleportable chest check fix
+
 v 1.1.5
 * taxi offerings
 
