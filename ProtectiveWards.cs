@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.5";
+        const string pluginVersion = "1.1.6";
 
         private Harmony _harmony;
 
@@ -1171,9 +1171,9 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!initiator.IsTeleportable())
+            if (!IsTeleportable(initiator))
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$se_encumbered_start"));
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_noteleport"));
                 return;
             }
 
@@ -1263,6 +1263,29 @@ namespace ProtectiveWards
             }
             
             initiator.StartCoroutine(TaxiToPosition(initiator, location.m_position, returnBack: true, waitSeconds:10));
+        }
+
+        public static bool IsTeleportable(Player player)
+        {
+            if (player.IsTeleportable())
+            {
+                return true;
+            }
+
+            foreach (ItemDrop.ItemData item in player.GetInventory().m_inventory)
+            {
+                if (item.m_shared.m_name == "$item_chest_hildir1" ||
+                    item.m_shared.m_name == "$item_chest_hildir2" ||
+                    item.m_shared.m_name == "$item_chest_hildir3")
+                    continue;
+
+                if (!item.m_shared.m_teleportable)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static IEnumerator TaxiToPosition(Player player, Vector3 position, bool returnBack = false, int waitSeconds = 0)
