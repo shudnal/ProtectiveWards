@@ -16,6 +16,9 @@ Configurable protection and modifiers in active ward area. Creatures, rain, raid
  - Concerning about your food and fuel running out too fast?
  - Burnt out on keeping your base repaired?
  - Want to have fun with offering some items?
+ - Fed of back and forth traveling to the Start Temple to change your forsaken power?
+ - Can't find Haldor or Hildir?
+ - Or maybe treasures just burn in your pockets and merchants are far off?
 
 Make Ward your guard. Inside of an active and warm field of protective ward some miracles happen.
 
@@ -71,9 +74,44 @@ Offer the certain item to ward to have some handy effect.
 * Ymir flesh to instantly grow every healthy plant
 * eitr x5 to instantly grow every plant regardless the requirements (empty space or biome)
 * dragon egg to activate Moder power on all players in all connected areas
+* several items to call a taxi to the different locations
 
 Everything mentioned above works only inside of an active ward range. Yes you can change the range, disable the flash and always see the marker.
 And yes the configuration is locked if you're playing on the server.
+
+### Taxi
+You can offer:
+* boss trophy to travel to Start Temple (initial spawn point) (trophy will NOT be consumed)
+* coins to travel to the Haldor. x2000 if you didn't find him yet and x500 otherwise (coins will be consumed)
+* any of Hildir's chest to travel to the Hildir (chest will NOT be consumed)
+* Fuling totem to travel to Hildir (totem will be consumed)
+
+That will call a Valkyrie to move you to your desired destination.
+
+After landing you will have 2 minutes to do what you wanna do.
+
+Then you will be moved back to initial point.
+
+If you are 
+* sleeping
+* in dungeon
+* sitting
+* attached to a ship
+* riding
+* teleporting
+* using your hammer
+
+then the taxi will wait until you stop
+
+You can end the flight early by pressing your binded Alternative + Use buttons (L.Shift + E by default).
+
+You will be granted Slow Fall until you touched the ground.
+
+Restrictions
+* you can't be encumbered
+* you should be teleportable
+* target point should be far than 300 away
+* you can't start next travel if the taxi awaits you to return to start point
 
 ## Compatibility
 * The mod should be compatible with anything I know as its patches designed to be noninvasive. But other mods may break the mod's functionality.
@@ -84,6 +122,9 @@ And yes the configuration is locked if you're playing on the server.
 [Thunderstore](https://valheim.thunderstore.io/package/shudnal/ProtectiveWards/)
 
 ## Changelog
+
+v 1.1.5
+* taxi offerings
 
 v 1.1.4
 * option to enable spawn in ward area

@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.4";
+        const string pluginVersion = "1.1.5";
 
         private Harmony _harmony;
 
@@ -32,6 +32,7 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> loggingEnabled;
         private static ConfigEntry<int> refreshingTime;
         private static ConfigEntry<bool> showOfferingsInHover;
+        private static ConfigEntry<float> maxTaxiSpeed;
 
         private static ConfigEntry<bool> offeringActiveRepair;
         private static ConfigEntry<bool> offeringAugmenting;
@@ -42,6 +43,7 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> offeringYmirRemains;
         private static ConfigEntry<bool> offeringEitr;
         private static ConfigEntry<bool> offeringDragonEgg;
+        private static ConfigEntry<bool> offeringTaxi;
 
         private static ConfigEntry<bool> wardPassiveRepair;
         private static ConfigEntry<int> autoCloseDoorsTime;
@@ -89,6 +91,14 @@ namespace ProtectiveWards
         internal static List<Turret.TrophyTarget> trophyTargets;
         internal static int baseValueProtected = 999;
 
+        internal static bool taxiReturnBack = false;
+        internal static Vector3 taxiPlayerPositionToReturn;
+        internal static Vector3 taxiTargetPosition;
+        internal static bool canTravel = true;
+        internal static Player isTravelingPlayer;
+        internal static bool playerDropped = false;
+        internal static bool castSlowFall;
+
         public enum ShipDamageType
         {
             Off,
@@ -112,7 +122,7 @@ namespace ProtectiveWards
             Config.Save();
             _harmony?.UnpatchSelf();
         }
-
+        
         public static void LogInfo(object data)
         {
             if (loggingEnabled.Value)
@@ -134,6 +144,7 @@ namespace ProtectiveWards
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
             showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
+            maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
 
 
             playerDamageDealtMultiplier = config("Modifiers damage", "Creatures damage taken multiplier", defaultValue: 1.0f, "Basically it means damage dealt by any creatures (players and tames included) to any creatures (players and tames excluded)");
@@ -172,6 +183,11 @@ namespace ProtectiveWards
             offeringEitr = config("Offerings", "8 - Grow all plants regardless the requirements by Eitr x5 offering", defaultValue: true, "Offer 5 Eitr to instantly grow every plant regardless the requirements in all connected areas" +
                                                                                                                                    "\nEitr will NOT be wasted if there is no plant to grow");
             offeringDragonEgg = config("Offerings", "9 - Activate Moder power by dragon egg offering", defaultValue: true, "Offer dragon egg to activate Moder power on all players in all connected areas.");
+
+            offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Offer boss trophy to travel to start temple (initial spawn point). Boss trophy will NOT be consumed." +
+                                                                                                                                   "\nOffer coins to travel to Haldor (x2000 if you didn't find him yet. x500 otherwise). Coins will be consumed." +
+                                                                                                                                   "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed. Totem WILL be consumed." +
+                                                                                                                                   "\nOffer Fuling totem to travel to Hildir. Totem WILL be consumed.");
 
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
@@ -506,6 +522,26 @@ namespace ProtectiveWards
             LogInfo("Instant growth ended");
         }
 
+        public static IEnumerator ReturnPlayerToPosition(Player player, Vector3 position, int seconds)
+        {
+            if (player == null)
+                yield break;
+
+            canTravel = false;
+
+            LogInfo("Timer of player returnal started");
+
+            for (int i = seconds; i >= 0; i--)
+            {
+                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$button_return") + " " + TimeSpan.FromSeconds(i).ToString(@"m\:ss"));
+                yield return new WaitForSeconds(1);
+            }
+
+            LogInfo("Timer of player returnal ended");
+
+            player.StartCoroutine(TaxiToPosition(player, position));
+        }
+
         private static void GetPlantsInRange(Vector3 point, float radius, List<Plant> plants, bool growableOnly)
         {
             List <SlowUpdate> allPlants = SlowUpdate.GetAllInstaces();
@@ -712,6 +748,19 @@ namespace ProtectiveWards
                         offeringsList.Add("$item_eitr");
                     if (offeringDragonEgg.Value && Player.m_localPlayer.IsMaterialKnown("$item_dragonegg"))
                         offeringsList.Add("$item_dragonegg");
+                    if (offeringTaxi.Value)
+                    {
+                        if (Player.m_localPlayer.IsMaterialKnown("$item_coins"))
+                            offeringsList.Add("$item_coins");
+                        if (Player.m_localPlayer.IsMaterialKnown("$item_goblintotem"))
+                            offeringsList.Add("$item_goblintotem");
+                        if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1"))
+                            offeringsList.Add("$piece_chestwood");
+                        else if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2"))
+                            offeringsList.Add("$piece_chestwood");
+                        else if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3"))
+                            offeringsList.Add("$piece_chestwood");
+                    }
 
                     if (offeringsList.Count > 0)
                     {
@@ -855,9 +904,21 @@ namespace ProtectiveWards
                 bool growAll = offeringEitr.Value && item.m_shared.m_name == "$item_eitr";
                 bool growth = (offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
 
-                bool moderPower = offeringDragonEgg.Value && item.m_shared.m_name == "$item_dragonegg";
+                bool moderPower = item.m_shared.m_name == "$item_dragonegg";
 
-                if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower) return;
+                bool taxi = offeringTaxi.Value && (item.m_shared.m_name == "$item_coins" ||
+                                                   item.m_shared.m_name == "$item_trophy_eikthyr" ||
+                                                   item.m_shared.m_name == "$item_trophy_elder" ||
+                                                   item.m_shared.m_name == "$item_trophy_bonemass" ||
+                                                   item.m_shared.m_name == "$item_trophy_dragonqueen" ||
+                                                   item.m_shared.m_name == "$item_trophy_goblinking" ||
+                                                   item.m_shared.m_name == "$item_trophy_seekerqueen" ||
+                                                   item.m_shared.m_name == "$item_goblintotem" ||
+                                                   item.m_shared.m_name == "$item_chest_hildir1" ||
+                                                   item.m_shared.m_name == "$item_chest_hildir2" ||
+                                                   item.m_shared.m_name == "$item_chest_hildir3");
+
+                if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower && !taxi) return;
 
                 if (repair)
                     RepairNearestStructures(augment, __instance, player, item);
@@ -876,6 +937,9 @@ namespace ProtectiveWards
 
                 if (moderPower)
                     ApplyModerPowerEffectToNearbyPlayers(__instance, item, player);
+
+                if (taxi)
+                    TaxiToLocation(item, player);
 
                 __result = true;
             }
@@ -1097,6 +1161,294 @@ namespace ProtectiveWards
             }
 
             initiator.GetInventory().RemoveOneItem(item);
+        }
+
+        private static void TaxiToLocation(ItemDrop.ItemData item, Player initiator)
+        {
+            if (initiator.IsEncumbered())
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$se_encumbered_start"));
+                return;
+            }
+
+            if (!initiator.IsTeleportable())
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$se_encumbered_start"));
+                return;
+            }
+
+            if (!canTravel)
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                return;
+            }
+
+            ZoneSystem.LocationInstance location;
+            List<ZoneSystem.LocationInstance> locations = new List<ZoneSystem.LocationInstance>();
+
+            bool targetingClosest = false;
+
+            if (item.m_shared.m_name == "$item_coins")
+            {
+                if (!ZoneSystem.instance.FindLocations("Vendor_BlackForest", ref locations))
+                    return;
+
+                if (locations.Count == 1)
+                {
+                    location = locations[0];
+                    LogInfo("Found 1 location Vendor_BlackForest");
+                }
+                else
+                {
+                    ZoneSystem.instance.FindClosestLocation("Vendor_BlackForest", initiator.transform.position, out location);
+                    targetingClosest = true;
+                    LogInfo("Targeting closest location Vendor_BlackForest");
+                }
+                    
+
+            } else if (item.m_shared.m_name == "$item_trophy_eikthyr" ||
+                       item.m_shared.m_name == "$item_trophy_elder" ||
+                       item.m_shared.m_name == "$item_trophy_bonemass" ||
+                       item.m_shared.m_name == "$item_trophy_dragonqueen" ||
+                       item.m_shared.m_name == "$item_trophy_goblinking" ||
+                       item.m_shared.m_name == "$item_trophy_seekerqueen")
+            {
+                if (!ZoneSystem.instance.FindClosestLocation("StartTemple", initiator.transform.position, out location))
+                    return;
+            }
+            else if (item.m_shared.m_name == "$item_goblintotem" ||
+                       item.m_shared.m_name == "$item_chest_hildir1" ||
+                       item.m_shared.m_name == "$item_chest_hildir2" ||
+                       item.m_shared.m_name == "$item_chest_hildir3")
+            {
+                if (!ZoneSystem.instance.FindLocations("Hildir_camp", ref locations))
+                    return;
+
+                if (locations.Count == 1)
+                {
+                    location = locations[0];
+                    LogInfo("Found 1 location Hildir_camp");
+                }
+                else
+                {
+                    ZoneSystem.instance.FindClosestLocation("Hildir_camp", initiator.transform.position, out location);
+                    targetingClosest = true;
+                    LogInfo("Targeting closest location Hildir_camp");
+                }
+            } else
+                return;
+
+            if (Utils.DistanceXZ(initiator.transform.position, location.m_position) < 300f)
+            {
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_wontwork"));
+                return;
+            }
+
+            bool consumeItem = item.m_shared.m_name == "$item_goblintotem" || item.m_shared.m_name == "$item_coins";
+
+            if (consumeItem)
+            {
+                if (item.m_shared.m_name == "$item_goblintotem")
+                    initiator.GetInventory().RemoveOneItem(item);
+                else if(item.m_shared.m_name == "$item_coins")
+                {
+                    int stack = targetingClosest ? 2000 : 500;
+                    if (initiator.GetInventory().CountItems("$item_coins") < stack)
+                    {
+                        initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                        return;
+                    }
+                    initiator.GetInventory().RemoveItem("$item_coins", stack);
+                }
+            }
+            
+            initiator.StartCoroutine(TaxiToPosition(initiator, location.m_position, returnBack: true, waitSeconds:10));
+        }
+
+        private static IEnumerator TaxiToPosition(Player player, Vector3 position, bool returnBack = false, int waitSeconds = 0)
+        {
+            canTravel = false;
+            isTravelingPlayer = player;
+
+            if (waitSeconds > 0)
+            {
+                for (int i = waitSeconds; i > 0; i--)
+                {
+                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$npc_dvergrmage_random_goodbye5") + " " + TimeSpan.FromSeconds(i).ToString(@"m\:ss"));
+                    yield return new WaitForSeconds(1); 
+                }
+            }
+
+            DateTime flightInitiated = DateTime.Now;
+
+            if (Valkyrie.m_instance == null)
+            {
+                while (player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
+                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior())
+                {
+                    player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$location_exit") + " " + (DateTime.Now - flightInitiated).ToString(@"m\:ss"));
+                    yield return new WaitForSeconds(1);
+                }
+
+                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$npc_dvergrmage_random_goodbye5"));
+
+                taxiTargetPosition = position;
+                taxiReturnBack = returnBack;
+                taxiPlayerPositionToReturn = player.transform.position;
+                playerDropped = false;
+
+                GameObject prefab = ZNetScene.instance.GetPrefab("Valkyrie");
+                Instantiate(prefab, player.transform.position, Quaternion.identity);
+            }
+            
+            canTravel = true;
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.SetIntro))]
+        public static class Player_SetIntro_Taxi
+        {
+            static void Postfix(Player __instance)
+            {
+                if (!modEnabled.Value) return;
+
+                if (__instance.InIntro()) return;
+
+                if (taxiReturnBack && canTravel)
+                {
+                    isTravelingPlayer = __instance;
+                    __instance.StartCoroutine(ReturnPlayerToPosition(__instance, taxiPlayerPositionToReturn, 120));
+                }
+                else
+                {
+                    isTravelingPlayer = null;
+                }
+
+            }
+        }
+
+        [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.Awake))]
+        public static class Valkyrie_Awake_Taxi
+        {
+            private static bool Prefix(Valkyrie __instance)
+            {
+                if (!modEnabled.Value) return true;
+
+                if (!(bool)isTravelingPlayer)
+                    isTravelingPlayer = Player.m_localPlayer;
+
+                if (isTravelingPlayer.m_firstSpawn) return true;
+
+                Valkyrie.m_instance = __instance;
+                __instance.m_nview = __instance.GetComponent<ZNetView>();
+                __instance.m_animator = __instance.GetComponentInChildren<Animator>();
+                if (!__instance.m_nview.IsOwner())
+                {
+                    __instance.enabled = false;
+                    return false;
+                }
+
+                __instance.m_startPause = 2f;
+                __instance.m_startAltitude = 30f;
+                __instance.m_textDuration = 0f;
+                __instance.m_descentAltitude = 150f;
+                __instance.m_attachOffset = new Vector3(-0.1f, 1.5f, 0.1f);
+
+                __instance.m_targetPoint = taxiTargetPosition + new Vector3(0f, __instance.m_dropHeight, 0f);
+
+                Vector3 position = isTravelingPlayer.transform.position;
+                position.y += __instance.m_startAltitude;
+
+                float flyDistance = Vector3.Distance(__instance.m_targetPoint, position);
+
+                __instance.m_startDistance = flyDistance;
+
+                __instance.m_startDescentDistance = Math.Min(200f, flyDistance / 5);
+
+                __instance.m_speed = Math.Max(Math.Min(flyDistance / 90f, Math.Min(30f, maxTaxiSpeed.Value)), 10f);  // 30 max 10 min inbetween depends on distance target time 90 sec
+
+                if (__instance.m_speed <= 15)
+                    EnvMan.instance.m_introEnvironment = EnvMan.instance.m_currentEnv.m_name;
+                else
+                    EnvMan.instance.m_introEnvironment = "ThunderStorm";
+
+                isTravelingPlayer.m_intro = true;
+
+                __instance.transform.position = position;
+
+                float landDistance = Utils.DistanceXZ(__instance.m_targetPoint, __instance.transform.position);
+                float descentPathPart = Math.Max(__instance.m_descentAltitude / landDistance, Math.Min(__instance.m_descentAltitude * 2 / landDistance, 0.2f));
+                __instance.m_descentStart = Vector3.Lerp(__instance.m_targetPoint, __instance.transform.position, descentPathPart);
+                __instance.m_descentStart.y = __instance.m_descentAltitude;
+                Vector3 a2 = __instance.m_targetPoint - __instance.m_descentStart;
+                a2.y = 0f;
+                a2.Normalize();
+                __instance.m_flyAwayPoint = __instance.m_targetPoint + a2 * __instance.m_startDescentDistance;
+                __instance.m_flyAwayPoint.y += 100f;
+                __instance.SyncPlayer(doNetworkSync: true);
+
+                LogInfo("Setting up valkyrie " + __instance.transform.position.ToString() + "   " + ZNet.instance.GetReferencePosition().ToString());
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.LateUpdate))]
+        public static class Valkyrie_LateUpdate_Taxi
+        {
+            private static void Prefix(Valkyrie __instance)
+            {
+                if (!modEnabled.Value) return;
+
+                if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace"))
+                {
+                    __instance.DropPlayer();
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.DropPlayer))]
+        public static class Valkyrie_DropPlayer_Taxi
+        {
+            private static void Postfix(Valkyrie __instance)
+            {
+                if (!modEnabled.Value) return;
+
+                playerDropped = true;
+                if (!Player.m_localPlayer.m_seman.HaveStatusEffect("SlowFall"))
+                {
+                    castSlowFall = true;
+                    Player.m_localPlayer.m_seman.AddStatusEffect("SlowFall".GetStableHashCode());
+                    LogInfo("Cast slow fall");
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.Update))]
+        public static class Player_Update_Taxi
+        {
+            private static void Postfix(Player __instance)
+            {
+                if (!modEnabled.Value) return;
+
+                if (playerDropped && castSlowFall && __instance.IsOnGround())
+                {
+                    castSlowFall = false;
+                    playerDropped = false;
+                    if (__instance.m_seman.HaveStatusEffect("SlowFall"))
+                        __instance.m_seman.RemoveStatusEffect("SlowFall".GetStableHashCode(), true);
+                    LogInfo("Remove slow fall");
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.OnDestroy))]
+        public static class Valkyrie_OnDestroy_Taxi
+        {
+            private static void Postfix()
+            {
+                if (!modEnabled.Value) return;
+                canTravel = true;
+            }
         }
 
         [HarmonyPatch(typeof(Character), nameof(Character.Damage))]
