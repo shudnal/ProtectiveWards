@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.6";
+        const string pluginVersion = "1.1.7";
 
         private Harmony _harmony;
 
@@ -307,12 +307,11 @@ namespace ProtectiveWards
 
                 playerBase.localScale = new Vector3(scale, scale, scale);
             }
-    }
+        }
 
-    private static void ModifyHitDamage(ref HitData hit, float value)
+        private static void ModifyHitDamage(ref HitData hit, float value)
         {
             hit.m_damage.Modify(Math.Max(value, 0));
-            return;
         }
 
         private static List<PrivateArea> ConnectedAreas(PrivateArea ward)
@@ -746,7 +745,7 @@ namespace ProtectiveWards
                         offeringsList.Add("$item_ymirremains");
                     if (offeringEitr.Value && Player.m_localPlayer.IsMaterialKnown("$item_eitr"))
                         offeringsList.Add("$item_eitr");
-                    if (offeringDragonEgg.Value && Player.m_localPlayer.IsMaterialKnown("$item_dragonegg"))
+                    if (offeringDragonEgg.Value && Player.m_localPlayer.IsMaterialKnown("$item_dragonegg") && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon))
                         offeringsList.Add("$item_dragonegg");
                     if (offeringTaxi.Value)
                     {
@@ -904,7 +903,7 @@ namespace ProtectiveWards
                 bool growAll = offeringEitr.Value && item.m_shared.m_name == "$item_eitr";
                 bool growth = (offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
 
-                bool moderPower = item.m_shared.m_name == "$item_dragonegg";
+                bool moderPower = item.m_shared.m_name == "$item_dragonegg" && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon);
 
                 bool taxi = offeringTaxi.Value && (item.m_shared.m_name == "$item_coins" ||
                                                    item.m_shared.m_name == "$item_trophy_eikthyr" ||
@@ -1306,11 +1305,21 @@ namespace ProtectiveWards
 
             if (Valkyrie.m_instance == null)
             {
-                while (player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
-                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior())
+                bool playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
+                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
+
+                while (playerShouldExit || player.IsEncumbered() || !player.IsTeleportable())
                 {
-                    player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$location_exit") + " " + (DateTime.Now - flightInitiated).ToString(@"m\:ss"));
+                    string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
+                    if (playerShouldExit)
+                        player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$location_exit") + " " + timeSpent);
+                    else
+                        player.Message(MessageHud.MessageType.Center, Localization.instance.Localize(player.IsEncumbered() ? "$se_encumbered_start" : "$msg_noteleport") + " " + timeSpent);
+
                     yield return new WaitForSeconds(1);
+
+                    playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
+                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
                 }
 
                 player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$npc_dvergrmage_random_goodbye5"));
@@ -1356,8 +1365,10 @@ namespace ProtectiveWards
             {
                 if (!modEnabled.Value) return true;
 
-                if (!(bool)isTravelingPlayer)
-                    isTravelingPlayer = Player.m_localPlayer;
+                if (!offeringTaxi.Value) return true;
+
+                if (isTravelingPlayer == null)
+                    return true;
 
                 if (isTravelingPlayer.m_firstSpawn) return true;
 
@@ -1422,7 +1433,9 @@ namespace ProtectiveWards
             {
                 if (!modEnabled.Value) return;
 
-                if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace"))
+                if (!offeringTaxi.Value) return;
+
+                if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace") || ZInput.GetButton("JoyUse") && ZInput.GetButton("JoyAltPlace"))
                 {
                     __instance.DropPlayer();
                 }
@@ -1435,6 +1448,8 @@ namespace ProtectiveWards
             private static void Postfix(Valkyrie __instance)
             {
                 if (!modEnabled.Value) return;
+
+                if (!offeringTaxi.Value) return;
 
                 playerDropped = true;
                 if (!Player.m_localPlayer.m_seman.HaveStatusEffect("SlowFall"))
@@ -1451,7 +1466,13 @@ namespace ProtectiveWards
         {
             private static void Postfix(Player __instance)
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
+
+                if (!offeringTaxi.Value) return;
+
+                if (Player.m_localPlayer != __instance)
+                    return;
 
                 if (playerDropped && castSlowFall && __instance.IsOnGround())
                 {
