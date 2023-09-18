@@ -123,6 +123,9 @@ Restrictions
 
 ## Changelog
 
+v 1.1.8
+* option to grant permittance to everyone
+
 v 1.1.7
 * taxi flight won't start until you are encumbered or not teleportable
 * egg offering restricted to Moder kill

@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.7";
+        const string pluginVersion = "1.1.8";
 
         private Harmony _harmony;
 
@@ -51,6 +51,7 @@ namespace ProtectiveWards
         private static ConfigEntry<bool> setWardRange;
         private static ConfigEntry<float> wardRange;
         private static ConfigEntry<bool> supressSpawnInRange;
+        private static ConfigEntry<bool> permitEveryone;
 
         private static ConfigEntry<float> playerDamageDealtMultiplier;
         private static ConfigEntry<float> playerDamageTakenMultiplier;
@@ -198,6 +199,7 @@ namespace ProtectiveWards
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
+            permitEveryone = config("Range", "Grant permittance to everyone", defaultValue: false, "Grant permittance to every player. There still will be permittance list on ward but it won't take any effect.");
 
 
             boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
@@ -678,7 +680,7 @@ namespace ProtectiveWards
             }
         }
 
-       [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
         public static class PrivateArea_AddUserList_WardAltActionCaption
         {
             public static void Postfix(PrivateArea __instance, ref StringBuilder text)
@@ -768,6 +770,22 @@ namespace ProtectiveWards
                     }
                 }
                 
+            }
+        }
+
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
+        public static class PrivateArea_AddUserList_PermittanceToEveryone
+        {
+            public static bool Prefix(PrivateArea __instance, ref bool __result)
+            {
+                if (!modEnabled.Value)
+                    return true;
+
+                if (!permitEveryone.Value)
+                    return true;
+
+                __result = true;
+                return false;
             }
         }
 
