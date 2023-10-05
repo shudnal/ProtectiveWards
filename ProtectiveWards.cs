@@ -18,7 +18,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.8";
+        const string pluginVersion = "1.1.9";
 
         private Harmony _harmony;
 
@@ -712,7 +712,7 @@ namespace ProtectiveWards
                 {
                     string actionCaption = $"$menu_start {Localization.instance.Localize("$piece_repair").ToLower()}";
 
-                    if (!ZInput.IsAlternative1Functionality() || !ZInput.IsGamepadActive())
+                    if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
                         text.Insert(index, $"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] {actionCaption}");
                     else
                         text.Insert(index, $"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] {actionCaption}");
