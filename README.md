@@ -130,6 +130,9 @@ https://valheim.thunderstore.io/package/Azumatt/Official_BepInEx_ConfigurationMa
 
 ## Changelog
 
+v 1.1.10
+* patch 0.217.22, server sync fix
+
 v 1.1.9
 * patch 0.217.22
 
