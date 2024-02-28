@@ -9,7 +9,6 @@ using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
 using ServerSync;
-using static UnityEngine.ParticleSystem;
 
 namespace ProtectiveWards
 {
