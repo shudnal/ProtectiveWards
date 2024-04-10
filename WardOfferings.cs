@@ -474,8 +474,6 @@ namespace ProtectiveWards
                     targetingClosest = true;
                     LogInfo("Targeting closest location Vendor_BlackForest");
                 }
-
-
             }
             else if (item.m_shared.m_name == "$item_trophy_eikthyr" ||
                        item.m_shared.m_name == "$item_trophy_elder" ||

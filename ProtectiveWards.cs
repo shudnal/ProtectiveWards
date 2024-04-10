@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.12";
+        const string pluginVersion = "1.1.13";
 
         private Harmony _harmony;
 
@@ -250,12 +250,6 @@ namespace ProtectiveWards
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
 
             FillWardProtectionLists();
-        }
-
-        private void ConfigUpdate()
-        {
-            Config.Reload();
-            ConfigInit();
         }
 
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, ConfigDescription description, bool synchronizedSetting = true)
@@ -799,7 +793,6 @@ namespace ProtectiveWards
 
                     InitDemisterState(__instance, demister, ___m_nview);
                 }
-                
             }
         }
 
@@ -824,10 +817,17 @@ namespace ProtectiveWards
             private static void Postfix(ZoneSystem __instance)
             {
                 ZoneSystem.ZoneLocation haldor = __instance.m_locations.Find(loc => loc.m_prefabName == "Vendor_BlackForest");
-                if (haldor == null)
+                if (haldor == null || !haldor.m_prefab.IsValid)
                     return;
 
-                forceField = haldor.m_prefab.transform.Find(forceFieldName)?.gameObject;
+                haldor.m_prefab.Load();
+                forceField = Instantiate(haldor.m_prefab.Asset.transform.Find(forceFieldName)?.gameObject);
+                forceField.name = "ProtectiveWards_bubble";
+
+                MeshRenderer fieldRenderer = forceField.GetComponent<MeshRenderer>();
+                fieldRenderer.sharedMaterial = new Material(fieldRenderer.sharedMaterial);
+
+                haldor.m_prefab.Release();
             }
         }
 

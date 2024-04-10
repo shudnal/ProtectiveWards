@@ -1,3 +1,6 @@
+# 1.1.13
+* patch 0.217.46
+
 # 1.1.12
 * option to show the bubble like trader's one
 * option to enable demister in ward range
