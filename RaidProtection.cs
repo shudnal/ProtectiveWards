@@ -15,7 +15,7 @@ namespace ProtectiveWards
 
                 if ((___m_baseValueUpdateTimer == 0f) && (___m_baseValue >= 3))
                 {
-                    if (!__instance.IsSitting() || !__instance.m_attached || !__instance.m_seman.HaveStatusEffect(Player.s_statusEffectCampFire) || !InsideEnabledPlayersArea(__instance.transform.position))
+                    if (!__instance.IsSitting() || !__instance.m_attached || !__instance.m_seman.HaveStatusEffect(SEMan.s_statusEffectCampFire) || !InsideEnabledPlayersArea(__instance.transform.position))
                         return;
 
                     ___m_baseValue = baseValueProtected;

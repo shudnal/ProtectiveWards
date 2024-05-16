@@ -10,6 +10,8 @@ namespace ProtectiveWards
 {
     internal class WardOfferings
     {
+        internal static int slowFallHash = "SlowFall".GetStableHashCode();
+
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
             while (true)
@@ -343,8 +345,8 @@ namespace ProtectiveWards
                 instance.StartCoroutine(PassiveHealingEffect(ward, amount: item.m_shared.m_foodRegen / 2, seconds: 1));
                 LogInfo("Passive healing begins");
 
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize($"$msg_consumed: {item.m_shared.m_name}"));
                 initiator.GetInventory().RemoveOneItem(item);
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_consumed"));
 
                 return;
             }
@@ -725,10 +727,10 @@ namespace ProtectiveWards
                 if (!offeringTaxi.Value) return;
 
                 playerDropped = true;
-                if (!Player.m_localPlayer.m_seman.HaveStatusEffect("SlowFall"))
+                if (!Player.m_localPlayer.m_seman.HaveStatusEffect(slowFallHash))
                 {
                     castSlowFall = true;
-                    Player.m_localPlayer.m_seman.AddStatusEffect("SlowFall".GetStableHashCode());
+                    Player.m_localPlayer.m_seman.AddStatusEffect(slowFallHash);
                     LogInfo("Cast slow fall");
                 }
             }
@@ -753,8 +755,8 @@ namespace ProtectiveWards
                     castSlowFall = false;
                     playerDropped = false;
                     
-                    if (__instance.m_seman.HaveStatusEffect("SlowFall"))
-                        __instance.m_seman.RemoveStatusEffect("SlowFall".GetStableHashCode(), true);
+                    if (__instance.m_seman.HaveStatusEffect(slowFallHash))
+                        __instance.m_seman.RemoveStatusEffect(slowFallHash, true);
                     
                     LogInfo("Remove slow fall");
                 }
