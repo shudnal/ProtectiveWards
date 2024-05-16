@@ -117,13 +117,9 @@ Restrictions
 * The mod should be compatible with anything I know as its patches designed to be noninvasive. But other mods may break the mod's functionality.
 
 ## Configurating
-The best way to handle configs is configuration manager. Choose one that works for you:
+The best way to handle configs is [Configuration Manager](https://thunderstore.io/c/valheim/p/shudnal/ConfigurationManager/).
 
-https://www.nexusmods.com/site/mods/529
-
-https://valheim.thunderstore.io/package/Azumatt/Official_BepInEx_ConfigurationManager/
+Or [Official BepInEx Configuration Manager](https://valheim.thunderstore.io/package/Azumatt/Official_BepInEx_ConfigurationManager/).
 
 ## Mirrors
 [Nexus](https://www.nexusmods.com/valheim/mods/2450)
-
-[Thunderstore](https://valheim.thunderstore.io/package/shudnal/ProtectiveWards/)
