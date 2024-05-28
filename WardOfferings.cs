@@ -645,8 +645,6 @@ namespace ProtectiveWards
                 if (isTravelingPlayer == null)
                     return true;
 
-                if (isTravelingPlayer.m_firstSpawn) return true;
-
                 Valkyrie.m_instance = __instance;
                 __instance.m_nview = __instance.GetComponent<ZNetView>();
                 __instance.m_animator = __instance.GetComponentInChildren<Animator>();
@@ -656,7 +654,6 @@ namespace ProtectiveWards
                     return false;
                 }
 
-                __instance.m_startPause = 2f;
                 __instance.m_startAltitude = 30f;
                 __instance.m_textDuration = 0f;
                 __instance.m_descentAltitude = 150f;
