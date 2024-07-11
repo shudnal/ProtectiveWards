@@ -1,8 +1,9 @@
-# 1.1.15
+# 1.1.16
 * PTB 0.218.17 compatibility
 * consumable item and coins amount to travel to Traders made configurable
 * hover text will not be visible if player has no ward access
 * offerings and repair effects will not be available if player has no ward access
+* ServerSync updated to 1.17
 
 # 1.1.14
 * Ashlands
