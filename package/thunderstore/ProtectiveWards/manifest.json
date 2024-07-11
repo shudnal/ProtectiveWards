@@ -1,6 +1,6 @@
 {
   "name": "ProtectiveWards",
-  "version_number": "1.1.14",
+  "version_number": "1.1.15",
   "website_url": "https://github.com/shudnal/ProtectiveWards",
   "description": "Configurable protection and modifiers in active ward area. Creatures, rain, raids, plants, fall damage, ship, resources drains, smelting speed and active offerings.",
   "dependencies": ["denikson-BepInExPack_Valheim-5.4.2202"]

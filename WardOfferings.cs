@@ -213,6 +213,9 @@ namespace ProtectiveWards
             {
                 if (!__instance.IsEnabled()) return;
 
+                if (!__instance.HaveLocalAccess())
+                    return;
+
                 Player player = user as Player;
 
                 if (!player)
@@ -242,7 +245,7 @@ namespace ProtectiveWards
                                                    item.m_shared.m_name == "$item_trophy_dragonqueen" ||
                                                    item.m_shared.m_name == "$item_trophy_goblinking" ||
                                                    item.m_shared.m_name == "$item_trophy_seekerqueen" ||
-                                                   item.m_shared.m_name == "$item_goblintotem" ||
+                                                   IsItemForHildirTravel(item.m_shared.m_name) ||
                                                    item.m_shared.m_name == "$item_chest_hildir1" ||
                                                    item.m_shared.m_name == "$item_chest_hildir2" ||
                                                    item.m_shared.m_name == "$item_chest_hildir3");
@@ -487,7 +490,7 @@ namespace ProtectiveWards
                 if (!ZoneSystem.instance.FindClosestLocation("StartTemple", initiator.transform.position, out location))
                     return;
             }
-            else if (item.m_shared.m_name == "$item_goblintotem" ||
+            else if (IsItemForHildirTravel(item.m_shared.m_name) ||
                        item.m_shared.m_name == "$item_chest_hildir1" ||
                        item.m_shared.m_name == "$item_chest_hildir2" ||
                        item.m_shared.m_name == "$item_chest_hildir3")
@@ -516,15 +519,15 @@ namespace ProtectiveWards
                 return;
             }
 
-            bool consumeItem = item.m_shared.m_name == "$item_goblintotem" || item.m_shared.m_name == "$item_coins";
+            bool consumeItem = IsItemForHildirTravel(item.m_shared.m_name) || item.m_shared.m_name == "$item_coins";
 
             if (consumeItem)
             {
-                if (item.m_shared.m_name == "$item_goblintotem")
+                if (IsItemForHildirTravel(item.m_shared.m_name))
                     initiator.GetInventory().RemoveOneItem(item);
                 else if (item.m_shared.m_name == "$item_coins")
                 {
-                    int stack = targetingClosest ? 2000 : 500;
+                    int stack = targetingClosest ? offeringTaxiPriceHaldorUndiscovered.Value : offeringTaxiPriceHaldorDiscovered.Value;
                     if (initiator.GetInventory().CountItems("$item_coins") < stack)
                     {
                         initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
@@ -536,6 +539,11 @@ namespace ProtectiveWards
             }
 
             initiator.StartCoroutine(TaxiToPosition(initiator, location.m_position, returnBack: true, waitSeconds: 10));
+        }
+
+        internal static bool IsItemForHildirTravel(string itemName)
+        {
+            return offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
         }
 
         public static bool IsTeleportable(Player player)

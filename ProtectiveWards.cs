@@ -44,6 +44,10 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> offeringDragonEgg;
         public static ConfigEntry<bool> offeringTaxi;
 
+        public static ConfigEntry<int> offeringTaxiPriceHaldorUndiscovered;
+        public static ConfigEntry<int> offeringTaxiPriceHaldorDiscovered;
+        public static ConfigEntry<string> offeringTaxiPriceHildirItem;
+
         public static ConfigEntry<bool> wardPassiveRepair;
         public static ConfigEntry<int> autoCloseDoorsTime;
 
@@ -214,6 +218,9 @@ namespace ProtectiveWards
                                                                                                                                    "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed. Totem WILL be consumed." +
                                                                                                                                    "\nOffer Fuling totem to travel to Hildir. Totem WILL be consumed.");
 
+            offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Coins amount that must be paid to discover and travel to nearest Haldor.");
+            offeringTaxiPriceHaldorDiscovered = config("Offerings - Taxi", "Price to discovered Haldor", defaultValue: 500, "Coins amount that must be paid to travel to already discovered Haldor.");
+            offeringTaxiPriceHildirItem = config("Offerings - Taxi", "Item to travel to Hildir", defaultValue: "$item_goblintotem", "An item that must be paid to travel to Hildir.");
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
@@ -340,7 +347,7 @@ namespace ProtectiveWards
                 if (supressSpawnInRange.Value)
                     scale = 1f;
 
-                playerBase.localScale = new Vector3(scale, scale, scale);
+                playerBase.localScale = new Vector3(1f, 1f, 1f) * scale;
             }
         }
 
@@ -598,6 +605,9 @@ namespace ProtectiveWards
                 if (!__instance.IsEnabled())
                     return;
 
+                if (!__instance.HaveLocalAccess())
+                    return;
+
                 string[] lines = text.ToString().Split(new char[] { '\n' }, StringSplitOptions.None);
 
                 int index = 0;
@@ -660,8 +670,8 @@ namespace ProtectiveWards
                     {
                         if (Player.m_localPlayer.IsMaterialKnown("$item_coins"))
                             offeringsList.Add("$item_coins");
-                        if (Player.m_localPlayer.IsMaterialKnown("$item_goblintotem"))
-                            offeringsList.Add("$item_goblintotem");
+                        if (!offeringTaxiPriceHildirItem.Value.IsNullOrWhiteSpace() && Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceHildirItem.Value))
+                            offeringsList.Add(offeringTaxiPriceHildirItem.Value);
                         if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1"))
                             offeringsList.Add("$piece_chestwood");
                         else if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2"))
@@ -720,6 +730,9 @@ namespace ProtectiveWards
                     return true;
 
                 if (!__instance.IsEnabled())
+                    return true;
+
+                if (!__instance.HaveLocalAccess())
                     return true;
 
                 if (wardIsRepairing.ContainsKey(__instance))
