@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.16";
+        const string pluginVersion = "1.1.17";
 
         private Harmony _harmony;
 
@@ -682,7 +682,7 @@ namespace ProtectiveWards
 
                     if (offeringsList.Count > 0)
                     {
-                        text.Append("\n\n$piece_offerbowl_offeritem: ");
+                        text.Append("\n\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem: ");
                         text.Append(String.Join(", ", offeringsList.ToArray()));
                     }
                 }

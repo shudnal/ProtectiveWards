@@ -1,3 +1,6 @@
+# 1.1.17
+* added offering item hotkey in hover menu
+
 # 1.1.16
 * PTB 0.218.17 compatibility
 * consumable item and coins amount to travel to Traders made configurable
