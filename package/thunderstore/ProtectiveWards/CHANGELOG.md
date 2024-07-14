@@ -1,3 +1,6 @@
+# 1.1.18
+* fixed taxi offering for multiplayer
+
 # 1.1.17
 * added offering item hotkey in hover menu
 

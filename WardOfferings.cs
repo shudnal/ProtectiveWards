@@ -211,18 +211,27 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
             {
-                if (!__instance.IsEnabled()) return;
+                if (!__instance.IsEnabled())
+                {
+                    LogInfo("Ward disabled");
+                    return;
+                }
 
                 if (!__instance.HaveLocalAccess())
+                {
+                    LogInfo("No access");
                     return;
+                }
 
                 Player player = user as Player;
 
-                if (!player)
+                if (!player || player != Player.m_localPlayer)
                 {
                     LogInfo("UseItem user not a player");
                     return;
                 }
+
+                LogInfo($"{player.GetPlayerName()} used {item.m_shared.m_name} on {__instance.m_nview.GetZDO()}");
 
                 bool augment = item.m_shared.m_name == "$item_blackcore" && offeringAugmenting.Value;
                 bool repair = augment || (item.m_shared.m_name == "$item_surtlingcore" && offeringActiveRepair.Value);
@@ -458,87 +467,146 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZoneSystem.LocationInstance location;
-            List<ZoneSystem.LocationInstance> locations = new List<ZoneSystem.LocationInstance>();
+            Vector3 location = Vector3.zero;
+            int stack = 0;
 
-            bool targetingClosest = false;
-
-            if (item.m_shared.m_name == "$item_coins")
-            {
-                if (!ZoneSystem.instance.FindLocations("Vendor_BlackForest", ref locations))
-                    return;
-
-                if (locations.Count == 1)
-                {
-                    location = locations[0];
-                    LogInfo("Found 1 location Vendor_BlackForest");
-                }
-                else
-                {
-                    ZoneSystem.instance.FindClosestLocation("Vendor_BlackForest", initiator.transform.position, out location);
-                    targetingClosest = true;
-                    LogInfo("Targeting closest location Vendor_BlackForest");
-                }
-            }
-            else if (item.m_shared.m_name == "$item_trophy_eikthyr" ||
+            bool locationFound; string locationName;
+            if (item.m_shared.m_name == "$item_trophy_eikthyr" ||
                        item.m_shared.m_name == "$item_trophy_elder" ||
                        item.m_shared.m_name == "$item_trophy_bonemass" ||
                        item.m_shared.m_name == "$item_trophy_dragonqueen" ||
                        item.m_shared.m_name == "$item_trophy_goblinking" ||
                        item.m_shared.m_name == "$item_trophy_seekerqueen")
             {
-                if (!ZoneSystem.instance.FindClosestLocation("StartTemple", initiator.transform.position, out location))
-                    return;
+                locationName = "StartTemple";
+                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
+            }
+            else if (item.m_shared.m_name == "$item_coins")
+            {
+                locationName = "Vendor_BlackForest";
+                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
+                stack = locationFound ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value;
             }
             else if (IsItemForHildirTravel(item.m_shared.m_name) ||
                        item.m_shared.m_name == "$item_chest_hildir1" ||
                        item.m_shared.m_name == "$item_chest_hildir2" ||
                        item.m_shared.m_name == "$item_chest_hildir3")
             {
-                if (!ZoneSystem.instance.FindLocations("Hildir_camp", ref locations))
-                    return;
-
-                if (locations.Count == 1)
-                {
-                    location = locations[0];
-                    LogInfo("Found 1 location Hildir_camp");
-                }
-                else
-                {
-                    ZoneSystem.instance.FindClosestLocation("Hildir_camp", initiator.transform.position, out location);
-                    targetingClosest = true;
-                    LogInfo("Targeting closest location Hildir_camp");
-                }
+                locationName = "Hildir_camp";
+                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
+                stack = 1;
             }
             else
                 return;
 
-            if (Utils.DistanceXZ(initiator.transform.position, location.m_position) < 300f)
+
+            if (locationFound)
+                StartTaxi(initiator, location, item.m_shared.m_name, stack);
+            else if (!ZNet.instance.IsServer())
+                ClosestLocationRequest(locationName, initiator.transform.position, item.m_shared.m_name, stack);
+            else
+                LogInfo($"Location {locationName} is not found");
+        }
+
+        internal static void RegisterRPCs()
+        {
+            if (ZNet.instance.IsServer())
+            {
+                ZRoutedRpc.instance.Register<ZPackage>("ClosestLocationRequest", RPC_ClosestLocationRequest);
+            }
+            else
+            {
+                ZRoutedRpc.instance.Register<ZPackage>("StartTaxi", RPC_StartTaxi);
+            }
+        }
+
+        public static void ClosestLocationRequest(string name, Vector3 position, string itemName, int stack)
+        {
+            LogInfo($"{name} closest location request");
+
+            ZPackage zPackage = new ZPackage();
+            zPackage.Write(name);
+            zPackage.Write(position);
+            zPackage.Write(itemName);
+            zPackage.Write(stack);
+
+            ZRoutedRpc.instance.InvokeRoutedRPC("ClosestLocationRequest", zPackage);
+        }
+
+        public static void RPC_ClosestLocationRequest(long sender, ZPackage pkg)
+        {
+            // Server
+
+            string name = pkg.ReadString();
+            Vector3 position = pkg.ReadVector3();
+            string itemName = pkg.ReadString();
+            int stack = pkg.ReadInt();
+
+            Vector3 target = Vector3.zero;
+            if (!TryGetFoundLocation(name, position, ref target))
+            {
+                LogInfo($"Location {name} is not found");
+                return;
+            }
+
+            ZPackage zPackage = new ZPackage();
+            zPackage.Write(target);
+            zPackage.Write(itemName);
+            zPackage.Write(stack);
+
+            ZRoutedRpc.instance.InvokeRoutedRPC(sender, "StartTaxi", zPackage);
+        }
+
+        public static void RPC_StartTaxi(long sender, ZPackage pkg)
+        {
+            Vector3 location = pkg.ReadVector3();
+            string itemName = pkg.ReadString();
+            int stack = pkg.ReadInt();
+
+            LogInfo($"Server responded with closest location");
+            StartTaxi(Player.m_localPlayer, location, itemName, stack);
+        }
+
+        internal static void StartTaxi(Player initiator, Vector3 position, string itemName, int stack)
+        {
+            if (Utils.DistanceXZ(initiator.transform.position, position) < 300f)
             {
                 initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_wontwork"));
                 return;
             }
 
-            bool consumeItem = IsItemForHildirTravel(item.m_shared.m_name) || item.m_shared.m_name == "$item_coins";
-
-            if (consumeItem)
+            if (stack > 0 && IsItemForHildirTravel(itemName) || itemName == "$item_coins")
             {
-                if (IsItemForHildirTravel(item.m_shared.m_name))
-                    initiator.GetInventory().RemoveOneItem(item);
-                else if (item.m_shared.m_name == "$item_coins")
+                if (initiator.GetInventory().CountItems(itemName) < stack)
                 {
-                    int stack = targetingClosest ? offeringTaxiPriceHaldorUndiscovered.Value : offeringTaxiPriceHaldorDiscovered.Value;
-                    if (initiator.GetInventory().CountItems("$item_coins") < stack)
-                    {
-                        initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
-                        Player.m_localPlayer.SetLookDir(location.m_position - initiator.transform.position, 3.5f);
-                        return;
-                    }
-                    initiator.GetInventory().RemoveItem("$item_coins", stack);
+                    initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                    return;
                 }
+                initiator.GetInventory().RemoveItem(itemName, stack);
             }
 
-            initiator.StartCoroutine(TaxiToPosition(initiator, location.m_position, returnBack: true, waitSeconds: 10));
+            initiator.StartCoroutine(TaxiToPosition(initiator, position, returnBack: true, waitSeconds: 10));
+        }
+
+        internal static bool TryGetFoundLocation(string name, Vector3 position, ref Vector3 target)
+        {
+            ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
+            foreach (KeyValuePair<Vector3, string> loc in ZoneSystem.instance.tempIconList)
+                if (loc.Value == name)
+                {
+                    target = loc.Key;
+                    LogInfo($"Found closest {name} in icon list");
+                    return true;
+                }
+
+            if (ZoneSystem.instance.FindClosestLocation("Vendor_BlackForest", position, out ZoneSystem.LocationInstance location))
+            {
+                target = location.m_position;
+                LogInfo($"Found closest {name} in location list");
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool IsItemForHildirTravel(string itemName)
@@ -777,6 +845,18 @@ namespace ProtectiveWards
                     return;
 
                 canTravel = true;
+            }
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+        public static class ZoneSystem_Start_Taxi
+        {
+            private static void Postfix()
+            {
+                if (!modEnabled.Value)
+                    return;
+
+                RegisterRPCs();
             }
         }
 
