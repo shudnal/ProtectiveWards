@@ -213,7 +213,7 @@ namespace ProtectiveWards
                                                                                                                                    "\nEitr will NOT be wasted if there is no plant to grow");
             offeringDragonEgg = config("Offerings", "9 - Activate Moder power by dragon egg offering", defaultValue: true, "Offer dragon egg to activate Moder power on all players in all connected areas.");
 
-            offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Offer boss trophy to travel to start temple (initial spawn point). Boss trophy will NOT be consumed." +
+            offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Offer boss trophy to travel to Sacrificial Stones (initial spawn point). Boss trophy will NOT be consumed." +
                                                                                                                                    "\nOffer coins to travel to Haldor (x2000 if you didn't find him yet. x500 otherwise). Coins will be consumed." +
                                                                                                                                    "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed. Totem WILL be consumed." +
                                                                                                                                    "\nOffer Fuling totem to travel to Hildir. Totem WILL be consumed.");
