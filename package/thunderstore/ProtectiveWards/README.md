@@ -16,7 +16,7 @@ Configurable protection and modifiers in active ward area. Creatures, rain, raid
  - Concerning about your food and fuel running out too fast?
  - Burnt out on keeping your base repaired?
  - Want to have fun with offering some items?
- - Fed of back and forth traveling to the Start Temple to change your forsaken power?
+ - Fed of back and forth traveling to the Sacrificial Stones to change your forsaken power?
  - Can't find Haldor or Hildir?
  - Or maybe treasures just burn in your pockets and merchants are far off?
  
@@ -81,7 +81,7 @@ And yes the configuration is locked if you're playing on the server.
 
 ### Taxi
 You can offer:
-* boss trophy to travel to Start Temple (initial spawn point) (trophy will NOT be consumed)
+* boss trophy to travel to Sacrificial Stones (initial spawn point) (trophy will NOT be consumed)
 * coins to travel to the Haldor. x2000 if you didn't find him yet and x500 otherwise (coins will be consumed)
 * any of Hildir's chest to travel to the Hildir (chest will NOT be consumed)
 * Fuling totem to travel to Hildir (totem will be consumed)
