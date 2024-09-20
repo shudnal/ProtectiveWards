@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.18";
+        const string pluginVersion = "1.1.19";
 
         private Harmony _harmony;
 
@@ -51,6 +51,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardPassiveRepair;
         public static ConfigEntry<int> autoCloseDoorsTime;
 
+        public static ConfigEntry<string> wardPrefabNameToChangeRange;
         public static ConfigEntry<bool> setWardRange;
         public static ConfigEntry<float> wardRange;
         public static ConfigEntry<bool> supressSpawnInRange;
@@ -78,7 +79,11 @@ namespace ProtectiveWards
         public static ConfigEntry<Color> wardBubbleColor;
         public static ConfigEntry<float> wardBubbleRefractionIntensity;
         public static ConfigEntry<float> wardBubbleWaveIntensity;
-        
+        public static ConfigEntry<float> wardBubbleGlossiness;
+        public static ConfigEntry<float> wardBubbleMetallic;
+        public static ConfigEntry<float> wardBubbleNormalScale;
+        public static ConfigEntry<float> wardBubbleDepthFade;
+
         public static ConfigEntry<bool> wardDemisterEnabled;
 
         public static ConfigEntry<bool> boarsHensProtection;
@@ -120,11 +125,16 @@ namespace ProtectiveWards
         internal static HashSet<string> _wardPlantProtectionList;
         internal static HashSet<string> _boarsHensProtectionGroupList;
 
+        public static readonly int s_range = "ward_range".GetStableHashCode();
         public static readonly int s_bubbleEnabled = "bubble_enabled".GetStableHashCode();
         public static readonly int s_bubbleColor = "bubble_color".GetStableHashCode();
         public static readonly int s_bubbleColorAlpha = "bubble_color_alpha".GetStableHashCode();
         public static readonly int s_bubbleWaveVel = "bubble_wave".GetStableHashCode();
         public static readonly int s_bubbleRefractionIntensity = "bubble_refraction".GetStableHashCode();
+        public static readonly int s_bubbleGlossiness = "bubble_glossiness".GetStableHashCode();
+        public static readonly int s_bubbleMetallic = "bubble_metallic".GetStableHashCode();
+        public static readonly int s_bubbleNormalScale = "bubble_normalscale".GetStableHashCode();
+        public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new MaterialPropertyBlock();
 
@@ -226,7 +236,8 @@ namespace ProtectiveWards
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
             autoCloseDoorsTime = config("Passive", "Auto close doors after", defaultValue: 0, "Automatically close doors after a specified number of seconds. 0 to disable. 5 recommended");
 
-                        
+
+            wardPrefabNameToChangeRange = config("Range", "Ward prefab names to control range", defaultValue: "guard_stone", "Prefab name of ward to control range in case.");
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
@@ -237,6 +248,10 @@ namespace ProtectiveWards
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Bubble color. Toggle ward protection to change color [Not Synced with Server]", false);
             wardBubbleRefractionIntensity = config("Ward Bubble", "Refraction intensity", defaultValue: 0.005f, "Intensity of light refraction caused by bubble. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardBubbleWaveIntensity = config("Ward Bubble", "Wave intensity", defaultValue: 40f, "Bubble light distortion speed. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardBubbleGlossiness = config("Ward Bubble", "Glossiness", defaultValue: 0f, "Bubble glossiness. 1 to soap bubble effect. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardBubbleMetallic = config("Ward Bubble", "Metallic", defaultValue: 1f, "Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardBubbleNormalScale = config("Ward Bubble", "Normal scale", defaultValue: 15f, "Density of distortion effect. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardBubbleDepthFade = config("Ward Bubble", "Depth fade", defaultValue: 1f, "Toggle ward protection for changes to take effect [Not Synced with Server]", false);
 
             wardDemisterEnabled = config("Ward Demister", "Enable demister", defaultValue: false, "Ward will push out the mist");
 
@@ -329,26 +344,23 @@ namespace ProtectiveWards
             component.radius = newRadius;
         }
 
-        private static void SetWardRange(PrivateArea __instance)
+        private static void SetWardRange(PrivateArea __instance, float range)
         {
-            float newRadius = Math.Max(wardRange.Value, 0);
+            float newRadius = Math.Max(range, 0);
 
             __instance.m_radius = newRadius;
+            
             __instance.m_areaMarker.m_radius = newRadius;
+            __instance.m_areaMarker.m_nrOfSegments = (int)(80 * (newRadius / 32f));
+
             ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
         }
 
-        private static void SetWardPlayerBase(PrivateArea __instance)
+        private static void SetWardPlayerBase(PrivateArea __instance, float range)
         {
             Transform playerBase = __instance.transform.Find("PlayerBase");
             if (playerBase != null)
-            {
-                float scale = Math.Min(1f, 10f / Math.Max(wardRange.Value, 1f));
-                if (supressSpawnInRange.Value)
-                    scale = 1f;
-
-                playerBase.localScale = new Vector3(1f, 1f, 1f) * scale;
-            }
+                playerBase.localScale = supressSpawnInRange.Value ? Vector3.one : Vector3.one * Math.Min(1f, 10f / Math.Max(range, 1f));
         }
 
         private static void FillWardProtectionLists()
@@ -374,7 +386,7 @@ namespace ProtectiveWards
 
                 ConnectedAreas(ward).ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
-                List<Piece> piecesToRepair = pieces.Distinct().ToList().Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent<WearNTear>(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToList();
+                List<Piece> piecesToRepair = pieces.Distinct().ToList().Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToList();
 
                 if (piecesToRepair.Count == 0)
                 {
@@ -465,16 +477,17 @@ namespace ProtectiveWards
             if (bubble == null)
                 return;
 
-            ZDO zdo = m_nview.GetZDO();
-            if (zdo == null)
+            if (!m_nview.IsValid())
             {
                 bubble.SetActive(false);
                 return;
             }
 
+            ZDO zdo = m_nview.GetZDO();
+
             bubble.SetActive(zdo.GetBool(s_bubbleEnabled, wardBubbleShow.Value) && ward.IsEnabled());
 
-            bubble.transform.localScale = Vector3.one * wardRange.Value * 2f;
+            bubble.transform.localScale = Vector3.one * zdo.GetFloat(s_range, wardRange.Value) * 2f;
 
             Transform noMonsterArea = bubble.transform.Find("NoMonsterArea");
             if (noMonsterArea != null)
@@ -485,11 +498,15 @@ namespace ProtectiveWards
             Vector3 vecColor = zdo.GetVec3(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
             Color bubbleColor = new Color(vecColor.x, vecColor.y, vecColor.z, zdo.GetFloat(s_bubbleColorAlpha, 0f));
 
-            s_matBlock.Clear();
+            renderer.GetPropertyBlock(s_matBlock);
 
             s_matBlock.SetColor("_Color", bubbleColor);
             s_matBlock.SetFloat("_RefractionIntensity", zdo.GetFloat(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value));
             s_matBlock.SetFloat("_WaveVel", zdo.GetFloat(s_bubbleWaveVel, wardBubbleWaveIntensity.Value));
+            s_matBlock.SetFloat("_Glossiness", zdo.GetFloat(s_bubbleGlossiness, wardBubbleGlossiness.Value));
+            s_matBlock.SetFloat("_Metallic", zdo.GetFloat(s_bubbleMetallic, wardBubbleMetallic.Value));
+            s_matBlock.SetFloat("_NormalScale", zdo.GetFloat(s_bubbleNormalScale, wardBubbleNormalScale.Value));
+            s_matBlock.SetFloat("_DepthFade", zdo.GetFloat(s_bubbleDepthFade, wardBubbleDepthFade.Value));
 
             renderer.SetPropertyBlock(s_matBlock);
         }
@@ -499,15 +516,14 @@ namespace ProtectiveWards
             if (demister == null)
                 return;
 
-            ZDO zdo = m_nview.GetZDO();
-            if (zdo == null)
+            if (m_nview == null && !m_nview.IsValid())
             {
                 demister.SetActive(false);
                 return;
             }
 
             demister.SetActive(wardDemisterEnabled.Value && ward.IsEnabled());
-            demister.GetComponent<ParticleSystemForceField>().endRange = wardRange.Value;
+            demister.GetComponent<ParticleSystemForceField>().endRange = m_nview.GetZDO().GetFloat(s_range, wardRange.Value);
         }
 
         [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
@@ -515,16 +531,20 @@ namespace ProtectiveWards
         {
             public static void Postfix(Door __instance, ZNetView ___m_nview, bool __result)
             {
-                
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
 
-                if (autoCloseDoorsTime.Value == 0) return;
+                if (autoCloseDoorsTime.Value == 0)
+                    return;
 
-                if (!___m_nview.IsValid()) return;
+                if (!___m_nview.IsValid())
+                    return;
 
-                if (!__result) return;
+                if (!__result)
+                    return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward)) return;
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
+                    return;
 
                 if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
                     doors = new List<Door>();
@@ -532,13 +552,9 @@ namespace ProtectiveWards
                 int state = ___m_nview.GetZDO().GetInt(ZDOVars.s_state);
 
                 if (state == 0)
-                {
                     doors.Remove(__instance);
-                }
                 else if (!doors.Contains(__instance))
-                {
                     doors.Add(__instance);
-                }
 
                 if (doors.Count == 0)
                 {
@@ -547,7 +563,8 @@ namespace ProtectiveWards
                     return;
                 }
 
-                if (state == 0) return;
+                if (state == 0)
+                    return;
 
                 doorsToClose[ward] = doors;
 
@@ -564,7 +581,6 @@ namespace ProtectiveWards
                     ward.StartCoroutine(AutoClosingDoors(ward));
                     LogInfo($"Doors closing started");
                 }
-
             }
         }
 
@@ -573,7 +589,8 @@ namespace ProtectiveWards
         {
             public static void Prefix(PrivateArea __instance)
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
 
                 areaCache.Clear();
 
@@ -686,7 +703,6 @@ namespace ProtectiveWards
                         text.Append(String.Join(", ", offeringsList.ToArray()));
                     }
                 }
-                
             }
         }
 
@@ -746,15 +762,32 @@ namespace ProtectiveWards
 
             private static void Postfix(PrivateArea __instance)
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
 
-                if (setWardRange.Value) 
-                {
-                    if (__instance.m_radius != wardRange.Value) 
-                        SetWardRange(__instance);
+                PatchRange(__instance);
+            }
+        }
 
-                    SetWardPlayerBase(__instance);
-                }
+        private static bool IsWardToSetRange(PrivateArea ward)
+        {
+            if (!setWardRange.Value)
+                return false;
+
+            return wardPrefabNameToChangeRange.Value.Split(',').Any(name => name.Trim() == Utils.GetPrefabName(ward.name));
+        }
+
+        private static void PatchRange(PrivateArea ward)
+        {
+            if (ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            float range = ward.m_nview.GetZDO().GetFloat(s_range, wardRange.Value);
+            if (ward.m_radius != range && IsWardToSetRange(ward))
+            {
+                ward.m_nview.GetZDO().Set(s_range, range);
+                SetWardRange(ward, range);
+                SetWardPlayerBase(ward, range);
             }
         }
 
@@ -766,12 +799,7 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                if (setWardRange.Value)
-                {
-                    SetWardRange(__instance);
-
-                    SetWardPlayerBase(__instance);
-                }
+                PatchRange(__instance);
             }
 
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview)
@@ -779,11 +807,7 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                if (setWardRange.Value)
-                {
-                    SetWardRange(__instance);
-                    SetWardPlayerBase(__instance);
-                }
+                PatchRange(__instance);
 
                 if (showAreaMarker.Value)
                     __instance.m_areaMarker.gameObject.SetActive(value: true);
@@ -839,6 +863,7 @@ namespace ProtectiveWards
 
                 MeshRenderer fieldRenderer = forceField.GetComponent<MeshRenderer>();
                 fieldRenderer.sharedMaterial = new Material(fieldRenderer.sharedMaterial);
+                fieldRenderer.sharedMaterial.renderQueue++;
 
                 haldor.m_prefab.Release();
             }
@@ -869,6 +894,11 @@ namespace ProtectiveWards
                     zdo.Set(s_bubbleWaveVel, wardBubbleWaveIntensity.Value);
                     zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
                     zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
+
+                    zdo.Set(s_bubbleGlossiness, wardBubbleGlossiness.Value);
+                    zdo.Set(s_bubbleMetallic, wardBubbleMetallic.Value);
+                    zdo.Set(s_bubbleNormalScale, wardBubbleNormalScale.Value);
+                    zdo.Set(s_bubbleDepthFade, wardBubbleDepthFade.Value);
                 }
 
                 InitBubbleState(__instance, __instance.transform.Find(forceFieldName)?.gameObject, ___m_nview);

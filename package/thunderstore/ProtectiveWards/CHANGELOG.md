@@ -1,3 +1,9 @@
+# 1.1.19
+* added fader trophy to trophy list to travel to sacrificial stones
+* ward range can be set to distinct ward and persist
+* fixed water surface rendering inside ward bubble effect
+* more bubble effect variables exposed to configure visuals further
+
 # 1.1.18
 * fixed taxi offering for multiplayer
 

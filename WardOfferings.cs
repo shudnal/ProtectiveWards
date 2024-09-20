@@ -248,12 +248,7 @@ namespace ProtectiveWards
                 bool moderPower = item.m_shared.m_name == "$item_dragonegg" && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon);
 
                 bool taxi = offeringTaxi.Value && (item.m_shared.m_name == "$item_coins" ||
-                                                   item.m_shared.m_name == "$item_trophy_eikthyr" ||
-                                                   item.m_shared.m_name == "$item_trophy_elder" ||
-                                                   item.m_shared.m_name == "$item_trophy_bonemass" ||
-                                                   item.m_shared.m_name == "$item_trophy_dragonqueen" ||
-                                                   item.m_shared.m_name == "$item_trophy_goblinking" ||
-                                                   item.m_shared.m_name == "$item_trophy_seekerqueen" ||
+                                                   IsBossTrophy(item.m_shared.m_name) ||
                                                    IsItemForHildirTravel(item.m_shared.m_name) ||
                                                    item.m_shared.m_name == "$item_chest_hildir1" ||
                                                    item.m_shared.m_name == "$item_chest_hildir2" ||
@@ -471,12 +466,7 @@ namespace ProtectiveWards
             int stack = 0;
 
             bool locationFound; string locationName;
-            if (item.m_shared.m_name == "$item_trophy_eikthyr" ||
-                       item.m_shared.m_name == "$item_trophy_elder" ||
-                       item.m_shared.m_name == "$item_trophy_bonemass" ||
-                       item.m_shared.m_name == "$item_trophy_dragonqueen" ||
-                       item.m_shared.m_name == "$item_trophy_goblinking" ||
-                       item.m_shared.m_name == "$item_trophy_seekerqueen")
+            if (IsBossTrophy(item.m_shared.m_name))
             {
                 locationName = "StartTemple";
                 locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
@@ -612,6 +602,17 @@ namespace ProtectiveWards
         internal static bool IsItemForHildirTravel(string itemName)
         {
             return offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
+        }
+
+        internal static bool IsBossTrophy(string itemName)
+        {
+            return itemName == "$item_trophy_eikthyr" ||
+                   itemName == "$item_trophy_elder" ||
+                   itemName == "$item_trophy_bonemass" ||
+                   itemName == "$item_trophy_dragonqueen" ||
+                   itemName == "$item_trophy_goblinking" ||
+                   itemName == "$item_trophy_seekerqueen" ||
+                   itemName == "$item_trophy_fader";
         }
 
         public static bool IsTeleportable(Player player)
