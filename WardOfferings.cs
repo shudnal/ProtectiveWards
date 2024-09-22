@@ -8,9 +8,10 @@ using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
 {
-    internal class WardOfferings
+    internal static class WardOfferings
     {
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
+        internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
 
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
@@ -34,25 +35,10 @@ namespace ProtectiveWards
 
                 wardIsHealing[ward] -= seconds;
 
-                List<Player> players = new List<Player>();
                 List<Character> characters = new List<Character>();
-
-                ConnectedAreas(ward).ForEach(area =>
-                {
-                    Player.GetPlayersInRange(area.transform.position, area.m_radius, players);
-                    Character.GetCharactersInRange(area.transform.position, area.m_radius, characters);
-                });
-
-                foreach (Player player in players.Distinct().ToList())
-                {
-                    player.Heal(amount * seconds);
-                }
-
-                foreach (Character character in characters.Distinct().ToList())
-                {
-                    if (character.IsTamed())
-                        character.Heal(amount * seconds);
-                }
+                ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
+                
+                characters.ToHashSet().DoIf(character => character.IsTamed() || character.IsPlayer(), character => character.Heal(amount * seconds));
 
                 yield return new WaitForSecondsRealtime(seconds);
             }
@@ -64,12 +50,9 @@ namespace ProtectiveWards
                 yield break;
 
             List<Player> players = new List<Player>();
-            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+            ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
-            foreach (Player player in players.Distinct().ToList())
-            {
-                preLightning.Create(player.transform.position, player.transform.rotation);
-            }
+            players.ToHashSet().Do(player => preLightning.Create(player.transform.position, player.transform.rotation));
 
             LogInfo("Thor is preparing his strike");
 
@@ -79,15 +62,9 @@ namespace ProtectiveWards
                 yield return new WaitForSeconds(1.0f);
 
             List<Character> characters = new List<Character>();
-            ConnectedAreas(ward).ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
-
-            foreach (Character character in characters.Distinct().ToList())
-            {
-                if (character.IsMonsterFaction(Time.time))
-                {
-                    UnityEngine.Object.Instantiate(lightningAOE, character.transform.position, character.transform.rotation);
-                }
-            }
+            ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
+            
+            characters.ToHashSet().DoIf(character => character.IsMonsterFaction(Time.time), character => UnityEngine.Object.Instantiate(lightningAOE, character.transform.position, character.transform.rotation));
         }
 
         public static IEnumerator InstantGrowthEffect(PrivateArea ward, List<Plant> plants)
@@ -99,14 +76,13 @@ namespace ProtectiveWards
 
             yield return new WaitForSeconds(1);
 
-            foreach (Plant plant in plants.Distinct().ToList())
+            foreach (Plant plant in plants.ToHashSet())
             {
-                if (!plant.m_nview.IsOwner()) continue;
+                if (!plant || plant.m_nview == null || !plant.m_nview.IsValid() || !plant.m_nview.IsOwner())
+                    continue;
 
                 if (plant.m_status != 0)
-                {
                     plant.UpdateHealth(0);
-                }
 
                 plant.Grow();
                 yield return new WaitForSeconds(0.25f);
@@ -126,7 +102,7 @@ namespace ProtectiveWards
 
             for (int i = seconds; i >= 0; i--)
             {
-                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$button_return") + " " + TimeSpan.FromSeconds(i).ToString(@"m\:ss"));
+                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_back", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                 yield return new WaitForSeconds(1);
             }
 
@@ -142,14 +118,12 @@ namespace ProtectiveWards
 
             List<Piece> pieces = new List<Piece>();
 
-            ConnectedAreas(ward).ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
+            ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
-            foreach (Piece piece in pieces)
+            foreach (Piece piece in pieces.Where(piece => piece.IsPlacedByPlayer()))
             {
-                if (!piece.IsPlacedByPlayer()) continue;
-
-                WearNTear component = piece.GetComponent<WearNTear>();
-                if (!(bool)component) continue;
+                if (!piece.TryGetComponent(out WearNTear component))
+                    continue;
 
                 if (component.Repair())
                 {
@@ -175,11 +149,11 @@ namespace ProtectiveWards
             {
                 initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
                 if (repaired > 0)
-                    initiator.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$msg_repaired", new string[1] { repaired.ToString() }));
+                    initiator.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
             }
             else if (repaired > 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_repaired", new string[1] { repaired.ToString() }));
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
             }
             else if (augment)
             {
@@ -199,7 +173,8 @@ namespace ProtectiveWards
             float num = radius * radius;
             foreach (SlowUpdate su_plant in allPlants)
             {
-                if (!su_plant.TryGetComponent<Plant>(out Plant plant)) continue;
+                if (!su_plant.TryGetComponent(out Plant plant))
+                    continue;
 
                 if (Utils.DistanceSqr(su_plant.transform.position, point) < num && plant.m_nview.IsOwner() && (!growableOnly || plant.m_status == 0))
                     plants.Add(plant);
@@ -283,31 +258,25 @@ namespace ProtectiveWards
 
         private static void ApplyTrophyEffectOnNearbyEnemies(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
         {
-            trophyTargets = Resources.FindObjectsOfTypeAll<Turret>().FirstOrDefault().m_configTargets;
+            trophyTargets = Resources.FindObjectsOfTypeAll<Turret>().FirstOrDefault(ws => ws.name == "piece_turret")?.m_configTargets;
+            if (trophyTargets == null)
+                return;
 
             bool killed = false;
 
-            foreach (Turret.TrophyTarget configTarget in trophyTargets)
+            foreach (Turret.TrophyTarget configTarget in trophyTargets.Where(configTarget => (item.m_shared.m_name == configTarget.m_item.m_itemData.m_shared.m_name)))
             {
-                if (!(item.m_shared.m_name == configTarget.m_item.m_itemData.m_shared.m_name))
-                {
-                    continue;
-                }
-
                 List<Character> characters = new List<Character>();
-                ConnectedAreas(ward).ForEach(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
+                ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
-                foreach (Character character in characters.Distinct().ToList())
+                foreach (Character character in characters.ToHashSet().Where(character => character.IsMonsterFaction(Time.time)))
                 {
-                    if (character.IsMonsterFaction(Time.time))
+                    foreach (Character onlyTarget in configTarget.m_targets)
                     {
-                        foreach (Character onlyTarget in configTarget.m_targets)
+                        if (character.m_name == onlyTarget.m_name)
                         {
-                            if (character.m_name == onlyTarget.m_name)
-                            {
-                                character.SetHealth(0f);
-                                killed = true;
-                            }
+                            character.SetHealth(0f);
+                            killed = true;
                         }
                     }
                 }
@@ -358,21 +327,19 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!(bool)item.m_shared.m_consumeStatusEffect) return;
+            if (!(bool)item.m_shared.m_consumeStatusEffect)
+                return;
 
             LogInfo("Consumable effect offered");
 
             List<Player> players = new List<Player>();
 
-            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+            ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
             bool applied = false;
 
-            foreach (Player player in players.Distinct().ToList())
+            foreach (Player player in players.ToHashSet().Where(player => player.CanConsumeItem(item)))
             {
-                if (!player.CanConsumeItem(item)) continue;
-
-                _ = item.m_shared.m_consumeStatusEffect;
                 player.m_seman.AddStatusEffect(item.m_shared.m_consumeStatusEffect, resetTime: true);
                 applied = true;
             }
@@ -389,10 +356,8 @@ namespace ProtectiveWards
 
         private static void ApplyInstantGrowthEffectOnNearbyPlants(PrivateArea ward, ItemDrop.ItemData item, Player initiator, bool growableOnly = true)
         {
-
             List<Plant> plants = new List<Plant>();
-
-            ConnectedAreas(ward).ForEach(area => GetPlantsInRange(area.transform.position, area.m_radius, plants, growableOnly));
+            ConnectedAreas(ward).Do(area => GetPlantsInRange(area.transform.position, area.m_radius, plants, growableOnly));
 
             if (plants.Count == 0)
             {
@@ -421,7 +386,6 @@ namespace ProtectiveWards
             }
 
             initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
-
         }
 
         private static void ApplyModerPowerEffectToNearbyPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
@@ -430,11 +394,10 @@ namespace ProtectiveWards
 
             List<Player> players = new List<Player>();
 
-            ConnectedAreas(ward).ForEach(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
+            ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
-            foreach (Player player in players.Distinct().ToList())
+            foreach (Player player in players.ToHashSet())
             {
-                int moderPowerHash = "GP_Moder".GetStableHashCode();
                 StatusEffect moderSE = ObjectDB.instance.GetStatusEffect(moderPowerHash);
                 player.GetSEMan().AddStatusEffect(moderSE.NameHash(), resetTime: true);
             }
@@ -452,13 +415,13 @@ namespace ProtectiveWards
 
             if (!IsTeleportable(initiator))
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_noteleport"));
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_notravel"));
                 return;
             }
 
             if (!canTravel)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_canttravel"));
                 return;
             }
 
@@ -501,13 +464,9 @@ namespace ProtectiveWards
         internal static void RegisterRPCs()
         {
             if (ZNet.instance.IsServer())
-            {
                 ZRoutedRpc.instance.Register<ZPackage>("ClosestLocationRequest", RPC_ClosestLocationRequest);
-            }
             else
-            {
                 ZRoutedRpc.instance.Register<ZPackage>("StartTaxi", RPC_StartTaxi);
-            }
         }
 
         public static void ClosestLocationRequest(string name, Vector3 position, string itemName, int stack)
@@ -561,7 +520,7 @@ namespace ProtectiveWards
         {
             if (Utils.DistanceXZ(initiator.transform.position, position) < 300f)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_wontwork"));
+                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_tooclose"));
                 return;
             }
 
@@ -589,7 +548,7 @@ namespace ProtectiveWards
                     return true;
                 }
 
-            if (ZoneSystem.instance.FindClosestLocation("Vendor_BlackForest", position, out ZoneSystem.LocationInstance location))
+            if (ZoneSystem.instance.FindClosestLocation(name, position, out ZoneSystem.LocationInstance location))
             {
                 target = location.m_position;
                 LogInfo($"Found closest {name} in location list");
@@ -647,7 +606,7 @@ namespace ProtectiveWards
             {
                 for (int i = waitSeconds; i > 0; i--)
                 {
-                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$npc_dvergrmage_random_goodbye5") + " " + TimeSpan.FromSeconds(i).ToString(@"m\:ss"));
+                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_starting", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                     yield return new WaitForSeconds(1);
                 }
             }
@@ -663,9 +622,9 @@ namespace ProtectiveWards
                 {
                     string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
                     if (playerShouldExit)
-                        player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$location_exit") + " " + timeSpent);
+                        player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$pw_msg_travel_inside", timeSpent));
                     else
-                        player.Message(MessageHud.MessageType.Center, Localization.instance.Localize(player.IsEncumbered() ? "$se_encumbered_start" : "$msg_noteleport") + " " + timeSpent);
+                        player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
 
                     yield return new WaitForSeconds(1);
 
@@ -673,7 +632,7 @@ namespace ProtectiveWards
                                               || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
                 }
 
-                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$npc_dvergrmage_random_goodbye5"));
+                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_start"));
 
                 taxiTargetPosition = position;
                 taxiReturnBack = returnBack;
@@ -780,14 +739,14 @@ namespace ProtectiveWards
         {
             private static void Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
 
-                if (!offeringTaxi.Value) return;
+                if (!offeringTaxi.Value)
+                    return;
 
                 if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace") || ZInput.GetButton("JoyUse") && ZInput.GetButton("JoyAltPlace"))
-                {
                     __instance.DropPlayer();
-                }
             }
         }
 
@@ -796,9 +755,11 @@ namespace ProtectiveWards
         {
             private static void Postfix()
             {
-                if (!modEnabled.Value) return;
+                if (!modEnabled.Value)
+                    return;
 
-                if (!offeringTaxi.Value) return;
+                if (!offeringTaxi.Value)
+                    return;
 
                 playerDropped = true;
                 if (!Player.m_localPlayer.m_seman.HaveStatusEffect(slowFallHash))
@@ -824,7 +785,7 @@ namespace ProtectiveWards
                 if (Player.m_localPlayer != __instance)
                     return;
 
-                if (playerDropped && castSlowFall && __instance.IsOnGround())
+                if (playerDropped && castSlowFall && (__instance.IsOnGround() || __instance.IsSwimming()))
                 {
                     castSlowFall = false;
                     playerDropped = false;

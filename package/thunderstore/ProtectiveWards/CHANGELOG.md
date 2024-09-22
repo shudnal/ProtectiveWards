@@ -1,3 +1,11 @@
+# 1.2.0
+* apply ward settings by pressing LeftShift + E on disabled ward (if you are ward creator). Toggling ward doesn't change its settings.
+* change ward emission color (ward specific)
+* change various area marker values (ward specific)
+* code refinements and refactoring (more room for errors btw)
+* localization support for custom captions
+* more detailed description of item offerings will appear after certain amount of time spent looking at ward
+
 # 1.1.19
 * added fader trophy to trophy list to travel to sacrificial stones
 * ward range can be set to distinct ward and persist

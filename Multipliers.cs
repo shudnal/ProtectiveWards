@@ -24,7 +24,6 @@ namespace ProtectiveWards
 
                 damage *= Math.Max(fallDamageTakenMultiplier.Value, 0);
             }
-
         }
 
         [HarmonyPatch(typeof(Character), nameof(Character.Damage))]
@@ -74,7 +73,7 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position))
+                if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 if (fireplaceProtection.Value && hit.m_hitType == HitData.HitType.Self && __instance.GetComponent<Fireplace>() != null)
@@ -244,7 +243,7 @@ namespace ProtectiveWards
                 if (fireplaceDrainMultiplier.Value == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __result *= (double)Math.Max(0f, fireplaceDrainMultiplier.Value);
@@ -264,7 +263,7 @@ namespace ProtectiveWards
                 if (multiplier == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __result *= (double)Math.Max(0f, multiplier);
@@ -282,7 +281,7 @@ namespace ProtectiveWards
                 if (cookingSpeedMultiplier.Value == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __result *= Math.Max(0f, cookingSpeedMultiplier.Value);
@@ -300,7 +299,7 @@ namespace ProtectiveWards
                 if ((fireplaceDrainMultiplier.Value == 1.0f) && (cookingSpeedMultiplier.Value == 1.0f))
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __state = dt;
@@ -330,7 +329,7 @@ namespace ProtectiveWards
                 if (fermentingSpeedMultiplier.Value == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __result *= Math.Max(0f, fermentingSpeedMultiplier.Value);
@@ -348,7 +347,7 @@ namespace ProtectiveWards
                 if (sapCollectingSpeedMultiplier.Value == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __result *= Math.Max(0f, sapCollectingSpeedMultiplier.Value);
@@ -366,7 +365,7 @@ namespace ProtectiveWards
                 if (turretFireRateMultiplier.Value == 1.0f)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __state = ___m_attackCooldown;

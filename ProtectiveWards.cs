@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.1.19";
+        const string pluginVersion = "1.2.0";
 
         private Harmony _harmony;
 
@@ -31,6 +31,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> loggingEnabled;
         public static ConfigEntry<int> refreshingTime;
         public static ConfigEntry<bool> showOfferingsInHover;
+        public static ConfigEntry<float> showOfferingsInHoverAfterSeconds;
         public static ConfigEntry<float> maxTaxiSpeed;
 
         public static ConfigEntry<bool> offeringActiveRepair;
@@ -84,6 +85,19 @@ namespace ProtectiveWards
         public static ConfigEntry<float> wardBubbleNormalScale;
         public static ConfigEntry<float> wardBubbleDepthFade;
 
+        public static ConfigEntry<bool> wardAreaMarkerPatch;
+        public static ConfigEntry<float> wardAreaMarkerSpeed;
+        public static ConfigEntry<Color> wardAreaMarkerStartColor;
+        public static ConfigEntry<Color> wardAreaMarkerEndColor;
+        public static ConfigEntry<float> wardAreaMarkerLength;
+        public static ConfigEntry<float> wardAreaMarkerWidth;
+        public static ConfigEntry<float> wardAreaMarkerAmount;
+
+        public static ConfigEntry<bool> wardEmissionColorEnabled;
+        public static ConfigEntry<Color> wardEmissionColor;
+        public static ConfigEntry<float> wardEmissionColorMultiplier;
+        public static ConfigEntry<bool> wardLightColorEnabled;
+
         public static ConfigEntry<bool> wardDemisterEnabled;
 
         public static ConfigEntry<bool> boarsHensProtection;
@@ -125,7 +139,20 @@ namespace ProtectiveWards
         internal static HashSet<string> _wardPlantProtectionList;
         internal static HashSet<string> _boarsHensProtectionGroupList;
 
+        public static readonly int s_customRange = "ward_useRange".GetStableHashCode();
         public static readonly int s_range = "ward_range".GetStableHashCode();
+
+        public static readonly int s_customColor = "ward_useColor".GetStableHashCode();
+        public static readonly int s_color = "ward_color".GetStableHashCode();
+
+        public static readonly int s_circleEnabled = "circle_enabled".GetStableHashCode();
+        public static readonly int s_circleStartColor = "circle_startColor".GetStableHashCode();
+        public static readonly int s_circleEndColor = "circle_endColor".GetStableHashCode();
+        public static readonly int s_circleSpeed = "circle_speed".GetStableHashCode();
+        public static readonly int s_circleLength = "circle_length".GetStableHashCode();
+        public static readonly int s_circleWidth = "circle_width".GetStableHashCode();
+        public static readonly int s_circleAmount = "circle_amount".GetStableHashCode();
+
         public static readonly int s_bubbleEnabled = "bubble_enabled".GetStableHashCode();
         public static readonly int s_bubbleColor = "bubble_color".GetStableHashCode();
         public static readonly int s_bubbleColorAlpha = "bubble_color_alpha".GetStableHashCode();
@@ -137,6 +164,8 @@ namespace ProtectiveWards
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new MaterialPropertyBlock();
+
+        private static float offeringsTimer = 0f;
 
         public enum ShipDamageType
         {
@@ -154,6 +183,14 @@ namespace ProtectiveWards
 
             ConfigInit();
             _ = configSync.AddLockingConfigEntry(configLocked);
+
+            LocalizationManager.Localizer.Load();
+        }
+
+        private void FixedUpdate()
+        {
+            if (offeringsTimer > 0f)
+                offeringsTimer -= Time.fixedDeltaTime;
         }
 
         private void OnDestroy()
@@ -183,6 +220,7 @@ namespace ProtectiveWards
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
             showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
+            showOfferingsInHoverAfterSeconds = config("Misc", "Show offerings in hover after seconds", defaultValue: 5f, "Show offerings list after set amount of seconds. [Not Synced with Server]", false);
             maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
 
 
@@ -255,6 +293,16 @@ namespace ProtectiveWards
 
             wardDemisterEnabled = config("Ward Demister", "Enable demister", defaultValue: false, "Ward will push out the mist");
 
+
+            wardAreaMarkerPatch = config("Ward Circle", "Patch circle", defaultValue: false, "Change area marker circle projector parameters. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerSpeed = config("Ward Circle", "Speed", defaultValue: 0.1f, "Speed of lines movement. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerStartColor = config("Ward Circle", "Color start", defaultValue: new Color(0.8f, 0.8f, 0.8f), "Starting color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerEndColor = config("Ward Circle", "Color end", defaultValue: Color.clear, "End color (if set color of lines will change gradually). Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerLength = config("Ward Circle", "Length multiplier", defaultValue: 1.0f, "Change area marker circle projector parameters. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerWidth = config("Ward Circle", "Width multiplier", defaultValue: 1.0f, "Change area marker circle projector parameters. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerAmount = config("Ward Circle", "Lines amount multiplier", defaultValue: 1.0f, "Change area marker circle projector parameters. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+
+
             boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
             wardRainProtection = config("Ward protects", "Structures from rain damage", true, "Set whether an active Ward will protect nearby structures from rain and water damage");
             wardShipProtection = config("Ward protects", "Ship from damage", ShipDamageType.WaterDamage, "Set whether an active Ward will protect nearby ships from damage (waves and upsidedown for water damage option or any structural damage)");
@@ -264,6 +312,13 @@ namespace ProtectiveWards
             sittingRaidProtection = config("Ward protects", "Players from raids when sitting on something near the fire (not floor)", true, "Set whether an active Ward will protect nearby players from raids when sitting next to an active fire"
                                                                                                                                            + "\nDo you want to go AFK in your base? Find a warm chair, bench, stool, throne whatever to sit on and go"
                                                                                                                                            + "\nIf the fire does not burn - you are vulnerable");
+
+
+            wardEmissionColorEnabled = config("Ward Color", "Change emission color", defaultValue: false, "Change ward emission color. World restart required to apply changes. [Not Synced with Server]", false);
+            wardEmissionColor = config("Ward Color", "Color", defaultValue: new Color(0.967f, 0.508f, 0.092f), "Ward color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardEmissionColorMultiplier = config("Ward Color", "Color multiplier", defaultValue: 2f, "Ward color multiplier. Makes color more bright and intense. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardLightColorEnabled = config("Ward Color", "Change flare and light accordingly", defaultValue: true, "Flare and emitted light color will fit ward color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "$item_carrot, $item_turnip, $item_onion, $item_carrotseeds, $item_turnipseeds, $item_onionseeds, $item_jotunpuffs, $item_magecap", "List of plants to be protected from damage");
             boarsHensProtectionGroupList = config("Ward protects", "Boars and hens from list", "boar, chicken", "List of tamed groups to be protected from damage");
@@ -286,11 +341,6 @@ namespace ProtectiveWards
 
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, string description, bool synchronizedSetting = true) => config(group, name, defaultValue, new ConfigDescription(description), synchronizedSetting);
 
-        public static bool InsideEnabledPlayersArea(Vector3 point)
-        {
-            return InsideEnabledPlayersArea(point, out PrivateArea _);
-        }
-
         internal static void UpdateCache()
         {
             DateTime time = ZNet.instance.GetTime();
@@ -305,26 +355,38 @@ namespace ProtectiveWards
             }
         }
 
-        public static bool InsideEnabledPlayersArea(Vector3 point, out PrivateArea area)
+        public static bool InsideEnabledPlayersArea(Vector3 point, bool checkCache = false) => InsideEnabledPlayersArea(point, out _, checkCache);
+
+        public static bool InsideEnabledPlayersArea(Vector3 point, out PrivateArea area, bool checkCache = false)
         {
-            UpdateCache();
-
-            if (areaCache.TryGetValue(point, out area))
+            area = null;
+            if (checkCache)
             {
-                return area != null;
-            }
+                UpdateCache();
 
-            foreach (PrivateArea allArea in PrivateArea.m_allAreas)
-            {
-                if (allArea.IsEnabled() && allArea.m_ownerFaction == Character.Faction.Players && allArea.IsInside(point, 0f))
+                if (areaCache.TryGetValue(point, out area))
                 {
-                    area = allArea;
-                    areaCache.Add(point, area);
-                    return true;
+                    if (area && area.isActiveAndEnabled && area.IsEnabled())
+                        return true;
+
+                    areaCache.Remove(point);
                 }
             }
 
-            areaCache.Add(point, area);
+            foreach (PrivateArea allArea in PrivateArea.m_allAreas)
+                if (allArea.IsEnabled() && allArea.m_ownerFaction == Character.Faction.Players && allArea.IsInside(point, 0f))
+                {
+                    area = allArea;
+
+                    if (checkCache)
+                        areaCache.Add(point, area);
+
+                    return true;
+                }
+
+            if (checkCache)
+                areaCache.Add(point, area);
+            
             return false;
         }
 
@@ -351,7 +413,7 @@ namespace ProtectiveWards
             __instance.m_radius = newRadius;
             
             __instance.m_areaMarker.m_radius = newRadius;
-            __instance.m_areaMarker.m_nrOfSegments = (int)(80 * (newRadius / 32f));
+            __instance.m_areaMarker.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (newRadius / 32f));
 
             ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
         }
@@ -384,9 +446,9 @@ namespace ProtectiveWards
 
                 List<Piece> pieces = new List<Piece>();
 
-                ConnectedAreas(ward).ForEach(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
+                ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
-                List<Piece> piecesToRepair = pieces.Distinct().ToList().Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToList();
+                HashSet<Piece> piecesToRepair = pieces.Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToHashSet();
 
                 if (piecesToRepair.Count == 0)
                 {
@@ -413,7 +475,6 @@ namespace ProtectiveWards
                         wardIsRepairing[ward] = Math.Max(toRepair - 1, 0);
 
                         initiator?.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$piece_repair"));
-
                         break;
                     }
                 }
@@ -465,11 +526,144 @@ namespace ProtectiveWards
             }
         }
 
-        public static List<PrivateArea> ConnectedAreas(PrivateArea ward)
+        public static IEnumerable<PrivateArea> ConnectedAreas(PrivateArea ward)
         {
             List<PrivateArea> areas = ward.GetConnectedAreas();
             areas.Add(ward);
-            return areas.Where(area => area.IsEnabled()).Distinct().ToList();
+            return areas.Where(area => area.IsEnabled()).Distinct();
+        }
+
+        [HarmonyPatch(typeof(CircleProjector), nameof(CircleProjector.CreateSegments))]
+        public static class CircleProjector_CreateSegments_InitState
+        {
+            public static void Prefix(CircleProjector __instance, ref bool __state)
+            {
+                if (!modEnabled.Value)
+                    return;
+
+                if (!wardAreaMarkerPatch.Value)
+                    return;
+
+                __instance.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (__instance.m_radius / 32f));
+
+                __state = (!__instance.m_sliceLines && __instance.m_segments.Count == __instance.m_nrOfSegments) || (__instance.m_sliceLines && __instance.m_calcStart == __instance.m_start && __instance.m_calcTurns == __instance.m_turns);
+            }
+
+            public static void Postfix(CircleProjector __instance, bool __state)
+            {
+                if (!modEnabled.Value)
+                    return;
+
+                if (!wardAreaMarkerPatch.Value)
+                    return;
+
+                if (__state)
+                    return;
+
+                ZNetView m_nview = __instance.GetComponentInParent<ZNetView>();
+                if (!m_nview || !m_nview.IsValid())
+                    return;
+
+                ZDO zdo = m_nview.GetZDO();
+                if (zdo == null)
+                    return;
+
+                InitCircleProjectorState(__instance, m_nview);
+            }
+        }
+
+        private static void InitEmissionColor(PrivateArea ward)
+        {
+            if (!wardEmissionColorEnabled.Value || !ward.m_model)
+                return;
+
+            ZDO zdo = ward.m_nview.GetZDO();
+            if (!zdo.GetBool(s_customColor))
+                return;
+
+            int materialIndex = -1;
+            for (int i = 0; i < ward.m_model.sharedMaterials.Length; i++)
+            {
+                if (ward.m_model.sharedMaterials[i].name.StartsWith("Guardstone_OdenGlow_mat"))
+                {
+                    materialIndex = i;
+                    break;
+                }
+            }
+
+            if (materialIndex == -1)
+                return;
+
+            if (!zdo.GetVec3(s_color, out Vector3 vector))
+                return;
+
+            Color color = new Color(vector.x, vector.y, vector.z);
+
+            ward.m_model.GetPropertyBlock(s_matBlock, materialIndex);
+            s_matBlock.SetColor("_EmissionColor", color);
+            ward.m_model.SetPropertyBlock(s_matBlock, materialIndex);
+
+            if (wardLightColorEnabled.Value && ward.m_enabledEffect)
+            {
+                float multiplier = wardEmissionColorMultiplier.Value == 0f ? 1f : wardEmissionColorMultiplier.Value;
+
+                foreach (ParticleSystem ps in ward.m_enabledEffect.GetComponentsInChildren<ParticleSystem>())
+                {
+                    ParticleSystem.MainModule main = ps.main;
+                    main.startColor = new Color(color.r / multiplier, color.g / multiplier, color.b / multiplier, main.startColor.color.a);
+                }
+
+                Light light = ward.m_enabledEffect.GetComponentInChildren<Light>();
+                if (light)
+                    light.color = Color.Lerp(new Color(0.99f, 0.87f, 0.76f), new Color(color.r / multiplier, color.g / multiplier, color.b / multiplier), 0.5f);
+            }
+        }
+
+        public static void InitCircleProjectorState(CircleProjector marker, ZNetView nview)
+        {
+            if (!wardAreaMarkerPatch.Value)
+                return;
+
+            ZDO zdo = nview.GetZDO();
+            if (!zdo.GetBool(s_circleEnabled))
+                return;
+
+            string start = zdo.GetString(s_circleStartColor, "");
+            Color startColor = wardAreaMarkerStartColor.Value;
+            if (!start.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(start, out Color color))
+                startColor = color;
+
+            string end = zdo.GetString(s_circleEndColor, "");
+            Color endColor = wardAreaMarkerEndColor.Value;
+            if (!end.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(end, out Color color1))
+                endColor = color1;
+
+            var gradient = new Gradient();
+            if (endColor != Color.clear)
+            {
+                gradient.SetKeys(new GradientColorKey[4]
+                                    {
+                                        new GradientColorKey(startColor, 0.0f),
+                                        new GradientColorKey(endColor, 0.45f),
+                                        new GradientColorKey(endColor, 0.55f),
+                                        new GradientColorKey(startColor, 1.0f)
+                                    }, 
+                                 Array.Empty<GradientAlphaKey>());
+            }
+
+            marker.m_speed = zdo.GetFloat(s_circleSpeed, wardAreaMarkerSpeed.Value);
+
+            for (int i = 0; i < marker.m_segments.Count; i++)
+            {
+                GameObject segment = marker.m_segments[i];
+                
+                segment.transform.localScale = new Vector3(marker.m_prefab.transform.localScale.x * zdo.GetFloat(s_circleWidth, wardAreaMarkerWidth.Value), marker.m_prefab.transform.localScale.y, marker.m_prefab.transform.localScale.z * zdo.GetFloat(s_circleLength, wardAreaMarkerLength.Value));
+
+                Renderer renderer = segment.GetComponent<MeshRenderer>();
+                renderer.GetPropertyBlock(s_matBlock);
+                s_matBlock.SetColor("_Color", endColor == Color.clear ? startColor : gradient.Evaluate((float)i / marker.m_segments.Count));
+                renderer.SetPropertyBlock(s_matBlock);
+            }
         }
 
         public static void InitBubbleState(PrivateArea ward, GameObject bubble, ZNetView m_nview)
@@ -487,7 +681,7 @@ namespace ProtectiveWards
 
             bubble.SetActive(zdo.GetBool(s_bubbleEnabled, wardBubbleShow.Value) && ward.IsEnabled());
 
-            bubble.transform.localScale = Vector3.one * zdo.GetFloat(s_range, wardRange.Value) * 2f;
+            bubble.transform.localScale = Vector3.one * ward.m_radius * 2f;
 
             Transform noMonsterArea = bubble.transform.Find("NoMonsterArea");
             if (noMonsterArea != null)
@@ -523,7 +717,7 @@ namespace ProtectiveWards
             }
 
             demister.SetActive(wardDemisterEnabled.Value && ward.IsEnabled());
-            demister.GetComponent<ParticleSystemForceField>().endRange = m_nview.GetZDO().GetFloat(s_range, wardRange.Value);
+            demister.GetComponent<ParticleSystemForceField>().endRange = ward.m_radius;
         }
 
         [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
@@ -543,7 +737,7 @@ namespace ProtectiveWards
                 if (!__result)
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
                     return;
 
                 if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
@@ -614,26 +808,25 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
         public static class PrivateArea_AddUserList_WardAltActionCaption
         {
-            public static void Postfix(PrivateArea __instance, ref StringBuilder text)
+            public static void Prefix(PrivateArea __instance, StringBuilder text)
             {
                 if (!modEnabled.Value)
-                    return;
-
-                if (!__instance.IsEnabled())
                     return;
 
                 if (!__instance.HaveLocalAccess())
                     return;
 
-                string[] lines = text.ToString().Split(new char[] { '\n' }, StringSplitOptions.None);
+                bool wardEnabled = __instance.IsEnabled();
+                if (!wardEnabled && !__instance.m_piece.IsCreator())
+                    return;
 
-                int index = 0;
-                foreach (string line in lines)
+                if (!wardEnabled)
                 {
-                    index += line.Length;
-                    if (line.Contains("$KEY_Use"))
-                        break;
-                    index++;
+                    if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
+                        text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_apply_settings");
+                    else
+                        text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_apply_settings");
+                    return;
                 }
 
                 List<string> status = new List<string>();
@@ -642,14 +835,12 @@ namespace ProtectiveWards
                 {
                     status.Add($"$hud_repair {piecesToRepair}");
                 }
-                else if (index < text.Length && wardPassiveRepair.Value)
+                else if (wardPassiveRepair.Value)
                 {
-                    string actionCaption = $"$menu_start {Localization.instance.Localize("$piece_repair").ToLower()}";
-
                     if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
-                        text.Insert(index, $"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] {actionCaption}");
+                        text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_start_repair");
                     else
-                        text.Insert(index, $"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] {actionCaption}");
+                        text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_start_repair");
                 }
 
                 if (wardIsHealing.TryGetValue(__instance, out int secondsLeft))
@@ -661,46 +852,54 @@ namespace ProtectiveWards
                     text.Append(String.Join(", ", status.ToArray()));
                 }
 
-                if (showOfferingsInHover.Value)
+                if (offeringsTimer < showOfferingsInHoverAfterSeconds.Value + 0.5f)
+                    offeringsTimer += Time.fixedDeltaTime * 2f;
+
+                if (showOfferingsInHover.Value && offeringsTimer > showOfferingsInHoverAfterSeconds.Value)
                 {
                     List<string> offeringsList = new List<string>();
 
-                    if (offeringActiveRepair.Value && Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore"))
-                        offeringsList.Add("$item_surtlingcore");
-                    if (offeringAugmenting.Value && Player.m_localPlayer.IsMaterialKnown("$item_blackcore"))
-                        offeringsList.Add("$item_blackcore");
+                    if (offeringActiveRepair.Value && (Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore") || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_surtlingcore - $pw_ward_offering_surtlingcore_description");
+                    if (offeringAugmenting.Value && (Player.m_localPlayer.IsMaterialKnown("$item_blackcore") || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_blackcore - $pw_ward_offering_blackcore_description");
                     if (offeringFood.Value)
-                        offeringsList.Add("$item_food");
+                        offeringsList.Add("$item_food - $pw_ward_offering_food_description");
                     if (offeringMead.Value)
-                        offeringsList.Add("$se_mead_name");
-                    if (offeringThundertone.Value && Player.m_localPlayer.IsMaterialKnown("$item_thunderstone"))
-                        offeringsList.Add("$item_thunderstone");
+                        offeringsList.Add("$se_mead_name - $pw_ward_offering_mead_description");
+                    if (offeringThundertone.Value && (Player.m_localPlayer.IsMaterialKnown("$item_thunderstone") || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_thunderstone - $pw_ward_offering_thunderstone_description");
                     if (offeringTrophy.Value)
-                        offeringsList.Add("$inventory_trophies");
-                    if (offeringYmirRemains.Value && Player.m_localPlayer.IsMaterialKnown("$item_ymirremains"))
-                        offeringsList.Add("$item_ymirremains");
-                    if (offeringEitr.Value && Player.m_localPlayer.IsMaterialKnown("$item_eitr"))
-                        offeringsList.Add("$item_eitr");
-                    if (offeringDragonEgg.Value && Player.m_localPlayer.IsMaterialKnown("$item_dragonegg") && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon))
-                        offeringsList.Add("$item_dragonegg");
+                    {
+                        offeringsList.Add("$inventory_trophies - $pw_ward_offering_trophies_description");
+                        offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
+                    }
+                    if (offeringYmirRemains.Value && (Player.m_localPlayer.IsMaterialKnown("$item_ymirremains") || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_ymirremains - $pw_ward_offering_ymirremains_description");
+                    if (offeringEitr.Value && (Player.m_localPlayer.IsMaterialKnown("$item_eitr") || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_eitr - $pw_ward_offering_eitr_description");
+                    if (offeringDragonEgg.Value && (Player.m_localPlayer.IsMaterialKnown("$item_dragonegg") && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon) || Player.m_localPlayer.NoCostCheat()))
+                        offeringsList.Add("$item_dragonegg - $pw_ward_offering_dragonegg_description");
                     if (offeringTaxi.Value)
                     {
-                        if (Player.m_localPlayer.IsMaterialKnown("$item_coins"))
-                            offeringsList.Add("$item_coins");
-                        if (!offeringTaxiPriceHildirItem.Value.IsNullOrWhiteSpace() && Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceHildirItem.Value))
-                            offeringsList.Add(offeringTaxiPriceHildirItem.Value);
-                        if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1"))
-                            offeringsList.Add("$piece_chestwood");
-                        else if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2"))
-                            offeringsList.Add("$piece_chestwood");
-                        else if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3"))
-                            offeringsList.Add("$piece_chestwood");
+                        if (Player.m_localPlayer.IsMaterialKnown("$item_coins") || Player.m_localPlayer.NoCostCheat())
+                        {
+                            ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
+                            int price = (ZoneSystem.instance.tempIconList.Any(icon => icon.Value == "Vendor_BlackForest") ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value);
+                            offeringsList.Add($"$item_coins: {price} - $pw_ward_offering_coins_description");
+                        }
+
+                        if (!offeringTaxiPriceHildirItem.Value.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceHildirItem.Value) || Player.m_localPlayer.NoCostCheat()))
+                            offeringsList.Add($"{offeringTaxiPriceHildirItem.Value} - $pw_ward_offering_hildiritem_description");
+                        if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3") || Player.m_localPlayer.NoCostCheat())
+                            offeringsList.Add("$pw_ward_offering_hildirchest - $pw_ward_offering_hildirchest_description");
                     }
 
                     if (offeringsList.Count > 0)
                     {
-                        text.Append("\n\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem: ");
-                        text.Append(String.Join(", ", offeringsList.ToArray()));
+                        text.Append("\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem:\n");
+                        text.Append(String.Join("\n", offeringsList));
+                        text.Append('\n');
                     }
                 }
             }
@@ -725,47 +924,85 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Interact))]
         public static class PrivateArea_Interact_PassiveEffectWardRepair
         {
-            private static bool Prefix(PrivateArea __instance, Humanoid human, bool hold, bool alt, Character.Faction ___m_ownerFaction)
+            private static bool Prefix(PrivateArea __instance, Humanoid human, bool hold, bool alt, Character.Faction ___m_ownerFaction, ref bool __result)
             {
                 if (!modEnabled.Value)
-                    return true;
-
-                if (!alt)
-                    areaCache.Clear();
-
-                if (!wardPassiveRepair.Value)
-                    return true;
-
-                if (!alt)
                     return true;
 
                 if (hold)
                     return true;
 
-                if (___m_ownerFaction != 0)
+                if (!alt)
                     return true;
 
-                if (!__instance.IsEnabled())
+                if (___m_ownerFaction != 0)
                     return true;
 
                 if (!__instance.HaveLocalAccess())
                     return true;
 
-                if (wardIsRepairing.ContainsKey(__instance))
-                    return true;
+                areaCache.Clear();
 
-                LogInfo($"Passive repairing begins");
-                instance.StartCoroutine(PassiveRepairEffect(__instance, human as Player));
+                if (__instance.IsEnabled() && wardPassiveRepair.Value)
+                {
+                    __result = true;
 
-                return false;
-            }
+                    if (wardIsRepairing.ContainsKey(__instance))
+                        return false;
 
-            private static void Postfix(PrivateArea __instance)
-            {
-                if (!modEnabled.Value)
-                    return;
+                    LogInfo($"Passive repairing begins");
+                    instance.StartCoroutine(PassiveRepairEffect(__instance, human as Player));
+                    return false;
+                }
+                else if (!__instance.IsEnabled() && __instance.m_piece.IsCreator())
+                {
+                    ZDO zdo = __instance.m_nview.GetZDO();
+                    if (zdo == null)
+                        return false;
 
-                PatchRange(__instance);
+                    __result = true;
+
+                    zdo.Set(s_bubbleEnabled, wardBubbleShow.Value);
+                    if (wardBubbleShow.Value)
+                    {
+                        zdo.Set(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value);
+                        zdo.Set(s_bubbleWaveVel, wardBubbleWaveIntensity.Value);
+                        zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
+                        zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
+
+                        zdo.Set(s_bubbleGlossiness, wardBubbleGlossiness.Value);
+                        zdo.Set(s_bubbleMetallic, wardBubbleMetallic.Value);
+                        zdo.Set(s_bubbleNormalScale, wardBubbleNormalScale.Value);
+                        zdo.Set(s_bubbleDepthFade, wardBubbleDepthFade.Value);
+                    }
+
+                    zdo.Set(s_customRange, setWardRange.Value);
+                    if (setWardRange.Value)
+                        zdo.Set(s_range, wardRange.Value);
+
+                    zdo.Set(s_customColor, wardEmissionColorEnabled.Value);
+                    if (wardEmissionColorEnabled.Value)
+                        zdo.Set(s_color, new Vector3(wardEmissionColor.Value.r * wardEmissionColorMultiplier.Value, wardEmissionColor.Value.g * wardEmissionColorMultiplier.Value, wardEmissionColor.Value.b * wardEmissionColorMultiplier.Value));
+
+                    zdo.Set(s_circleEnabled, wardAreaMarkerPatch.Value);
+                    if (wardAreaMarkerPatch.Value)
+                    {
+                        zdo.Set(s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value));
+                        zdo.Set(s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value));
+                        zdo.Set(s_circleSpeed, wardAreaMarkerSpeed.Value);
+                        zdo.Set(s_circleLength, wardAreaMarkerLength.Value);
+                        zdo.Set(s_circleWidth, wardAreaMarkerWidth.Value);
+                        zdo.Set(s_circleAmount, wardAreaMarkerAmount.Value);
+                    }
+
+                    __instance.m_addPermittedEffect.Create(__instance.transform.position, __instance.transform.rotation);
+
+                    LogInfo($"Ward settings applied for {zdo}");
+
+                    return false;
+                }
+
+                return true;
             }
         }
 
@@ -782,10 +1019,14 @@ namespace ProtectiveWards
             if (ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
+            ZDO zdo = ward.m_nview.GetZDO();
+
+            if (!zdo.GetBool(s_customRange))
+                return;
+
             float range = ward.m_nview.GetZDO().GetFloat(s_range, wardRange.Value);
             if (ward.m_radius != range && IsWardToSetRange(ward))
             {
-                ward.m_nview.GetZDO().Set(s_range, range);
                 SetWardRange(ward, range);
                 SetWardPlayerBase(ward, range);
             }
@@ -794,26 +1035,18 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Awake))]
         public static class PrivateArea_Awake_SetWardRange
         {
-            private static void Prefix(PrivateArea __instance)
+            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview)
             {
                 if (!modEnabled.Value)
                     return;
 
-                PatchRange(__instance);
-            }
-
-            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview)
-            {
-                if (!modEnabled.Value)
+                if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
                 PatchRange(__instance);
 
                 if (showAreaMarker.Value)
                     __instance.m_areaMarker.gameObject.SetActive(value: true);
-
-                if (___m_nview == null || !___m_nview.IsValid())
-                    return;
 
                 if (forceField != null)
                 {
@@ -830,6 +1063,8 @@ namespace ProtectiveWards
 
                     InitDemisterState(__instance, demister, ___m_nview);
                 }
+
+                InitEmissionColor(__instance);
             }
         }
 
@@ -883,27 +1118,18 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, Piece ___m_piece)
             {
-                ZDO zdo = ___m_nview.GetZDO();
-                if (zdo == null)
+                if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
-                if (___m_piece.IsCreator())
-                {
-                    zdo.Set(s_bubbleEnabled, wardBubbleShow.Value);
-                    zdo.Set(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value);
-                    zdo.Set(s_bubbleWaveVel, wardBubbleWaveIntensity.Value);
-                    zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
-                    zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
+                PatchRange(__instance);
 
-                    zdo.Set(s_bubbleGlossiness, wardBubbleGlossiness.Value);
-                    zdo.Set(s_bubbleMetallic, wardBubbleMetallic.Value);
-                    zdo.Set(s_bubbleNormalScale, wardBubbleNormalScale.Value);
-                    zdo.Set(s_bubbleDepthFade, wardBubbleDepthFade.Value);
-                }
+                InitEmissionColor(__instance);
 
                 InitBubbleState(__instance, __instance.transform.Find(forceFieldName)?.gameObject, ___m_nview);
 
                 InitDemisterState(__instance, __instance.transform.Find(forceFieldDemisterName)?.gameObject, ___m_nview);
+
+                InitCircleProjectorState(__instance.m_areaMarker, ___m_nview);
             }
         }
         

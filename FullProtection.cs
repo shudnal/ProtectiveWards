@@ -44,7 +44,7 @@ namespace ProtectiveWards
                 if (!wardRainProtection.Value)
                     return;
 
-                if (___m_nview == null || !___m_nview.IsValid() || !InsideEnabledPlayersArea(__instance.transform.position))
+                if (___m_nview == null || !___m_nview.IsValid() || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __state = ___m_noRoofWear;
@@ -103,13 +103,7 @@ namespace ProtectiveWards
 
             private static void Postfix(Ship __instance, ref float ___m_waterImpactDamage, float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
-                if (wardShipProtection.Value == ShipDamageType.Off)
-                    return;
-
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
+                if (__state == 0f)
                     return;
 
                 ___m_waterImpactDamage = __state;
@@ -119,7 +113,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Trap), nameof(Trap.OnTriggerEnter))]
         static class Trap_OnTriggerEnter_TrapProtection
         {
-            private static bool Prefix(Collider collider)
+            private static bool Prefix(Trap __instance, Collider collider)
             {
                 if (!modEnabled.Value)
                     return true;
@@ -127,11 +121,10 @@ namespace ProtectiveWards
                 if (!wardTrapProtection.Value)
                     return true;
 
-                Player player = collider.GetComponentInParent<Player>();
-                if (player == null)
+                if (collider.GetComponentInParent<Player>() == null)
                     return true;
 
-                return !InsideEnabledPlayersArea(player.transform.position);
+                return !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true);
             }
         }
 
@@ -160,22 +153,22 @@ namespace ProtectiveWards
                 if (!hit.HaveAttacker())
                     return;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea area))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
                     return;
 
                 if (__instance.GetComponent<Plant>() != null)
                 {
                     ModifyHitDamage(hit, 0f);
-                    area.FlashShield(false);
+                    ward.FlashShield(false);
                 }
                 else if (__instance.TryGetComponent(out Pickable pickable))
                 {
-                    ItemDrop.ItemData.SharedData m_shared = pickable.m_itemPrefab.GetComponent<ItemDrop>().m_itemData.m_shared;
+                    ItemDrop.ItemData.SharedData m_shared = pickable.m_itemPrefab?.GetComponent<ItemDrop>()?.m_itemData.m_shared;
 
                     if (_wardPlantProtectionList.Contains(m_shared.m_name.ToLower()))
                     {
                         ModifyHitDamage(hit, 0f);
-                        area.FlashShield(false);
+                        ward.FlashShield(false);
                     }
                 }
             }
