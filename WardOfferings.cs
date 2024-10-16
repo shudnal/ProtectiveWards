@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using SoftReferenceableAssets;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -639,8 +640,10 @@ namespace ProtectiveWards
                 taxiPlayerPositionToReturn = player.transform.position;
                 playerDropped = false;
 
-                GameObject prefab = ZNetScene.instance.GetPrefab("Valkyrie");
-                UnityEngine.Object.Instantiate(prefab, player.transform.position, Quaternion.identity);
+                Player.m_localPlayer.m_valkyrie.Load();
+                GameObject valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
+                valkyrie.GetComponent<ZNetView>().HoldReferenceTo((IReferenceCounted)(object)Player.m_localPlayer.m_valkyrie);
+                Player.m_localPlayer.m_valkyrie.Release();
             }
 
             canTravel = true;

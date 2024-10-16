@@ -1,3 +1,6 @@
+# 1.2.1
+* hover text spamming error fixed
+
 # 1.2.0
 * apply ward settings by pressing LeftShift + E on disabled ward (if you are ward creator). Toggling ward doesn't change its settings.
 * change ward emission color (ward specific)

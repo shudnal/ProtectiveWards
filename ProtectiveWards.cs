@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.2.0";
+        const string pluginVersion = "1.2.1";
 
         private Harmony _harmony;
 
@@ -884,8 +884,9 @@ namespace ProtectiveWards
                     {
                         if (Player.m_localPlayer.IsMaterialKnown("$item_coins") || Player.m_localPlayer.NoCostCheat())
                         {
+                            ZoneSystem.instance.tempIconList.Clear();
                             ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
-                            int price = (ZoneSystem.instance.tempIconList.Any(icon => icon.Value == "Vendor_BlackForest") ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value);
+                            int price = ZoneSystem.instance.tempIconList.Any(icon => icon.Value == "Vendor_BlackForest") ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value;
                             offeringsList.Add($"$item_coins: {price} - $pw_ward_offering_coins_description");
                         }
 
