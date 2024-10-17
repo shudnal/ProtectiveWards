@@ -1,3 +1,6 @@
+# 1.2.2
+* taxi error fixed
+
 # 1.2.1
 * hover text spamming error fixed
 

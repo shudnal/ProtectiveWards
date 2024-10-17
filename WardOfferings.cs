@@ -540,6 +540,7 @@ namespace ProtectiveWards
 
         internal static bool TryGetFoundLocation(string name, Vector3 position, ref Vector3 target)
         {
+            ZoneSystem.instance.tempIconList.Clear();
             ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
             foreach (KeyValuePair<Vector3, string> loc in ZoneSystem.instance.tempIconList)
                 if (loc.Value == name)
