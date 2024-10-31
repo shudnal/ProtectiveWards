@@ -226,6 +226,7 @@ namespace ProtectiveWards
                 bool taxi = offeringTaxi.Value && (item.m_shared.m_name == "$item_coins" ||
                                                    IsBossTrophy(item.m_shared.m_name) ||
                                                    IsItemForHildirTravel(item.m_shared.m_name) ||
+                                                   IsItemForBogWitchTravel(item.m_shared.m_name) ||
                                                    item.m_shared.m_name == "$item_chest_hildir1" ||
                                                    item.m_shared.m_name == "$item_chest_hildir2" ||
                                                    item.m_shared.m_name == "$item_chest_hildir3");
@@ -450,9 +451,14 @@ namespace ProtectiveWards
                 locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
                 stack = 1;
             }
+            else if (IsItemForBogWitchTravel(item.m_shared.m_name))
+            {
+                locationName = "BogWitch_Camp";
+                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
+                stack = offeringTaxiPriceBogWitchAmount.Value;
+            }
             else
                 return;
-
 
             if (locationFound)
                 StartTaxi(initiator, location, item.m_shared.m_name, stack);
@@ -525,7 +531,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (stack > 0 && IsItemForHildirTravel(itemName) || itemName == "$item_coins")
+            if (stack > 0 && (IsItemForHildirTravel(itemName) || IsItemForBogWitchTravel(itemName) || itemName == "$item_coins"))
             {
                 if (initiator.GetInventory().CountItems(itemName) < stack)
                 {
@@ -563,6 +569,11 @@ namespace ProtectiveWards
         internal static bool IsItemForHildirTravel(string itemName)
         {
             return offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
+        }
+
+        internal static bool IsItemForBogWitchTravel(string itemName)
+        {
+            return offeringTaxiPriceBogWitchItem.Value != "" && itemName == offeringTaxiPriceBogWitchItem.Value;
         }
 
         internal static bool IsBossTrophy(string itemName)

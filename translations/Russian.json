@@ -23,5 +23,7 @@
     "pw_ward_offering_coins_description": "полёт к Хальдору и назад",
     "pw_ward_offering_hildirchest": "Сундук Хильдир",
     "pw_ward_offering_hildirchest_description": "полёт к Хильдир и обратно, сундук не будет потрачен",
-    "pw_ward_offering_hildiritem_description": "полёт к Хильдир и обратно, предмет будет потрачен"
+    "pw_ward_offering_hildiritem_description": "полёт к Хильдир и обратно, предмет будет потрачен",
+    "pw_ward_offering_bogwitchitem_description": "полёт к Ведьме и обратно, предмет будет потрачен"
+
 }

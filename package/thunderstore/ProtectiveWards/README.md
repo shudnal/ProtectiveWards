@@ -17,7 +17,7 @@ Configurable protection and modifiers in active ward area. Creatures, rain, raid
  - Burnt out on keeping your base repaired?
  - Want to have fun with offering some items?
  - Fed of back and forth traveling to the Sacrificial Stones to change your forsaken power?
- - Can't find Haldor or Hildir?
+ - Can't find Haldor, Hildir or Bog Witch?
  - Or maybe treasures just burn in your pockets and merchants are far off?
  
 Make Ward your guard. Inside of an active and warm field of protective ward some miracles happen.
@@ -97,6 +97,7 @@ You can offer:
 * coins to travel to the Haldor. x2000 if you didn't find him yet and x500 otherwise (coins will be consumed)
 * any of Hildir's chest to travel to the Hildir (chest will NOT be consumed)
 * Fuling totem to travel to Hildir (totem will be consumed)
+* Pukeberries to travel to Bog Witch (berries will be consumed)
 
 That will call a Valkyrie to move you to your desired destination.
 

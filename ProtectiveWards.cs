@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         const string pluginID = "shudnal.ProtectiveWards";
         const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.2.2";
+        const string pluginVersion = "1.2.3";
 
         private Harmony _harmony;
 
@@ -48,6 +48,8 @@ namespace ProtectiveWards
         public static ConfigEntry<int> offeringTaxiPriceHaldorUndiscovered;
         public static ConfigEntry<int> offeringTaxiPriceHaldorDiscovered;
         public static ConfigEntry<string> offeringTaxiPriceHildirItem;
+        public static ConfigEntry<string> offeringTaxiPriceBogWitchItem;
+        public static ConfigEntry<int> offeringTaxiPriceBogWitchAmount;
 
         public static ConfigEntry<bool> wardPassiveRepair;
         public static ConfigEntry<int> autoCloseDoorsTime;
@@ -220,7 +222,7 @@ namespace ProtectiveWards
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
             showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
-            showOfferingsInHoverAfterSeconds = config("Misc", "Show offerings in hover after seconds", defaultValue: 5f, "Show offerings list after set amount of seconds. [Not Synced with Server]", false);
+            showOfferingsInHoverAfterSeconds = config("Misc", "Show offerings in hover after seconds", defaultValue: 10f, "Show offerings list after set amount of seconds. [Not Synced with Server]", false);
             maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
 
 
@@ -269,6 +271,8 @@ namespace ProtectiveWards
             offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Coins amount that must be paid to discover and travel to nearest Haldor.");
             offeringTaxiPriceHaldorDiscovered = config("Offerings - Taxi", "Price to discovered Haldor", defaultValue: 500, "Coins amount that must be paid to travel to already discovered Haldor.");
             offeringTaxiPriceHildirItem = config("Offerings - Taxi", "Item to travel to Hildir", defaultValue: "$item_goblintotem", "An item that must be paid to travel to Hildir.");
+            offeringTaxiPriceBogWitchItem = config("Offerings - Taxi", "Item to travel to Bog Witch", defaultValue: "$item_pukeberries", "An item that must be paid to travel to Bog Witch.");
+            offeringTaxiPriceBogWitchAmount = config("Offerings - Taxi", "Item to travel to Bog Witch amount", defaultValue: 20, "An amount of items that must be paid to travel to Bog Witch.");
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
@@ -894,6 +898,9 @@ namespace ProtectiveWards
                             offeringsList.Add($"{offeringTaxiPriceHildirItem.Value} - $pw_ward_offering_hildiritem_description");
                         if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3") || Player.m_localPlayer.NoCostCheat())
                             offeringsList.Add("$pw_ward_offering_hildirchest - $pw_ward_offering_hildirchest_description");
+
+                        if (!offeringTaxiPriceBogWitchItem.Value.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceBogWitchItem.Value) || Player.m_localPlayer.NoCostCheat()))
+                            offeringsList.Add($"{offeringTaxiPriceBogWitchItem.Value} {(offeringTaxiPriceBogWitchAmount.Value > 0 ? $"x{offeringTaxiPriceBogWitchAmount.Value}" : "")} - $pw_ward_offering_bogwitchitem_description");
                     }
 
                     if (offeringsList.Count > 0)
