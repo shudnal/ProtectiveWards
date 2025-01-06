@@ -14,6 +14,8 @@ namespace ProtectiveWards
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
 
+        private static GameObject valkyrie;
+
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
             while (true)
@@ -342,7 +344,7 @@ namespace ProtectiveWards
 
             foreach (Player player in players.ToHashSet().Where(player => player.CanConsumeItem(item)))
             {
-                player.m_seman.AddStatusEffect(item.m_shared.m_consumeStatusEffect, resetTime: true);
+                player.m_seman.AddStatusEffect(item.m_shared.m_consumeStatusEffect.NameHash(), resetTime: true);
                 applied = true;
             }
 
@@ -566,15 +568,9 @@ namespace ProtectiveWards
             return false;
         }
 
-        internal static bool IsItemForHildirTravel(string itemName)
-        {
-            return offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
-        }
+        internal static bool IsItemForHildirTravel(string itemName) => offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
 
-        internal static bool IsItemForBogWitchTravel(string itemName)
-        {
-            return offeringTaxiPriceBogWitchItem.Value != "" && itemName == offeringTaxiPriceBogWitchItem.Value;
-        }
+        internal static bool IsItemForBogWitchTravel(string itemName) => offeringTaxiPriceBogWitchItem.Value != "" && itemName == offeringTaxiPriceBogWitchItem.Value;
 
         internal static bool IsBossTrophy(string itemName)
         {
@@ -624,39 +620,38 @@ namespace ProtectiveWards
                 }
             }
 
+            yield return new WaitWhile(() => valkyrie != null);
+
             DateTime flightInitiated = DateTime.Now;
 
-            if (Valkyrie.m_instance == null)
+            bool playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
+                                            || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
+
+            while (playerShouldExit || player.IsEncumbered() || !player.IsTeleportable())
             {
-                bool playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
-                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
+                string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
+                if (playerShouldExit)
+                    player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$pw_msg_travel_inside", timeSpent));
+                else
+                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
 
-                while (playerShouldExit || player.IsEncumbered() || !player.IsTeleportable())
-                {
-                    string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
-                    if (playerShouldExit)
-                        player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$pw_msg_travel_inside", timeSpent));
-                    else
-                        player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
+                yield return new WaitForSeconds(1);
 
-                    yield return new WaitForSeconds(1);
-
-                    playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
-                                              || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
-                }
-
-                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_start"));
-
-                taxiTargetPosition = position;
-                taxiReturnBack = returnBack;
-                taxiPlayerPositionToReturn = player.transform.position;
-                playerDropped = false;
-
-                Player.m_localPlayer.m_valkyrie.Load();
-                GameObject valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
-                valkyrie.GetComponent<ZNetView>().HoldReferenceTo((IReferenceCounted)(object)Player.m_localPlayer.m_valkyrie);
-                Player.m_localPlayer.m_valkyrie.Release();
+                playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
+                                            || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
             }
+
+            player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_start"));
+
+            taxiTargetPosition = position;
+            taxiReturnBack = returnBack;
+            taxiPlayerPositionToReturn = player.transform.position;
+            playerDropped = false;
+
+            Player.m_localPlayer.m_valkyrie.Load();
+            valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
+            valkyrie.GetComponent<ZNetView>().HoldReferenceTo((IReferenceCounted)(object)Player.m_localPlayer.m_valkyrie);
+            Player.m_localPlayer.m_valkyrie.Release();
 
             canTravel = true;
         }
@@ -696,7 +691,6 @@ namespace ProtectiveWards
                 if (isTravelingPlayer == null)
                     return true;
 
-                Valkyrie.m_instance = __instance;
                 __instance.m_nview = __instance.GetComponent<ZNetView>();
                 __instance.m_animator = __instance.GetComponentInChildren<Animator>();
                 if (!__instance.m_nview.IsOwner())
@@ -704,6 +698,8 @@ namespace ProtectiveWards
                     __instance.enabled = false;
                     return false;
                 }
+
+                valkyrie = __instance.gameObject;
 
                 __instance.m_startAltitude = 30f;
                 __instance.m_textDuration = 0f;
@@ -760,6 +756,9 @@ namespace ProtectiveWards
                 if (!offeringTaxi.Value)
                     return;
 
+                if (__instance.gameObject != valkyrie)
+                    return;
+
                 if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace") || ZInput.GetButton("JoyUse") && ZInput.GetButton("JoyAltPlace"))
                     __instance.DropPlayer();
             }
@@ -768,12 +767,15 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.DropPlayer))]
         public static class Valkyrie_DropPlayer_Taxi
         {
-            private static void Postfix()
+            private static void Postfix(Valkyrie __instance)
             {
                 if (!modEnabled.Value)
                     return;
 
                 if (!offeringTaxi.Value)
+                    return;
+
+                if (__instance.gameObject != valkyrie)
                     return;
 
                 playerDropped = true;
@@ -816,12 +818,14 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.OnDestroy))]
         public static class Valkyrie_OnDestroy_Taxi
         {
-            private static void Postfix()
+            private static void Prefix(Valkyrie __instance)
             {
                 if (!modEnabled.Value)
                     return;
 
-                canTravel = true;
+                canTravel = valkyrie == null || __instance.gameObject == valkyrie;
+                if (canTravel)
+                    valkyrie = null;
             }
         }
 

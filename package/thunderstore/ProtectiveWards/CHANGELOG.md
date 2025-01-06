@@ -1,3 +1,7 @@
+# 1.2.4
+* fixed shared mead offering not applying to other players
+* several valkyries now can be summoned as taxi at once
+
 # 1.2.3
 * bog witch
 

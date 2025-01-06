@@ -28,9 +28,13 @@ Everything mentioned below works only inside of an active ward range.
 
 And yes the configuration is locked if you play on a server.
 
-### Customization 
+### Customization
 
-Customization works for distinct wards. To change settings of a ward you should be its creator, disable the ward and then press LeftShift + E to apply current mod settings to that ward. Toggling a ward doesn't change its settings.
+Customization works for distinct wards. 
+
+To change settings of a ward you should be its creator, disable the ward and then press LeftShift + E to apply current mod settings to that ward.
+
+Toggling a ward doesn't change its settings.
 
 You can customize:
 * range (markers, bubble and demister range is changes accordingly)
@@ -130,7 +134,7 @@ Restrictions
 
 Some messages and captions uses well fit vanilla lines. The rest is localized.
 
-To add your own localization create a file with the name ProtectiveWards.LanguageName.yml or ProtectiveWards.LanguageName.json anywhere inside of the Bepinex folder. For example, to add a French translation you could create a ProtectiveWards.French.yml file inside of the config folder and add French translations there.
+To add your own localization create a file with the name **Protective Wards.LanguageName.yml** or **Protective Wards.LanguageName.json** anywhere inside of the Bepinex folder. For example, to add a French translation you could create a **Protective Wards.French.yml** file inside of the config folder and add French translations there.
 
 Localization file will be loaded on the next game launch or on the next language change.
 
@@ -138,7 +142,7 @@ You can send me a file with your localization at [GitHub](https://github.com/shu
 
 [Language list](https://valheim-modding.github.io/Jotunn/data/localization/language-list.html).
 
-English localization example is located in `English.json` file next to plugin dll.
+English localization example is located in `Protective Wards.English.json` file next to plugin dll.
 
 ## Installation (manual)
 extract ProtectiveWards.dll file to your BepInEx\Plugins\ folder
@@ -153,3 +157,6 @@ Or [Official BepInEx Configuration Manager](https://valheim.thunderstore.io/pack
 
 ## Mirrors
 [Nexus](https://www.nexusmods.com/valheim/mods/2450)
+
+## Donation
+[Buy Me a Coffee](https://buymeacoffee.com/shudnal)
