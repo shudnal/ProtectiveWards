@@ -13,8 +13,7 @@ namespace ProtectiveWards
     {
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
-
-        private static GameObject valkyrie;
+        private static readonly WaitForSeconds wait1sec = new WaitForSeconds(1);
 
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
@@ -62,7 +61,7 @@ namespace ProtectiveWards
             yield return new WaitForSeconds(UnityEngine.Random.Range(5f, 7f));
 
             if (Game.IsPaused())
-                yield return new WaitForSeconds(1.0f);
+                yield return wait1sec;
 
             List<Character> characters = new List<Character>();
             ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
@@ -77,7 +76,7 @@ namespace ProtectiveWards
 
             LogInfo("Instant growth started");
 
-            yield return new WaitForSeconds(1);
+            yield return wait1sec;
 
             foreach (Plant plant in plants.ToHashSet())
             {
@@ -106,7 +105,7 @@ namespace ProtectiveWards
             for (int i = seconds; i >= 0; i--)
             {
                 player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_back", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
-                yield return new WaitForSeconds(1);
+                yield return wait1sec;
             }
 
             LogInfo("Timer of player returnal ended");
@@ -187,18 +186,18 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.UseItem))]
         public static class PrivateArea_UseItem_Offerings
         {
-            private static void Postfix(PrivateArea __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
+            private static bool Prefix(PrivateArea __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
             {
                 if (!__instance.IsEnabled())
                 {
                     LogInfo("Ward disabled");
-                    return;
+                    return true;
                 }
 
                 if (!__instance.HaveLocalAccess())
                 {
                     LogInfo("No access");
-                    return;
+                    return true;
                 }
 
                 Player player = user as Player;
@@ -206,7 +205,7 @@ namespace ProtectiveWards
                 if (!player || player != Player.m_localPlayer)
                 {
                     LogInfo("UseItem user not a player");
-                    return;
+                    return true;
                 }
 
                 LogInfo($"{player.GetPlayerName()} used {item.m_shared.m_name} on {__instance.m_nview.GetZDO()}");
@@ -233,7 +232,8 @@ namespace ProtectiveWards
                                                    item.m_shared.m_name == "$item_chest_hildir2" ||
                                                    item.m_shared.m_name == "$item_chest_hildir3");
 
-                if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower && !taxi) return;
+                if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower && !taxi)
+                    return true;
 
                 if (repair)
                     RepairNearestStructures(augment, __instance, player, item);
@@ -257,6 +257,7 @@ namespace ProtectiveWards
                     TaxiToLocation(item, player);
 
                 __result = true;
+                return false;
             }
         }
 
@@ -616,11 +617,15 @@ namespace ProtectiveWards
                 for (int i = waitSeconds; i > 0; i--)
                 {
                     player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_starting", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
-                    yield return new WaitForSeconds(1);
+                    yield return wait1sec;
                 }
             }
 
-            yield return new WaitWhile(() => valkyrie != null);
+            while (Valkyrie.m_instance != null)
+            {
+                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$menu_pleasewait"));
+                yield return wait1sec;
+            }
 
             DateTime flightInitiated = DateTime.Now;
 
@@ -635,7 +640,7 @@ namespace ProtectiveWards
                 else
                     player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
 
-                yield return new WaitForSeconds(1);
+                yield return wait1sec;
 
                 playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
                                             || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
@@ -649,7 +654,7 @@ namespace ProtectiveWards
             playerDropped = false;
 
             Player.m_localPlayer.m_valkyrie.Load();
-            valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
+            GameObject valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
             valkyrie.GetComponent<ZNetView>().HoldReferenceTo((IReferenceCounted)(object)Player.m_localPlayer.m_valkyrie);
             Player.m_localPlayer.m_valkyrie.Release();
 
@@ -670,7 +675,7 @@ namespace ProtectiveWards
                 if (taxiReturnBack && canTravel)
                 {
                     isTravelingPlayer = __instance;
-                    __instance.StartCoroutine(ReturnPlayerToPosition(__instance, taxiPlayerPositionToReturn, 120));
+                    __instance.StartCoroutine(ReturnPlayerToPosition(__instance, taxiPlayerPositionToReturn, offeringTaxiSecondsToFlyBack.Value));
                 }
                 else
                 {
@@ -693,13 +698,13 @@ namespace ProtectiveWards
 
                 __instance.m_nview = __instance.GetComponent<ZNetView>();
                 __instance.m_animator = __instance.GetComponentInChildren<Animator>();
-                if (!__instance.m_nview.IsOwner())
+                if (!__instance.m_nview.IsOwner() || Valkyrie.m_instance != null && Valkyrie.m_instance != __instance)
                 {
                     __instance.enabled = false;
                     return false;
                 }
 
-                valkyrie = __instance.gameObject;
+                Valkyrie.m_instance = __instance;
 
                 __instance.m_startAltitude = 30f;
                 __instance.m_textDuration = 0f;
@@ -756,9 +761,6 @@ namespace ProtectiveWards
                 if (!offeringTaxi.Value)
                     return;
 
-                if (__instance.gameObject != valkyrie)
-                    return;
-
                 if (ZInput.GetButton("Use") && ZInput.GetButton("AltPlace") || ZInput.GetButton("JoyUse") && ZInput.GetButton("JoyAltPlace"))
                     __instance.DropPlayer();
             }
@@ -767,15 +769,12 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.DropPlayer))]
         public static class Valkyrie_DropPlayer_Taxi
         {
-            private static void Postfix(Valkyrie __instance)
+            private static void Postfix()
             {
                 if (!modEnabled.Value)
                     return;
 
                 if (!offeringTaxi.Value)
-                    return;
-
-                if (__instance.gameObject != valkyrie)
                     return;
 
                 playerDropped = true;
@@ -823,9 +822,7 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                canTravel = valkyrie == null || __instance.gameObject == valkyrie;
-                if (canTravel)
-                    valkyrie = null;
+                canTravel = true;
             }
         }
 
@@ -840,6 +837,5 @@ namespace ProtectiveWards
                 RegisterRPCs();
             }
         }
-
     }
 }

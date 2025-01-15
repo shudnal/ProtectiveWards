@@ -36,7 +36,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateWear))]
         public static class WearNTear_UpdateWear_RainProtection
         {
-            private static void Prefix(WearNTear __instance, ZNetView ___m_nview, ref bool ___m_noRoofWear, ref bool __state)
+            private static void Prefix(WearNTear __instance, ref bool ___m_noRoofWear, ref bool __state)
             {
                 if (!modEnabled.Value)
                     return;
@@ -44,7 +44,10 @@ namespace ProtectiveWards
                 if (!wardRainProtection.Value)
                     return;
 
-                if (___m_nview == null || !___m_nview.IsValid() || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
+                if (!___m_noRoofWear)
+                    return;
+
+                if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __state = ___m_noRoofWear;
@@ -136,7 +139,7 @@ namespace ProtectiveWards
                 hit.m_damage.Modify(Math.Max(value, 0));
             }
 
-            private static void Prefix(Destructible __instance, ZNetView ___m_nview, bool ___m_destroyed, HitData hit)
+            private static void Prefix(Destructible __instance, bool ___m_destroyed, HitData hit)
             {
                 if (!modEnabled.Value)
                     return;
@@ -144,13 +147,13 @@ namespace ProtectiveWards
                 if (!wardPlantProtection.Value)
                     return;
 
-                if (!___m_nview.IsValid() || !___m_nview.IsOwner() || ___m_destroyed)
+                if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !__instance.m_nview.IsOwner() || __instance.m_destroyed)
                     return;
 
                 if (__instance.GetDestructibleType() != DestructibleType.Default || __instance.m_health != 1)
                     return;
 
-                if (!hit.HaveAttacker())
+                if (hit == null || !hit.HaveAttacker())
                     return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
@@ -165,7 +168,7 @@ namespace ProtectiveWards
                 {
                     ItemDrop.ItemData.SharedData m_shared = pickable.m_itemPrefab?.GetComponent<ItemDrop>()?.m_itemData.m_shared;
 
-                    if (_wardPlantProtectionList.Contains(m_shared.m_name.ToLower()))
+                    if (m_shared != null && _wardPlantProtectionList.Contains(m_shared.m_name.ToLower()))
                     {
                         ModifyHitDamage(hit, 0f);
                         ward.FlashShield(false);
@@ -173,6 +176,5 @@ namespace ProtectiveWards
                 }
             }
         }
-
     }
 }

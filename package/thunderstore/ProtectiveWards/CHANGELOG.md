@@ -1,3 +1,9 @@
+# 1.2.5
+* fixed valkyrie sometimes didn't bring you back in multiplayer when used within seconds with other player
+* time before valkyrie bring you back from a trader made configurable
+* areas protected by wards will be considered connected if they overlap at least a bit instead of one ward being physically in the radius of the other
+* Bukeperries will no longer be used on player while trying to offer
+
 # 1.2.4
 * fixed shared mead offering not applying to other players
 * several valkyries now can be summoned as taxi at once

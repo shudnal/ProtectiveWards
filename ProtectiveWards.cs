@@ -15,9 +15,9 @@ namespace ProtectiveWards
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     public class ProtectiveWards : BaseUnityPlugin
     {
-        const string pluginID = "shudnal.ProtectiveWards";
-        const string pluginName = "Protective Wards";
-        const string pluginVersion = "1.2.4";
+        public const string pluginID = "shudnal.ProtectiveWards";
+        public const string pluginName = "Protective Wards";
+        public const string pluginVersion = "1.2.5";
 
         private Harmony _harmony;
 
@@ -50,6 +50,7 @@ namespace ProtectiveWards
         public static ConfigEntry<string> offeringTaxiPriceHildirItem;
         public static ConfigEntry<string> offeringTaxiPriceBogWitchItem;
         public static ConfigEntry<int> offeringTaxiPriceBogWitchAmount;
+        public static ConfigEntry<int> offeringTaxiSecondsToFlyBack;
 
         public static ConfigEntry<bool> wardPassiveRepair;
         public static ConfigEntry<int> autoCloseDoorsTime;
@@ -273,6 +274,7 @@ namespace ProtectiveWards
             offeringTaxiPriceHildirItem = config("Offerings - Taxi", "Item to travel to Hildir", defaultValue: "$item_goblintotem", "An item that must be paid to travel to Hildir.");
             offeringTaxiPriceBogWitchItem = config("Offerings - Taxi", "Item to travel to Bog Witch", defaultValue: "$item_pukeberries", "An item that must be paid to travel to Bog Witch.");
             offeringTaxiPriceBogWitchAmount = config("Offerings - Taxi", "Item to travel to Bog Witch amount", defaultValue: 20, "An amount of items that must be paid to travel to Bog Witch.");
+            offeringTaxiSecondsToFlyBack = config("Offerings - Taxi", "Seconds to fly back", defaultValue: 120, "An amount of seconds you have to make business with trader before Valkyrie will bring you back.");
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
@@ -532,9 +534,7 @@ namespace ProtectiveWards
 
         public static IEnumerable<PrivateArea> ConnectedAreas(PrivateArea ward)
         {
-            List<PrivateArea> areas = ward.GetConnectedAreas();
-            areas.Add(ward);
-            return areas.Where(area => area.IsEnabled()).Distinct();
+            return PrivateArea.m_allAreas.Where(area => area.IsEnabled() && area.m_radius + ward.m_radius < Vector3.Distance(area.transform.position, ward.transform.position));
         }
 
         [HarmonyPatch(typeof(CircleProjector), nameof(CircleProjector.CreateSegments))]
