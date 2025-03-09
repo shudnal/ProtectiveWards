@@ -1,3 +1,7 @@
+# 1.2.6
+* patch 0.220.3
+* ServerSync updated
+
 # 1.2.5
 * fixed valkyrie sometimes didn't bring you back in multiplayer when used within seconds with other player
 * time before valkyrie bring you back from a trader made configurable
