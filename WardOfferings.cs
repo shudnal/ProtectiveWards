@@ -300,10 +300,13 @@ namespace ProtectiveWards
 
         private static void ApplyThunderstrikeOnNearbyEnemies(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
         {
-            Incinerator incinerator = Resources.FindObjectsOfTypeAll<Incinerator>().FirstOrDefault();
+            if (!lightningAOE)
+            {
+                Incinerator incinerator = Resources.FindObjectsOfTypeAll<Incinerator>().FirstOrDefault();
 
-            lightningAOE = incinerator.m_lightingAOEs;
-            preLightning = incinerator.m_leverEffects;
+                lightningAOE = incinerator.m_lightingAOEs;
+                preLightning = incinerator.m_leverEffects;
+            }
 
             instance.StartCoroutine(LightningStrikeEffect(ward));
 

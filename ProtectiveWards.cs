@@ -19,7 +19,7 @@ namespace ProtectiveWards
         public const string pluginName = "Protective Wards";
         public const string pluginVersion = "1.2.6";
 
-        private Harmony _harmony;
+        private static Harmony _harmony;
 
         internal static readonly ConfigSync configSync = new ConfigSync(pluginID) { DisplayName = pluginName, CurrentVersion = pluginVersion, MinimumRequiredVersion = pluginVersion };
 
@@ -53,6 +53,8 @@ namespace ProtectiveWards
         public static ConfigEntry<int> offeringTaxiSecondsToFlyBack;
 
         public static ConfigEntry<bool> wardPassiveRepair;
+        public static ConfigEntry<bool> wardPassiveRepairNonPlayer;
+        public static ConfigEntry<bool> wardPassiveRepairRequireStation;
         public static ConfigEntry<int> autoCloseDoorsTime;
 
         public static ConfigEntry<string> wardPrefabNameToChangeRange;
@@ -278,6 +280,9 @@ namespace ProtectiveWards
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
+            wardPassiveRepairNonPlayer = config("Passive", "Passive repair non player structures", defaultValue: false, "If enabled - ward will repair structures from locations not initially placed by players. Like ruins, dverger outposts, infested mines and so on.");
+            wardPassiveRepairRequireStation = config("Passive", "Passive repair requires crafting station", defaultValue: false, "If enabled - piece can be repaired only if there is corresponding crafting station near the ward.");
+
             autoCloseDoorsTime = config("Passive", "Auto close doors after", defaultValue: 0, "Automatically close doors after a specified number of seconds. 0 to disable. 5 recommended");
 
 
@@ -437,6 +442,20 @@ namespace ProtectiveWards
             _boarsHensProtectionGroupList = new HashSet<string>(boarsHensProtectionGroupList.Value.Split(',').Select(p => p.Trim().ToLower()).Where(p => !string.IsNullOrWhiteSpace(p)).ToList());
         }
 
+        private static bool IsCraftingStationNear(Piece piece, Vector3 position)
+        {
+            return !wardPassiveRepairRequireStation.Value 
+                || piece.m_craftingStation == null 
+                || ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoWorkbench) 
+                || CraftingStation.HaveBuildStationInRange(piece.m_craftingStation.m_name, position);
+        }
+
+        private static bool CanBeRepaired(Piece piece, Vector3 position)
+        {
+            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, position) : wardPassiveRepairNonPlayer.Value)
+                 && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f;
+        }
+
         public static IEnumerator PassiveRepairEffect(PrivateArea ward, Player initiator)
         {
             while (true)
@@ -454,7 +473,7 @@ namespace ProtectiveWards
 
                 ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
-                HashSet<Piece> piecesToRepair = pieces.Where(piece => piece.IsPlacedByPlayer() && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f).ToHashSet();
+                HashSet<Piece> piecesToRepair = pieces.Where(piece => CanBeRepaired(piece, ward.transform.position)).ToHashSet();
 
                 if (piecesToRepair.Count == 0)
                 {
@@ -548,6 +567,9 @@ namespace ProtectiveWards
                 if (!wardAreaMarkerPatch.Value)
                     return;
 
+                if (__instance.transform.root.GetComponent<PrivateArea>() == null)
+                    return;
+
                 __instance.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (__instance.m_radius / 32f));
 
                 __state = (!__instance.m_sliceLines && __instance.m_segments.Count == __instance.m_nrOfSegments) || (__instance.m_sliceLines && __instance.m_calcStart == __instance.m_start && __instance.m_calcTurns == __instance.m_turns);
@@ -555,12 +577,6 @@ namespace ProtectiveWards
 
             public static void Postfix(CircleProjector __instance, bool __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
-                if (!wardAreaMarkerPatch.Value)
-                    return;
-
                 if (__state)
                     return;
 
@@ -1112,6 +1128,17 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        public static class ZoneSystem_OnDestroy_DestroyWardBubble
+        {
+            private static void Postfix(ZoneSystem __instance)
+            {
+                UnityEngine.Object.Destroy(forceField);
+                lightningAOE = null;
+                preLightning = null;
+            }
+        }
+
         [HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
         internal static class ZNetScene_Awake_DemisterForceField
         {
@@ -1126,6 +1153,9 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, Piece ___m_piece)
             {
+                if (!modEnabled.Value)
+                    return;
+
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
