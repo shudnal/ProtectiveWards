@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.6";
+        public const string pluginVersion = "1.2.7";
 
         private static Harmony _harmony;
 
@@ -442,17 +442,18 @@ namespace ProtectiveWards
             _boarsHensProtectionGroupList = new HashSet<string>(boarsHensProtectionGroupList.Value.Split(',').Select(p => p.Trim().ToLower()).Where(p => !string.IsNullOrWhiteSpace(p)).ToList());
         }
 
-        private static bool IsCraftingStationNear(Piece piece, Vector3 position)
+        private static bool IsCraftingStationNear(Piece piece, PrivateArea ward)
         {
             return !wardPassiveRepairRequireStation.Value 
                 || piece.m_craftingStation == null 
                 || ZoneSystem.instance.GetGlobalKey(GlobalKeys.NoWorkbench) 
-                || CraftingStation.HaveBuildStationInRange(piece.m_craftingStation.m_name, position);
+                || CraftingStation.HaveBuildStationInRange(piece.m_craftingStation.m_name, ward.transform.position)
+                || CraftingStation.HaveBuildStationInRange(piece.m_craftingStation.m_name, piece.transform.position);
         }
 
-        private static bool CanBeRepaired(Piece piece, Vector3 position)
+        private static bool CanBeRepaired(Piece piece, PrivateArea ward)
         {
-            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, position) : wardPassiveRepairNonPlayer.Value)
+            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, ward) : wardPassiveRepairNonPlayer.Value)
                  && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f;
         }
 
@@ -473,7 +474,7 @@ namespace ProtectiveWards
 
                 ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
-                HashSet<Piece> piecesToRepair = pieces.Where(piece => CanBeRepaired(piece, ward.transform.position)).ToHashSet();
+                HashSet<Piece> piecesToRepair = pieces.Where(piece => CanBeRepaired(piece, ward)).ToHashSet();
 
                 if (piecesToRepair.Count == 0)
                 {
@@ -553,7 +554,7 @@ namespace ProtectiveWards
 
         public static IEnumerable<PrivateArea> ConnectedAreas(PrivateArea ward)
         {
-            return PrivateArea.m_allAreas.Where(area => area.IsEnabled() && area.m_radius + ward.m_radius < Vector3.Distance(area.transform.position, ward.transform.position));
+            return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && area.m_radius + ward.m_radius >= Vector3.Distance(area.transform.position, ward.transform.position)));
         }
 
         [HarmonyPatch(typeof(CircleProjector), nameof(CircleProjector.CreateSegments))]

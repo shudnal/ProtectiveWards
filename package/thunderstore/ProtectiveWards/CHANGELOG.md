@@ -1,3 +1,8 @@
+# 1.2.7
+* new config for passive repair to be able to repair structures not built by players (disabled by default)
+* new config for passive repair to check if corresponding crafting station is near the ward (disabled by default)
+* fixed ward not repairing and doing offerings in area
+
 # 1.2.6
 * patch 0.220.3
 * ServerSync updated
