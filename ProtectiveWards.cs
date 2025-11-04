@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.7";
+        public const string pluginVersion = "1.2.8";
 
         private static Harmony _harmony;
 
@@ -33,6 +33,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> showOfferingsInHover;
         public static ConfigEntry<float> showOfferingsInHoverAfterSeconds;
         public static ConfigEntry<float> maxTaxiSpeed;
+        public static ConfigEntry<bool> addLightMovement;
 
         public static ConfigEntry<bool> offeringActiveRepair;
         public static ConfigEntry<bool> offeringAugmenting;
@@ -227,6 +228,7 @@ namespace ProtectiveWards
             showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
             showOfferingsInHoverAfterSeconds = config("Misc", "Show offerings in hover after seconds", defaultValue: 10f, "Show offerings list after set amount of seconds. [Not Synced with Server]", false);
             maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
+            addLightMovement = config("Misc", "Add movement to light emitted by ward", defaultValue: true, "Adds little lavalamp effect on light emitted by ward. Applied only if ward emission color was changed. Reactivate ward after config change. [Not Synced with Server]", false);
 
 
             playerDamageDealtMultiplier = config("Modifiers damage", "Creatures damage taken multiplier", defaultValue: 1.0f, "Basically it means damage dealt by any creatures (players and tames included) to any creatures (players and tames excluded)");
@@ -493,7 +495,7 @@ namespace ProtectiveWards
                 wardIsRepairing[ward] = piecesToRepair.Count;
                 foreach (Piece piece in piecesToRepair)
                 {
-                    if (piece.TryGetComponent<WearNTear>(out WearNTear WNT) && WNT.Repair())
+                    if (piece.TryGetComponent(out WearNTear WNT) && WNT.Repair())
                     {
                         piece.m_placeEffect.Create(piece.transform.position, piece.transform.rotation);
 
@@ -505,7 +507,7 @@ namespace ProtectiveWards
                     }
                 }
 
-                yield return new WaitForSecondsRealtime(10);
+                yield return new WaitForSecondsRealtime(10f);
             }
         }
 
@@ -548,7 +550,7 @@ namespace ProtectiveWards
 
                 wardIsClosing[ward] -= 1;
 
-                yield return new WaitForSeconds(1);
+                yield return new WaitForSeconds(1f);
             }
         }
 
@@ -636,7 +638,20 @@ namespace ProtectiveWards
 
                 Light light = ward.m_enabledEffect.GetComponentInChildren<Light>();
                 if (light)
+                {
                     light.color = Color.Lerp(new Color(0.99f, 0.87f, 0.76f), new Color(color.r / multiplier, color.g / multiplier, color.b / multiplier), 0.5f);
+                    if (!light.TryGetComponent(out LightFlicker flicker) && addLightMovement.Value)
+                        flicker = light.gameObject.AddComponent<LightFlicker>();
+
+                    if (flicker != null)
+                    {
+                        flicker.enabled = addLightMovement.Value;
+                        flicker.m_flickerIntensity = 0.1f;
+                        flicker.m_flickerSpeed = 1f;
+                        flicker.m_movement = 0.1f;
+                        flicker.m_fadeInDuration = 3f;
+                    }
+                }
             }
         }
 

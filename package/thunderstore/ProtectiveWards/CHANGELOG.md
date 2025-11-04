@@ -1,3 +1,6 @@
+# 1.2.8
+* fixed Hildir's chest preventing player from fly to Hildir
+
 # 1.2.7
 * new config for passive repair to be able to repair structures not built by players (disabled by default)
 * new config for passive repair to check if corresponding crafting station is near the ward (disabled by default)

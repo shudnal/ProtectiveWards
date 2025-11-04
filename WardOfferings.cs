@@ -9,7 +9,7 @@ using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
 {
-    internal static class WardOfferings
+    public static class WardOfferings
     {
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
@@ -594,7 +594,7 @@ namespace ProtectiveWards
                 return true;
             }
 
-            foreach (ItemDrop.ItemData item in player.GetInventory().m_inventory)
+            foreach (ItemDrop.ItemData item in player.GetInventory().GetAllItems())
             {
                 if (item.m_shared.m_name == "$item_chest_hildir1" ||
                     item.m_shared.m_name == "$item_chest_hildir2" ||
@@ -635,7 +635,7 @@ namespace ProtectiveWards
             bool playerShouldExit = player.IsAttachedToShip() || player.IsAttached() || player.IsDead() || player.IsRiding() || player.IsSleeping() || player.IsTeleporting()
                                             || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
 
-            while (playerShouldExit || player.IsEncumbered() || !player.IsTeleportable())
+            while (playerShouldExit || player.IsEncumbered() || !IsTeleportable(player))
             {
                 string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
                 if (playerShouldExit)
