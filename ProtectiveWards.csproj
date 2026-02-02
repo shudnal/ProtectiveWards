@@ -34,6 +34,9 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>10</LangVersion>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="0Harmony">
       <HintPath>F:\Steam\steamapps\common\Valheim\BepInEx\core\0Harmony.dll</HintPath>
@@ -50,10 +53,6 @@
     <Reference Include="BepInEx">
       <HintPath>F:\Steam\steamapps\common\Valheim\BepInEx\core\BepInEx.dll</HintPath>
     </Reference>
-    <Reference Include="LocalizationManager, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>Libs\LocalizationManager.dll</HintPath>
-    </Reference>
     <Reference Include="netstandard, Version=2.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>F:\Steam\steamapps\common\Valheim\valheim_Data\Managed\netstandard.dll</HintPath>
@@ -64,6 +63,10 @@
     <Reference Include="SoftReferenceableAssets, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\Assemblies\stable\SoftReferenceableAssets.dll</HintPath>
+    </Reference>
+    <Reference Include="Splatform, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Assemblies\stable\Splatform.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="UnityEngine">
@@ -86,6 +89,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="FullProtection.cs" />
+    <Compile Include="LocalizationManager.cs" />
     <Compile Include="Multipliers.cs" />
     <Compile Include="RaidProtection.cs" />
     <Compile Include="WardOfferings.cs" />
@@ -94,13 +98,13 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="ILRepack.targets" />
-    <Content Include="Libs\LocalizationManager.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ILRepack.Lib.MSBuild.Task">
       <Version>2.0.18.2</Version>
+    </PackageReference>
+    <PackageReference Include="YamlDotNet">
+      <Version>16.3.0</Version>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
@@ -110,6 +114,49 @@
     <EmbeddedResource Include="translations\Russian.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="EmbeddedLocalizations.csv" />
+    <EmbeddedResource Include="translations\Chinese.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Chinese_Trad.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Czech.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Dutch.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\French.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\German.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Japanese.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Korean.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Polish.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Portuguese_Brazilian.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Spanish.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Turkish.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <EmbeddedResource Include="translations\Ukrainian.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+    <None Include="UpdateTranslations.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

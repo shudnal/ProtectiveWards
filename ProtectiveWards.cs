@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.8";
+        public const string pluginVersion = "1.2.9";
 
         private static Harmony _harmony;
 

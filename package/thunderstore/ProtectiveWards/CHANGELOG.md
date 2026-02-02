@@ -1,3 +1,7 @@
+# 1.2.9
+* patch 0.221.10
+* more translations
+
 # 1.2.8
 * fixed Hildir's chest preventing player from fly to Hildir
 
