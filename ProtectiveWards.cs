@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.9";
+        public const string pluginVersion = "1.2.10";
 
         private static Harmony _harmony;
 
@@ -57,6 +57,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardPassiveRepairNonPlayer;
         public static ConfigEntry<bool> wardPassiveRepairRequireStation;
         public static ConfigEntry<int> autoCloseDoorsTime;
+        public static ConfigEntry<string> autoCloseDoorsIgnorePrefabs;
 
         public static ConfigEntry<string> wardPrefabNameToChangeRange;
         public static ConfigEntry<bool> setWardRange;
@@ -286,6 +287,7 @@ namespace ProtectiveWards
             wardPassiveRepairRequireStation = config("Passive", "Passive repair requires crafting station", defaultValue: false, "If enabled - piece can be repaired only if there is corresponding crafting station near the ward.");
 
             autoCloseDoorsTime = config("Passive", "Auto close doors after", defaultValue: 0, "Automatically close doors after a specified number of seconds. 0 to disable. 5 recommended");
+            autoCloseDoorsIgnorePrefabs = config("Passive", "Auto close doors ignore prefabs", defaultValue: "", "Comma-separated list of prefab names which should not be auto closed.");
 
 
             wardPrefabNameToChangeRange = config("Range", "Ward prefab names to control range", defaultValue: "guard_stone", "Prefab name of ward to control range in case.");
@@ -764,7 +766,7 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                if (autoCloseDoorsTime.Value == 0)
+                if (autoCloseDoorsTime.Value == 0 || autoCloseDoorsIgnorePrefabs.Value.IndexOf(Utils.GetPrefabName(__instance.gameObject)) > -1)
                     return;
 
                 if (!___m_nview.IsValid())

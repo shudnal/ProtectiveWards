@@ -1,3 +1,6 @@
+# 1.2.10
+* config to ignore certain doors when auto closing
+
 # 1.2.9
 * patch 0.221.10
 * more translations
