@@ -17,7 +17,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.10";
+        public const string pluginVersion = "1.2.11";
 
         private static Harmony _harmony;
 
@@ -191,7 +191,7 @@ namespace ProtectiveWards
             ConfigInit();
             _ = configSync.AddLockingConfigEntry(configLocked);
 
-            LocalizationManager.Localizer.Load();
+            StartCoroutine(LocalizationManager.Localizer.Load());
         }
 
         private void FixedUpdate()

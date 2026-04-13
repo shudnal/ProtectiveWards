@@ -1,3 +1,6 @@
+# 1.2.11
+* fixed localization not initializing in certain cases
+
 # 1.2.10
 * config to ignore certain doors when auto closing
 
