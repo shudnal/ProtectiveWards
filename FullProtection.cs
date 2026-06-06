@@ -113,6 +113,86 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(Container), nameof(Container.Interact))]
+        public static class Container_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Container __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectChests.Value)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
+        public static class Door_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Door __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectDoors.Value)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Pickable), nameof(Pickable.Interact))]
+        public static class Pickable_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Pickable __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectPlants.Value)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(ShipControlls), nameof(ShipControlls.Interact))]
+        public static class ShipControlls_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ShipControlls __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectBoats.Value)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Sadle), nameof(Sadle.Interact))]
+        public static class Sadle_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Sadle __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(Trap), nameof(Trap.OnTriggerEnter))]
         static class Trap_OnTriggerEnter_TrapProtection
         {

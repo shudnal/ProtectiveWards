@@ -116,6 +116,12 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardTrapProtection;
         public static ConfigEntry<string> wardPlantProtectionList;
         public static ConfigEntry<string> boarsHensProtectionGroupList;
+        public static ConfigEntry<bool> wardAccessProtectChests;
+        public static ConfigEntry<bool> wardAccessProtectDoors;
+        public static ConfigEntry<bool> wardAccessProtectPlants;
+        public static ConfigEntry<bool> wardAccessProtectBoats;
+        public static ConfigEntry<bool> wardAccessProtectTames;
+        public static ConfigEntry<bool> wardAccessShareConnectedAccess;
 
         internal static ProtectiveWards instance;
         internal static long startTimeCached;
@@ -337,6 +343,12 @@ namespace ProtectiveWards
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "$item_carrot, $item_turnip, $item_onion, $item_carrotseeds, $item_turnipseeds, $item_onionseeds, $item_jotunpuffs, $item_magecap", "List of plants to be protected from damage");
             boarsHensProtectionGroupList = config("Ward protects", "Boars and hens from list", "boar, chicken", "List of tamed groups to be protected from damage");
+            wardAccessProtectChests = config("Ward protects", "Chest access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
+            wardAccessProtectDoors = config("Ward protects", "Door access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
+            wardAccessProtectPlants = config("Ward protects", "Plant picking from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
+            wardAccessProtectBoats = config("Ward protects", "Boat mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
+            wardAccessProtectTames = config("Ward protects", "Tame mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
+            wardAccessShareConnectedAccess = config("Ward protects", "Share access between overlapping wards", false, "Set whether access to any active Ward that overlaps this Ward also grants access for protected interactions in this Ward");
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -402,6 +414,58 @@ namespace ProtectiveWards
             if (checkCache)
                 areaCache.Add(point, area);
             
+            return false;
+        }
+
+        public static bool HasAccessToWard(PrivateArea ward, Player player)
+        {
+            if (ward == null || player == null)
+                return true;
+
+            if (ward.m_ownerFaction != Character.Faction.Players)
+                return false;
+
+            if (ward.m_piece != null && ward.m_piece.GetCreator() == player.GetPlayerID())
+                return true;
+
+            return ward.IsPermitted(player.GetPlayerID());
+        }
+
+        public static bool HasAccessToWardOrConnectedWard(PrivateArea ward, Player player)
+        {
+            if (HasAccessToWard(ward, player))
+                return true;
+
+            if (!wardAccessShareConnectedAccess.Value)
+                return false;
+
+            return ConnectedAreas(ward).Any(area => HasAccessToWard(area, player));
+        }
+
+        public static bool BlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash = true)
+        {
+            if (!modEnabled.Value)
+                return false;
+
+            Player player = human as Player;
+            if (player == null)
+                return false;
+
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (!area.IsEnabled() || area.m_ownerFaction != Character.Faction.Players || !area.IsInside(point, 0f))
+                    continue;
+
+                if (HasAccessToWardOrConnectedWard(area, player))
+                    continue;
+
+                if (flash)
+                    area.FlashShield(false);
+
+                player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+                return true;
+            }
+
             return false;
         }
 
