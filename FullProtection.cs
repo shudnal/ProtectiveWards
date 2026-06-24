@@ -1,5 +1,7 @@
 ﻿using HarmonyLib;
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using static ProtectiveWards.ProtectiveWards;
 
@@ -7,6 +9,47 @@ namespace ProtectiveWards
 {
     internal class FullProtection
     {
+        private static int s_privateAreaCheckBypassDepth;
+
+        private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
+        {
+            if (!BlockUnauthorizedWardInteraction(component, human))
+                return false;
+
+            result = true;
+            return true;
+        }
+
+        private static void StartPrivateAreaCheckBypass(Component component, Humanoid human, ref bool state)
+        {
+            if (!ShouldBypassVanillaPrivateAreaCheck(component, human))
+                return;
+
+            s_privateAreaCheckBypassDepth++;
+            state = true;
+        }
+
+        private static void StopPrivateAreaCheckBypass(bool state)
+        {
+            if (!state)
+                return;
+
+            s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
+        }
+
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.CheckAccess))]
+        public static class PrivateArea_CheckAccess_ScopedWardAccessBypass
+        {
+            private static bool Prefix(ref bool __result)
+            {
+                if (s_privateAreaCheckBypassDepth <= 0)
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(Character), nameof(Character.AddFireDamage))]
         public static class Character_AddFireDamage_IndirectFireDamageProtection
         {
@@ -116,32 +159,52 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Container), nameof(Container.Interact))]
         public static class Container_Interact_PreventUnauthorizedAccess
         {
-            private static bool Prefix(Container __instance, Humanoid character, ref bool __result)
+            private static bool Prefix(Container __instance, Humanoid character, ref bool __result, ref bool __state)
             {
                 if (!wardAccessProtectChests.Value)
                     return true;
 
-                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                if (!BlockUnauthorizedWardInteraction(__instance, character))
+                {
+                    if (__instance.m_checkGuardStone)
+                        StartPrivateAreaCheckBypass(__instance, character, ref __state);
+
                     return true;
+                }
 
                 __result = true;
                 return false;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
             }
         }
 
         [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
         public static class Door_Interact_PreventUnauthorizedAccess
         {
-            private static bool Prefix(Door __instance, Humanoid character, ref bool __result)
+            private static bool Prefix(Door __instance, Humanoid character, ref bool __result, ref bool __state)
             {
                 if (!wardAccessProtectDoors.Value)
                     return true;
 
-                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                if (!BlockUnauthorizedWardInteraction(__instance, character))
+                {
+                    if (__instance.m_checkGuardStone)
+                        StartPrivateAreaCheckBypass(__instance, character, ref __state);
+
                     return true;
+                }
 
                 __result = true;
                 return false;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
             }
         }
 
@@ -153,7 +216,7 @@ namespace ProtectiveWards
                 if (!wardAccessProtectPlants.Value)
                     return true;
 
-                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                if (!BlockUnauthorizedWardInteraction(__instance, character))
                     return true;
 
                 __result = true;
@@ -169,7 +232,7 @@ namespace ProtectiveWards
                 if (!wardAccessProtectBoats.Value)
                     return true;
 
-                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                if (!BlockUnauthorizedWardInteraction(__instance, character))
                     return true;
 
                 __result = true;
@@ -185,7 +248,577 @@ namespace ProtectiveWards
                 if (!wardAccessProtectTames.Value)
                     return true;
 
-                if (!BlockUnauthorizedWardInteraction(__instance.transform.position, character))
+                if (!BlockUnauthorizedWardInteraction(__instance, character))
+                    return true;
+
+                __result = true;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Tameable), nameof(Tameable.Interact))]
+        public static class Tameable_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Tameable __instance, Humanoid user, bool hold, ref bool __result)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (hold)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Tameable), nameof(Tameable.UseItem))]
+        public static class Tameable_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Tameable __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (!IsProtectedTameUseItem(__instance, item))
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+
+            private static bool IsProtectedTameUseItem(Tameable tameable, ItemDrop.ItemData item)
+            {
+                if (tameable == null || item == null || tameable.m_saddleItem == null || tameable.m_saddleItem.m_itemData == null)
+                    return false;
+
+                return tameable.IsTamed() && item.m_shared.m_name == tameable.m_saddleItem.m_itemData.m_shared.m_name;
+            }
+        }
+
+        [HarmonyPatch(typeof(Petable), nameof(Petable.Interact))]
+        public static class Petable_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Petable __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Pet), nameof(Pet.Interact))]
+        public static class Pet_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Pet __instance, Humanoid user, bool hold, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                {
+                    if (IsProtectedPetItemStandInteraction(__instance, hold))
+                        StartPrivateAreaCheckBypass(__instance.m_itemStand, user, ref __state);
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+
+            private static bool IsProtectedPetItemStandInteraction(Pet pet, bool hold)
+            {
+                return hold && pet != null && pet.m_itemStand != null && pet.m_itemStand.HaveAttachment();
+            }
+        }
+
+        [HarmonyPatch(typeof(Pet), nameof(Pet.UseItem))]
+        public static class Pet_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Pet __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
+            {
+                if (!wardAccessProtectTames.Value)
+                    return true;
+
+                if (!IsProtectedPetUseItem(__instance, item))
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+
+            private static bool IsProtectedPetUseItem(Pet pet, ItemDrop.ItemData item)
+            {
+                if (pet == null || item == null || pet.m_FeedItem == null || pet.m_FeedItem.m_itemData == null)
+                    return false;
+
+                return item.m_shared.m_name == pet.m_FeedItem.m_itemData.m_shared.m_name;
+            }
+        }
+
+        [HarmonyPatch(typeof(Vagon), nameof(Vagon.Interact))]
+        public static class Vagon_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Vagon __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectCarts.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, character, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Interact))]
+        public static class TeleportWorld_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(TeleportWorld __instance, Humanoid human, bool hold, ref bool __result, ref bool __state)
+            {
+                if (wardAccessProtectPortals.Value == WardPortalAccessMode.AllowAll)
+                    return true;
+
+                if (hold)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, human, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, human, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.SetText))]
+        public static class TeleportWorld_SetText_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(TeleportWorld __instance)
+            {
+                if (wardAccessProtectPortals.Value == WardPortalAccessMode.AllowAll)
+                    return true;
+
+                Player player = Player.m_localPlayer;
+                if (player == null)
+                    return true;
+
+                return !BlockUnauthorizedWardInteraction(__instance, player);
+            }
+        }
+
+        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Teleport))]
+        public static class TeleportWorld_Teleport_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(TeleportWorld __instance, Player player)
+            {
+                if (wardAccessProtectPortals.Value != WardPortalAccessMode.BlockAll)
+                    return true;
+
+                if (player == null)
+                    return true;
+
+                return !BlockUnauthorizedWardInteraction(__instance, player);
+            }
+        }
+
+        [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.Interact))]
+        public static class CookingStation_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(CookingStation __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.UseItem))]
+        public static class CookingStation_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(CookingStation __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.OnAddFuelSwitch))]
+        public static class CookingStation_OnAddFuelSwitch_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(CookingStation __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.OnAddFoodSwitch))]
+        public static class CookingStation_OnAddFoodSwitch_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(CookingStation __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Smelter), nameof(Smelter.OnAddOre))]
+        public static class Smelter_OnAddOre_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Smelter __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Smelter), nameof(Smelter.OnEmpty))]
+        public static class Smelter_OnEmpty_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Smelter __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Smelter), nameof(Smelter.OnAddFuel))]
+        public static class Smelter_OnAddFuel_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Smelter __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Fermenter), nameof(Fermenter.Interact))]
+        public static class Fermenter_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Fermenter __instance, Humanoid user, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(Fermenter), nameof(Fermenter.UseItem))]
+        public static class Fermenter_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Fermenter __instance, Humanoid user, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(Beehive), nameof(Beehive.Interact))]
+        public static class Beehive_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Beehive __instance, Humanoid character, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, character, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, character, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(SapCollector), nameof(SapCollector.Interact))]
+        public static class SapCollector_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(SapCollector __instance, Humanoid character, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectProductionStations.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, character, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, character, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(ItemStand), nameof(ItemStand.Interact))]
+        public static class ItemStand_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ItemStand __instance, Humanoid user, bool hold, bool alt, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectItemStands.Value)
+                    return true;
+
+                if (!IsProtectedItemStandInteraction(__instance, hold, alt))
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+
+            private static bool IsProtectedItemStandInteraction(ItemStand itemStand, bool hold, bool alt)
+            {
+                if (itemStand == null)
+                    return false;
+
+                if (!itemStand.HaveAttachment())
+                    return itemStand.m_autoAttach && itemStand.m_supportedItems.Count == 1;
+
+                if (hold && itemStand.m_canBeRemoved)
+                    return true;
+
+                return alt && itemStand.m_visualItemDrop != null && itemStand.m_orientationSettings.Count > 1;
+            }
+        }
+
+        [HarmonyPatch(typeof(ItemStand), nameof(ItemStand.UseItem))]
+        public static class ItemStand_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ItemStand __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
+            {
+                if (!wardAccessProtectItemStands.Value)
+                    return true;
+
+                if (item == null || __instance.HaveAttachment() || !__instance.CanAttach(item))
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Switch), nameof(Switch.Interact))]
+        public static class Switch_Interact_PreventUnauthorizedArmorStandAccess
+        {
+            private static bool Prefix(Switch __instance, Humanoid character, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectItemStands.Value)
+                    return true;
+
+                ArmorStand armorStand = __instance.GetComponentInParent<ArmorStand>();
+                if (armorStand == null)
+                    return true;
+
+                if (BlockProtectedInteraction(armorStand, character, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(armorStand, character, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(Switch), nameof(Switch.UseItem))]
+        public static class Switch_UseItem_PreventUnauthorizedArmorStandAccess
+        {
+            private static bool Prefix(Switch __instance, Humanoid user, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectItemStands.Value)
+                    return true;
+
+                ArmorStand armorStand = __instance.GetComponentInParent<ArmorStand>();
+                if (armorStand == null)
+                    return true;
+
+                if (BlockProtectedInteraction(armorStand, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(armorStand, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(ArmorStand), nameof(ArmorStand.UseItem))]
+        public static class ArmorStand_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ArmorStand __instance, Humanoid user, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectItemStands.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch]
+        public static class Interactable_PreventUnauthorizedAccess
+        {
+            private static readonly HashSet<Type> ExcludedInteractableTypes = new HashSet<Type>
+            {
+                typeof(Container),
+                typeof(Door),
+                typeof(Pickable),
+                typeof(PrivateArea),
+                typeof(Ladder),
+                typeof(ShipControlls),
+                typeof(Sadle),
+                typeof(Switch),
+                typeof(Chair),
+                typeof(TombStone),
+                typeof(TeleportWorld),
+                typeof(Vagon),
+                typeof(Tameable),
+                typeof(Pet),
+                typeof(Petable),
+                typeof(ItemStand),
+                typeof(CookingStation),
+                typeof(Fermenter),
+                typeof(Beehive),
+                typeof(SapCollector),
+                typeof(ItemDrop),
+                typeof(PickableItem),
+                typeof(Fish),
+                typeof(RopeAttachment),
+                typeof(Teleport)
+            };
+
+            private static IEnumerable<MethodBase> TargetMethods()
+            {
+                foreach (Type type in typeof(Player).Assembly.GetTypes())
+                {
+                    if (type == typeof(Interactable) || type.IsAbstract || !typeof(Interactable).IsAssignableFrom(type) || ExcludedInteractableTypes.Contains(type))
+                        continue;
+
+                    MethodInfo interact = AccessTools.Method(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
+                    if (interact != null)
+                        yield return interact;
+
+                    MethodInfo useItem = AccessTools.Method(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
+                    if (useItem != null)
+                        yield return useItem;
+                }
+            }
+
+            private static bool Prefix(object __instance, Humanoid __0, ref bool __result)
+            {
+                if (!wardAccessProtectInteractables.Value)
+                    return true;
+
+                if (!(__0 is Player))
+                    return true;
+
+                Component component = __instance as Component;
+                if (component == null)
+                    return true;
+
+                if (!BlockUnauthorizedWardInteraction(component, __0))
                     return true;
 
                 __result = true;
@@ -208,6 +841,50 @@ namespace ProtectiveWards
                     return true;
 
                 return !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true);
+            }
+        }
+
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Damage))]
+        public static class WearNTear_Damage_PreventTameDamageToStructures
+        {
+            private static void Prefix(WearNTear __instance, HitData hit)
+            {
+                if (!ShouldSuppressTameDamageToStructure(__instance, hit))
+                    return;
+
+                hit.m_damage.Modify(0f);
+            }
+
+            private static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)
+            {
+                if (!modEnabled.Value)
+                    return false;
+
+                if (!wardBackgroundTamesPreventDamageToStructures.Value)
+                    return false;
+
+                if (wearNTear == null || hit == null || !hit.HaveAttacker())
+                    return false;
+
+                Piece piece = wearNTear.m_piece != null ? wearNTear.m_piece : wearNTear.GetComponent<Piece>();
+                if (piece == null || !piece.IsPlacedByPlayer())
+                    return false;
+
+                Character attacker = hit.GetAttacker();
+                if (attacker == null || attacker.IsPlayer() || !attacker.IsTamed())
+                    return false;
+
+                if (!TryFindProtectedWardNetworkXZ(attacker.transform.position, wearNTear.transform.position, out PrivateArea ward))
+                    return false;
+
+                float radius = Math.Max(wardBackgroundPresenceRadius.Value, 0f);
+                if (HasEffectiveAccessPlayerNearby(ward, attacker.transform.position, radius))
+                    return false;
+
+                if (HasEffectiveAccessPlayerNearby(ward, wearNTear.transform.position, radius))
+                    return false;
+
+                return true;
             }
         }
 

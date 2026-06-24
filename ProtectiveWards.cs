@@ -8,11 +8,12 @@ using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
-using ServerSync;
+using ConditionalConfigSync;
 
 namespace ProtectiveWards
 {
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
+    [BepInDependency("_shudnal.ConditionalConfigSync", BepInDependency.DependencyFlags.HardDependency)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
@@ -21,7 +22,7 @@ namespace ProtectiveWards
 
         private static Harmony _harmony;
 
-        internal static readonly ConfigSync configSync = new ConfigSync(pluginID) { DisplayName = pluginName, CurrentVersion = pluginVersion, MinimumRequiredVersion = pluginVersion };
+        internal static readonly ConfigSync configSync = new ConfigSync(pluginID) { DisplayName = pluginName, CurrentVersion = pluginVersion, MinimumRequiredVersion = pluginVersion, ModRequired = true };
 
         public static ConfigEntry<bool> modEnabled;
         public static ConfigEntry<bool> configLocked;
@@ -121,7 +122,14 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardAccessProtectPlants;
         public static ConfigEntry<bool> wardAccessProtectBoats;
         public static ConfigEntry<bool> wardAccessProtectTames;
-        public static ConfigEntry<bool> wardAccessShareConnectedAccess;
+        public static ConfigEntry<bool> wardAccessProtectProductionStations;
+        public static ConfigEntry<bool> wardAccessProtectItemStands;
+        public static ConfigEntry<bool> wardAccessProtectCarts;
+        public static ConfigEntry<WardPortalAccessMode> wardAccessProtectPortals;
+        public static ConfigEntry<WardConnectedAccessMode> wardAccessConnectedAccessMode;
+        public static ConfigEntry<bool> wardAccessProtectInteractables;
+        public static ConfigEntry<bool> wardBackgroundTamesPreventDamageToStructures;
+        public static ConfigEntry<float> wardBackgroundPresenceRadius;
 
         internal static ProtectiveWards instance;
         internal static long startTimeCached;
@@ -188,6 +196,21 @@ namespace ProtectiveWards
             AnyDamage
         }
 
+        public enum WardConnectedAccessMode
+        {
+            Off,
+            SameCreatorOnly,
+            MutualTrust,
+            AnyConnected
+        }
+
+        public enum WardPortalAccessMode
+        {
+            AllowAll,
+            AllowTeleportOnly,
+            BlockAll
+        }
+
         private void Awake()
         {
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
@@ -195,7 +218,7 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
-            _ = configSync.AddLockingConfigEntry(configLocked);
+            configSync.AddLockingConfigEntry(configLocked);
 
             StartCoroutine(LocalizationManager.Localizer.Load());
         }
@@ -348,7 +371,21 @@ namespace ProtectiveWards
             wardAccessProtectPlants = config("Ward protects", "Plant picking from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
             wardAccessProtectBoats = config("Ward protects", "Boat mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
             wardAccessProtectTames = config("Ward protects", "Tame mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
-            wardAccessShareConnectedAccess = config("Ward protects", "Share access between overlapping wards", false, "Set whether access to any active Ward that overlaps this Ward also grants access for protected interactions in this Ward");
+            wardAccessProtectProductionStations = config("Ward protects", "Production station access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
+            wardAccessProtectItemStands = config("Ward protects", "Item stand access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
+            wardAccessProtectCarts = config("Ward protects", "Cart access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
+            wardAccessProtectPortals = config("Ward protects", "Portal access mode from non-permitted players", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
+                                                                                                                                     + "\nAllowAll: non-permitted players can use and rename portals as usual."
+                                                                                                                                     + "\nAllowTeleportOnly: non-permitted players can teleport through portals but cannot rename/change portal tags."
+                                                                                                                                     + "\nBlockAll: non-permitted players cannot teleport through or rename nearby portals.");
+            wardAccessConnectedAccessMode = config("Ward protects", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls whether overlapping active player wards can share access for protected interactions."
+                                                                                                                                         + "\nOff: only direct access to the ward covering the object is accepted."
+                                                                                                                                         + "\nSameCreatorOnly: access may be shared only between overlapping wards created by the same player."
+                                                                                                                                         + "\nMutualTrust: access may be shared only between overlapping wards whose creators are mutually trusted/permitted by the protected/root ward, not by transitive chain trust."
+                                                                                                                                         + "\nAnyConnected: access to any overlapping ward can grant access to the whole connected group. Intended for single-party servers where all players share one ward network.");
+            wardAccessProtectInteractables = config("Ward protects", "Generic interactable access from non-permitted players", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
+            wardBackgroundTamesPreventDamageToStructures = config("Ward protects", "Tames prevent damage to structures without permitted players nearby", true, "Set whether tamed creatures inside a ward prevent their own damage to player-built structures in the same protected ward network when no permitted player is nearby.");
+            wardBackgroundPresenceRadius = config("Ward protects", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for narrow background tame damage checks.");
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -417,33 +454,453 @@ namespace ProtectiveWards
             return false;
         }
 
-        public static bool HasAccessToWard(PrivateArea ward, Player player)
+        private static bool IsActivePlayerWard(PrivateArea ward)
+        {
+            return ward != null && ward.IsEnabled() && ward.m_ownerFaction == Character.Faction.Players;
+        }
+
+        private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate)
+        {
+            if (ward == null || candidate == null)
+                return false;
+
+            return ward.m_radius + candidate.m_radius >= Utils.DistanceXZ(ward.transform.position, candidate.transform.position);
+        }
+
+        public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f)
+        {
+            if (ward == null)
+                return false;
+
+            return Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
+        }
+
+        public static bool HasDirectAccessToWard(PrivateArea ward, Player player)
         {
             if (ward == null || player == null)
                 return true;
 
+            return HasDirectAccessToWard(ward, player.GetPlayerID());
+        }
+
+        public static bool HasDirectAccessToWard(PrivateArea ward, long playerID)
+        {
+            if (ward == null)
+                return true;
+
+            if (playerID == 0L)
+                return false;
+
             if (ward.m_ownerFaction != Character.Faction.Players)
                 return false;
 
-            if (ward.m_piece != null && ward.m_piece.GetCreator() == player.GetPlayerID())
+            if (ward.m_piece != null && ward.m_piece.GetCreator() == playerID)
                 return true;
 
-            return ward.IsPermitted(player.GetPlayerID());
+            return ward.IsPermitted(playerID);
+        }
+
+        public static bool HasAccessToWard(PrivateArea ward, Player player)
+        {
+            return HasDirectAccessToWard(ward, player);
+        }
+
+        private static long GetWardCreatorId(PrivateArea ward)
+        {
+            if (ward == null || ward.m_piece == null)
+                return 0L;
+
+            return ward.m_piece.GetCreator();
+        }
+
+        public static bool CanShareConnectedAccess(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
+        {
+            if (mode == WardConnectedAccessMode.Off)
+                return false;
+
+            if (!IsActivePlayerWard(protectedWard) || !IsActivePlayerWard(candidateWard))
+                return false;
+
+            if (protectedWard == candidateWard)
+                return true;
+
+            switch (mode)
+            {
+                case WardConnectedAccessMode.SameCreatorOnly:
+                    long protectedCreator = GetWardCreatorId(protectedWard);
+                    long candidateCreator = GetWardCreatorId(candidateWard);
+                    return protectedCreator != 0L && protectedCreator == candidateCreator;
+                case WardConnectedAccessMode.MutualTrust:
+                    protectedCreator = GetWardCreatorId(protectedWard);
+                    candidateCreator = GetWardCreatorId(candidateWard);
+                    return protectedCreator != 0L
+                           && candidateCreator != 0L
+                           && HasDirectAccessToWard(protectedWard, candidateCreator)
+                           && HasDirectAccessToWard(candidateWard, protectedCreator);
+                case WardConnectedAccessMode.AnyConnected:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static IEnumerable<PrivateArea> ConnectedAccessAreas(PrivateArea ward, WardConnectedAccessMode mode)
+        {
+            if (!IsActivePlayerWard(ward))
+                yield break;
+
+            HashSet<PrivateArea> visited = new HashSet<PrivateArea>();
+            List<PrivateArea> queue = new List<PrivateArea>();
+            int queueIndex = 0;
+
+            visited.Add(ward);
+            queue.Add(ward);
+
+            while (queueIndex < queue.Count)
+            {
+                PrivateArea current = queue[queueIndex++];
+                yield return current;
+
+                if (mode == WardConnectedAccessMode.Off)
+                    continue;
+
+                foreach (PrivateArea candidate in PrivateArea.m_allAreas)
+                {
+                    if (visited.Contains(candidate))
+                        continue;
+
+                    if (!IsActivePlayerWard(candidate) || !AreWardsOverlapping(current, candidate))
+                        continue;
+
+                    // Connected sharing rules are checked against the protected/root ward.
+                    if (!CanShareConnectedAccess(ward, candidate, mode))
+                        continue;
+
+                    visited.Add(candidate);
+                    queue.Add(candidate);
+                }
+            }
         }
 
         public static bool HasAccessToWardOrConnectedWard(PrivateArea ward, Player player)
         {
-            if (HasAccessToWard(ward, player))
+            if (wardAccessConnectedAccessMode == null)
+                return HasDirectAccessToWard(ward, player);
+
+            return HasAccessToWardOrConnectedWard(ward, player, wardAccessConnectedAccessMode.Value);
+        }
+
+        public static bool HasAccessToWardOrConnectedWard(PrivateArea ward, Player player, WardConnectedAccessMode mode)
+        {
+            if (ward == null || player == null)
                 return true;
 
-            if (!wardAccessShareConnectedAccess.Value)
+            return HasAccessToWardOrConnectedWard(ward, player.GetPlayerID(), mode);
+        }
+
+        public static bool HasAccessToWardOrConnectedWard(PrivateArea ward, long playerID, WardConnectedAccessMode mode)
+        {
+            if (HasDirectAccessToWard(ward, playerID))
+                return true;
+
+            if (mode == WardConnectedAccessMode.Off)
                 return false;
 
-            return ConnectedAreas(ward).Any(area => HasAccessToWard(area, player));
+            return ConnectedAccessAreas(ward, mode).Any(area => area != ward && HasDirectAccessToWard(area, playerID));
+        }
+
+        public static PrivateArea FindProtectedWard(Vector3 point)
+        {
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (IsActivePlayerWard(area) && area.IsInside(point, 0f))
+                    return area;
+            }
+
+            return null;
+        }
+
+        public static bool IsPointInsideWardNetwork(Vector3 point, PrivateArea ward, WardConnectedAccessMode mode)
+        {
+            return ConnectedAccessAreas(ward, mode).Any(area => area.IsInside(point, 0f));
+        }
+
+        public static bool IsPointInsideWardNetworkXZ(Vector3 point, PrivateArea ward, WardConnectedAccessMode mode)
+        {
+            return ConnectedAccessAreas(ward, mode).Any(area => IsInsideWardXZ(area, point));
+        }
+
+        public static bool TryFindProtectedWardNetwork(Vector3 sourcePoint, Vector3 targetPoint, out PrivateArea ward)
+        {
+            ward = null;
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (!IsActivePlayerWard(area) || !area.IsInside(sourcePoint, 0f))
+                    continue;
+
+                if (!IsPointInsideWardNetwork(targetPoint, area, mode))
+                    continue;
+
+                ward = area;
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool TryFindProtectedWardNetworkXZ(Vector3 sourcePoint, Vector3 targetPoint, out PrivateArea ward)
+        {
+            ward = null;
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (!IsActivePlayerWard(area) || !IsInsideWardXZ(area, sourcePoint))
+                    continue;
+
+                if (!IsPointInsideWardNetworkXZ(targetPoint, area, mode))
+                    continue;
+
+                ward = area;
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool TryGetObjectCreatorId(Component component, out long creatorId)
+        {
+            creatorId = 0L;
+
+            if (component == null)
+                return false;
+
+            TombStone tombStone = component.GetComponentInParent<TombStone>();
+            if (tombStone != null)
+                creatorId = tombStone.GetOwner();
+
+            if (creatorId == 0L)
+            {
+                Bed bed = component.GetComponentInParent<Bed>();
+                if (bed != null)
+                    creatorId = bed.GetOwner();
+            }
+
+            if (creatorId == 0L)
+            {
+                Tameable tameable = component.GetComponentInParent<Tameable>();
+                if (tameable != null && tameable.m_piece != null)
+                    creatorId = tameable.m_piece.GetCreator();
+            }
+
+            if (creatorId == 0L)
+            {
+                ShipControlls shipControlls = component.GetComponentInParent<ShipControlls>();
+                Piece shipPiece = shipControlls != null && shipControlls.m_ship != null ? shipControlls.m_ship.GetComponent<Piece>() : null;
+                if (shipPiece != null)
+                    creatorId = shipPiece.GetCreator();
+            }
+
+            if (creatorId == 0L)
+            {
+                Piece piece = component.GetComponentInParent<Piece>();
+                if (piece != null)
+                    creatorId = piece.GetCreator();
+            }
+
+            if (creatorId == 0L)
+            {
+                ZNetView zNetView = component.GetComponentInParent<ZNetView>();
+                ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
+                if (zdo != null)
+                    creatorId = zdo.GetLong(ZDOVars.s_creator, 0L);
+            }
+
+            return creatorId != 0L;
+        }
+
+        public static bool TryGetObjectCreatorName(Component component, out string creatorName)
+        {
+            creatorName = "";
+
+            if (component == null)
+                return false;
+
+            TombStone tombStone = component.GetComponentInParent<TombStone>();
+            if (tombStone != null)
+                creatorName = tombStone.GetOwnerName();
+
+            if (String.IsNullOrWhiteSpace(creatorName))
+            {
+                Bed bed = component.GetComponentInParent<Bed>();
+                if (bed != null)
+                    creatorName = bed.GetOwnerName();
+            }
+
+            if (String.IsNullOrWhiteSpace(creatorName))
+            {
+                PrivateArea ward = component.GetComponentInParent<PrivateArea>();
+                if (ward != null)
+                    creatorName = ward.GetCreatorName();
+            }
+
+            if (String.IsNullOrWhiteSpace(creatorName))
+            {
+                ZNetView zNetView = component.GetComponentInParent<ZNetView>();
+                ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
+                if (zdo != null)
+                    creatorName = zdo.GetString(ZDOVars.s_creatorName);
+            }
+
+            if (String.IsNullOrWhiteSpace(creatorName) && TryGetObjectCreatorId(component, out long creatorId))
+            {
+                Player player = Player.GetPlayer(creatorId);
+                if (player != null)
+                    creatorName = player.GetPlayerName();
+            }
+
+            return !String.IsNullOrWhiteSpace(creatorName);
+        }
+
+        private static bool IsOwnershipSensitiveObject(Component component)
+        {
+            if (component == null)
+                return false;
+
+            return component.GetComponentInParent<Ship>() != null
+                   || component.GetComponentInParent<ShipControlls>() != null
+                   || component.GetComponentInParent<Vagon>() != null
+                   || component.GetComponentInParent<TombStone>() != null
+                   || component.GetComponentInParent<Ladder>() != null
+                   || component.GetComponentInParent<TeleportWorld>() != null
+                   || component.GetComponentInParent<ItemStand>() != null
+                   || component.GetComponentInParent<ArmorStand>() != null
+                   || component.GetComponentInParent<Sadle>() != null
+                   || component.GetComponentInParent<Tameable>() != null
+                   || component.GetComponentInParent<Pet>() != null
+                   || component.GetComponentInParent<Petable>() != null;
+        }
+
+        public static bool IsObjectOwnedByPlayerWithWardAccess(Component component, PrivateArea protectedWard, Player interactingPlayer)
+        {
+            if (!IsOwnershipSensitiveObject(component))
+                return false;
+
+            if (!TryGetObjectCreatorId(component, out long creatorId))
+                return false;
+
+            if (interactingPlayer != null && creatorId == interactingPlayer.GetPlayerID())
+                return true;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            return HasAccessToWardOrConnectedWard(protectedWard, creatorId, mode);
+        }
+
+        public static bool ShouldSkipWardBlockForOwnedObject(Component component, PrivateArea protectedWard, Player interactingPlayer)
+        {
+            return IsObjectOwnedByPlayerWithWardAccess(component, protectedWard, interactingPlayer);
+        }
+
+        public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
+        {
+            if (!modEnabled.Value)
+                return false;
+
+            if (component == null)
+                return false;
+
+            Player player = human as Player;
+            if (player == null)
+                return false;
+
+            bool foundProtectedWard = false;
+
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (area == null || !area.IsEnabled() || !area.IsInside(component.transform.position, 0f))
+                    continue;
+
+                if (!IsActivePlayerWard(area))
+                    return false;
+
+                foundProtectedWard = true;
+
+                if (HasAccessToWardOrConnectedWard(area, player))
+                    continue;
+
+                if (ShouldSkipWardBlockForOwnedObject(component, area, player))
+                    continue;
+
+                return false;
+            }
+
+            return foundProtectedWard;
+        }
+
+        public static string GetWardOwnerName(PrivateArea ward)
+        {
+            string ownerName = "";
+
+            if (ward != null)
+                ownerName = ward.GetCreatorName();
+
+            return String.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
+        }
+
+        public static string GetPrivateZoneDeniedMessage(PrivateArea ward)
+        {
+            string privateZone = Localization.instance != null ? Localization.instance.Localize("$msg_privatezone") : "$msg_privatezone";
+            string owner = Localization.instance != null ? Localization.instance.Localize("$piece_guardstone_owner") : "$piece_guardstone_owner";
+            return $"{privateZone}. {owner}: {GetWardOwnerName(ward)}";
+        }
+
+        public static bool HasEffectiveAccessPlayerNearby(PrivateArea ward, Vector3 point, float radius)
+        {
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+
+            foreach (Player player in Player.GetAllPlayers())
+            {
+                if (Utils.DistanceXZ(player.transform.position, point) > radius)
+                    continue;
+
+                if (HasAccessToWardOrConnectedWard(ward, player, mode))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool ShouldBlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash, out PrivateArea ward)
+        {
+            return ShouldBlockUnauthorizedWardInteraction(point, human, flash, out ward, null);
+        }
+
+        public static bool ShouldBlockUnauthorizedWardInteraction(Component component, Humanoid human, bool flash, out PrivateArea ward)
+        {
+            ward = null;
+
+            if (component == null)
+                return false;
+
+            return ShouldBlockUnauthorizedWardInteraction(component.transform.position, human, flash, out ward, component);
         }
 
         public static bool BlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash = true)
         {
+            return ShouldBlockUnauthorizedWardInteraction(point, human, flash, out _);
+        }
+
+        public static bool BlockUnauthorizedWardInteraction(Component component, Humanoid human, bool flash = true)
+        {
+            return ShouldBlockUnauthorizedWardInteraction(component, human, flash, out _);
+        }
+
+        private static bool ShouldBlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash, out PrivateArea ward, Component component)
+        {
+            ward = null;
+
             if (!modEnabled.Value)
                 return false;
 
@@ -453,16 +910,20 @@ namespace ProtectiveWards
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (!area.IsEnabled() || area.m_ownerFaction != Character.Faction.Players || !area.IsInside(point, 0f))
+                if (!IsActivePlayerWard(area) || !area.IsInside(point, 0f))
                     continue;
 
                 if (HasAccessToWardOrConnectedWard(area, player))
                     continue;
 
+                if (component != null && ShouldSkipWardBlockForOwnedObject(component, area, player))
+                    continue;
+
                 if (flash)
                     area.FlashShield(false);
 
-                player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+                ward = area;
+                player.Message(MessageHud.MessageType.Center, GetPrivateZoneDeniedMessage(area));
                 return true;
             }
 
@@ -622,7 +1083,7 @@ namespace ProtectiveWards
 
         public static IEnumerable<PrivateArea> ConnectedAreas(PrivateArea ward)
         {
-            return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && area.m_radius + ward.m_radius >= Vector3.Distance(area.transform.position, ward.transform.position)));
+            return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && area.m_radius + ward.m_radius >= Utils.DistanceXZ(area.transform.position, ward.transform.position)));
         }
 
         [HarmonyPatch(typeof(CircleProjector), nameof(CircleProjector.CreateSegments))]
