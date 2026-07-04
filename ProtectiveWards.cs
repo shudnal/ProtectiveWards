@@ -8,12 +8,21 @@ using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using UnityEngine;
-using ConditionalConfigSync;
+using Jotunn;
+using Jotunn.Utils;
 
 namespace ProtectiveWards
 {
+    internal sealed class ConfigurationManagerAttributes
+    {
+        public bool? IsAdminOnly;
+        public bool? Browsable;
+        public bool? ReadOnly;
+    }
+
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
-    [BepInDependency("_shudnal.ConditionalConfigSync", BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
+    [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
@@ -22,10 +31,7 @@ namespace ProtectiveWards
 
         private static Harmony _harmony;
 
-        internal static readonly ConfigSync configSync = new ConfigSync(pluginID) { DisplayName = pluginName, CurrentVersion = pluginVersion, MinimumRequiredVersion = pluginVersion, ModRequired = true };
-
         public static ConfigEntry<bool> modEnabled;
-        public static ConfigEntry<bool> configLocked;
 
         public static ConfigEntry<bool> disableFlash;
         public static ConfigEntry<bool> showAreaMarker;
@@ -218,8 +224,6 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
-            configSync.AddLockingConfigEntry(configLocked);
-
             StartCoroutine(LocalizationManager.Localizer.Load());
         }
 
@@ -395,12 +399,20 @@ namespace ProtectiveWards
 
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, ConfigDescription description, bool synchronizedSetting = true)
         {
-            ConfigEntry<T> configEntry = Config.Bind(group, name, defaultValue, description);
+            return Config.Bind(group, name, defaultValue, WithJotunnSync(description, synchronizedSetting));
+        }
 
-            SyncedConfigEntry<T> syncedConfigEntry = configSync.AddConfigEntry(configEntry);
-            syncedConfigEntry.SynchronizedConfig = synchronizedSetting;
+        ConfigEntry<T> config<T>(string group, string name, T defaultValue, string description, bool synchronizedSetting = true) => config(group, name, defaultValue, new ConfigDescription(description), synchronizedSetting);
 
-            return configEntry;
+        private static ConfigDescription WithJotunnSync(ConfigDescription description, bool synchronizedSetting)
+        {
+            if (!synchronizedSetting)
+                return description;
+
+            List<object> tags = description.Tags?.ToList() ?? new List<object>();
+            tags.Add(new ConfigurationManagerAttributes { IsAdminOnly = true });
+
+            return new ConfigDescription(description.Description, description.AcceptableValues, tags.ToArray());
         }
 
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, string description, bool synchronizedSetting = true) => config(group, name, defaultValue, new ConfigDescription(description), synchronizedSetting);
