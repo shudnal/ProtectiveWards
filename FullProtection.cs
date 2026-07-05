@@ -55,9 +55,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Character __instance, ref float damage)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (boarsHensProtection.Value && __instance.IsTamed() && _boarsHensProtectionGroupList.Contains(__instance.m_group.ToLower()) && InsideEnabledPlayersArea(__instance.transform.position))
                     damage = 0f;
             }
@@ -68,9 +65,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Character __instance, ref float dt)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (boarsHensProtection.Value && __instance.IsTamed() && _boarsHensProtectionGroupList.Contains(__instance.m_group.ToLower()) && InsideEnabledPlayersArea(__instance.transform.position))
                     dt = 0f;
             }
@@ -81,10 +75,7 @@ namespace ProtectiveWards
         {
             private static void Prefix(WearNTear __instance, ref bool ___m_noRoofWear, ref bool __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
-                if (!wardRainProtection.Value)
+                if (__instance == null || wardRainProtection == null || !wardRainProtection.Value)
                     return;
 
                 if (!___m_noRoofWear)
@@ -100,10 +91,7 @@ namespace ProtectiveWards
 
             private static void Postfix(ref bool ___m_noRoofWear, bool __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
-                if (!wardRainProtection.Value)
+                if (wardRainProtection == null || !wardRainProtection.Value)
                     return;
 
                 if (__state != true)
@@ -118,10 +106,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(Ship __instance)
             {
-                if (!modEnabled.Value)
-                    return true;
-
-                if (wardShipProtection.Value == ShipDamageType.Off)
+                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off)
                     return true;
 
                 return !InsideEnabledPlayersArea(__instance.transform.position);
@@ -133,10 +118,7 @@ namespace ProtectiveWards
         {
             private static void Prefix(Ship __instance, ref float ___m_waterImpactDamage, ref float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
-                if (wardShipProtection.Value == ShipDamageType.Off)
+                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off)
                     return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position))

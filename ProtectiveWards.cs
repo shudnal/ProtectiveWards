@@ -1891,9 +1891,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
