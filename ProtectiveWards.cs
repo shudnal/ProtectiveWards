@@ -42,6 +42,10 @@ namespace ProtectiveWards
         public static ConfigEntry<float> maxTaxiSpeed;
         public static ConfigEntry<bool> addLightMovement;
 
+        public static ConfigEntry<bool> wardSettingsUseDefaultsForAllWards;
+        public static ConfigEntry<bool> wardSettingsRequireCreator;
+        public static ConfigEntry<bool> wardSettingsAllowAdminEdit;
+
         public static ConfigEntry<bool> offeringActiveRepair;
         public static ConfigEntry<bool> offeringAugmenting;
         public static ConfigEntry<bool> offeringFood;
@@ -171,6 +175,7 @@ namespace ProtectiveWards
 
         public static readonly int s_customColor = "ward_useColor".GetStableHashCode();
         public static readonly int s_color = "ward_color".GetStableHashCode();
+        public static readonly int s_colorMultiplier = "ward_colorMultiplier".GetStableHashCode();
 
         public static readonly int s_circleEnabled = "circle_enabled".GetStableHashCode();
         public static readonly int s_circleStartColor = "circle_startColor".GetStableHashCode();
@@ -191,6 +196,19 @@ namespace ProtectiveWards
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new MaterialPropertyBlock();
+        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new Dictionary<PrivateArea, float>();
+        private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new Dictionary<PrivateArea, WardEmissionDefaults>();
+
+        private sealed class WardEmissionDefaults
+        {
+            public ParticleSystem[] ParticleSystems;
+            public ParticleSystem.MinMaxGradient[] ParticleStartColors;
+            public Light Light;
+            public Color LightColor;
+            public LightFlicker Flicker;
+            public bool HadFlicker;
+            public bool FlickerEnabled;
+        }
 
         private static float offeringsTimer = 0f;
 
@@ -250,7 +268,9 @@ namespace ProtectiveWards
             config("General", "NexusID", 2450, "Nexus mod ID for updates", false);
 
             modEnabled = config("General", "Enabled", defaultValue: true, "Enable the mod. Every option requires being in the zone of the active Ward.");
-            configLocked = config("General", "Lock Configuration", defaultValue: true, "Configuration is locked and can be changed by server admins only.");
+            wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied.");
+            wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings.");
+            wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, server admins can open and apply the per-ward settings window regardless of ward creator/access checks.");
 
             
             disableFlash = config("Misc", "Disable flash", defaultValue: false, "Disable flash on hit [Not Synced with Server]", false);
@@ -324,14 +344,14 @@ namespace ProtectiveWards
 
 
             wardPrefabNameToChangeRange = config("Range", "Ward prefab names to control range", defaultValue: "guard_stone", "Prefab name of ward to control range in case.");
-            setWardRange = config("Range", "Change Ward range", defaultValue: false, "Change ward range.");
-            wardRange = config("Range", "Ward range", defaultValue: 10f, "Ward range. Toggle ward protection for changes to take effect");
+            setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
+            wardRange = config("Range", "Ward range", defaultValue: 10f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
             permitEveryone = config("Range", "Grant permittance to everyone", defaultValue: false, "Grant permittance to every player. There still will be permittance list on ward but it won't take any effect.");
 
 
-            wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Show ward bubble like trader's one [Not Synced with Server]", false);
-            wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Bubble color. Toggle ward protection to change color [Not Synced with Server]", false);
+            wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
+            wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Default bubble color for wards without per-ward bubble color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection to change color [Not Synced with Server]", false);
             wardBubbleRefractionIntensity = config("Ward Bubble", "Refraction intensity", defaultValue: 0.005f, "Intensity of light refraction caused by bubble. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardBubbleWaveIntensity = config("Ward Bubble", "Wave intensity", defaultValue: 40f, "Bubble light distortion speed. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardBubbleGlossiness = config("Ward Bubble", "Glossiness", defaultValue: 0f, "Bubble glossiness. 1 to soap bubble effect. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
@@ -342,7 +362,7 @@ namespace ProtectiveWards
             wardDemisterEnabled = config("Ward Demister", "Enable demister", defaultValue: false, "Ward will push out the mist");
 
 
-            wardAreaMarkerPatch = config("Ward Circle", "Patch circle", defaultValue: false, "Change area marker circle projector parameters. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardAreaMarkerPatch = config("Ward Circle", "Patch circle", defaultValue: false, "Default value for whether wards without per-ward circle override should use custom area marker parameters. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardAreaMarkerSpeed = config("Ward Circle", "Speed", defaultValue: 0.1f, "Speed of lines movement. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardAreaMarkerStartColor = config("Ward Circle", "Color start", defaultValue: new Color(0.8f, 0.8f, 0.8f), "Starting color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardAreaMarkerEndColor = config("Ward Circle", "Color end", defaultValue: Color.clear, "End color (if set color of lines will change gradually). Toggle ward protection for changes to take effect [Not Synced with Server]", false);
@@ -362,34 +382,34 @@ namespace ProtectiveWards
                                                                                                                                            + "\nIf the fire does not burn - you are vulnerable");
 
 
-            wardEmissionColorEnabled = config("Ward Color", "Change emission color", defaultValue: false, "Change ward emission color. World restart required to apply changes. [Not Synced with Server]", false);
-            wardEmissionColor = config("Ward Color", "Color", defaultValue: new Color(0.967f, 0.508f, 0.092f), "Ward color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
-            wardEmissionColorMultiplier = config("Ward Color", "Color multiplier", defaultValue: 2f, "Ward color multiplier. Makes color more bright and intense. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardEmissionColorEnabled = config("Ward Color", "Change emission color", defaultValue: false, "Default value for whether wards without per-ward color override should use a custom emission color. Each disabled ward can be configured separately from its settings window. World restart required to apply changes. [Not Synced with Server]", false);
+            wardEmissionColor = config("Ward Color", "Color", defaultValue: new Color(0.967f, 0.508f, 0.092f), "Default ward emission color for wards without per-ward color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardEmissionColorMultiplier = config("Ward Color", "Color multiplier", defaultValue: 2f, "Default ward emission color multiplier for wards without per-ward color multiplier override. Each disabled ward can be configured separately from its settings window. Makes color more bright and intense. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
             wardLightColorEnabled = config("Ward Color", "Change flare and light accordingly", defaultValue: true, "Flare and emitted light color will fit ward color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
 
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "$item_carrot, $item_turnip, $item_onion, $item_carrotseeds, $item_turnipseeds, $item_onionseeds, $item_jotunpuffs, $item_magecap", "List of plants to be protected from damage");
             boarsHensProtectionGroupList = config("Ward protects", "Boars and hens from list", "boar, chicken", "List of tamed groups to be protected from damage");
-            wardAccessProtectChests = config("Ward protects", "Chest access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
-            wardAccessProtectDoors = config("Ward protects", "Door access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
-            wardAccessProtectPlants = config("Ward protects", "Plant picking from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
-            wardAccessProtectBoats = config("Ward protects", "Boat mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
-            wardAccessProtectTames = config("Ward protects", "Tame mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
-            wardAccessProtectProductionStations = config("Ward protects", "Production station access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
-            wardAccessProtectItemStands = config("Ward protects", "Item stand access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
-            wardAccessProtectCarts = config("Ward protects", "Cart access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
-            wardAccessProtectPortals = config("Ward protects", "Portal access mode from non-permitted players", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
+            wardAccessProtectChests = config("Ward access", "Chest access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
+            wardAccessProtectDoors = config("Ward access", "Door access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
+            wardAccessProtectPlants = config("Ward access", "Plant picking from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
+            wardAccessProtectBoats = config("Ward access", "Boat mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
+            wardAccessProtectTames = config("Ward access", "Tame mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
+            wardAccessProtectProductionStations = config("Ward access", "Production station access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
+            wardAccessProtectItemStands = config("Ward access", "Item stand access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
+            wardAccessProtectCarts = config("Ward access", "Cart access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
+            wardAccessProtectPortals = config("Ward access", "Portal access mode from non-permitted players", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
                                                                                                                                      + "\nAllowAll: non-permitted players can use and rename portals as usual."
                                                                                                                                      + "\nAllowTeleportOnly: non-permitted players can teleport through portals but cannot rename/change portal tags."
                                                                                                                                      + "\nBlockAll: non-permitted players cannot teleport through or rename nearby portals.");
-            wardAccessConnectedAccessMode = config("Ward protects", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls whether overlapping active player wards can share access for protected interactions."
+            wardAccessConnectedAccessMode = config("Ward access", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls whether overlapping active player wards can share access for protected interactions."
                                                                                                                                          + "\nOff: only direct access to the ward covering the object is accepted."
                                                                                                                                          + "\nSameCreatorOnly: access may be shared only between overlapping wards created by the same player."
                                                                                                                                          + "\nMutualTrust: access may be shared only between overlapping wards whose creators are mutually trusted/permitted by the protected/root ward, not by transitive chain trust."
                                                                                                                                          + "\nAnyConnected: access to any overlapping ward can grant access to the whole connected group. Intended for single-party servers where all players share one ward network.");
-            wardAccessProtectInteractables = config("Ward protects", "Generic interactable access from non-permitted players", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
-            wardBackgroundTamesPreventDamageToStructures = config("Ward protects", "Tames prevent damage to structures without permitted players nearby", true, "Set whether tamed creatures inside a ward prevent their own damage to player-built structures in the same protected ward network when no permitted player is nearby.");
-            wardBackgroundPresenceRadius = config("Ward protects", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for narrow background tame damage checks.");
+            wardAccessProtectInteractables = config("Ward access", "Generic interactable access from non-permitted players", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
+            wardBackgroundTamesPreventDamageToStructures = config("Ward access", "Tames prevent damage to structures without permitted players nearby", true, "Set whether tamed creatures inside a ward prevent their own damage to player-built structures in the same protected ward network when no permitted player is nearby.");
+            wardBackgroundPresenceRadius = config("Ward access", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for narrow background tame damage checks.");
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -414,8 +434,6 @@ namespace ProtectiveWards
 
             return new ConfigDescription(description.Description, description.AcceptableValues, tags.ToArray());
         }
-
-        ConfigEntry<T> config<T>(string group, string name, T defaultValue, string description, bool synchronizedSetting = true) => config(group, name, defaultValue, new ConfigDescription(description), synchronizedSetting);
 
         internal static void UpdateCache()
         {
@@ -942,6 +960,144 @@ namespace ProtectiveWards
             return false;
         }
 
+        public static bool CanEditWardSettings(PrivateArea ward, Player player)
+        {
+            if (!modEnabled.Value || ward == null || player == null)
+                return false;
+
+            if (wardSettingsAllowAdminEdit.Value && IsLocalPlayerAdminOrHost())
+                return true;
+
+            if (ward.m_piece == null)
+                return false;
+
+            if (wardSettingsRequireCreator.Value)
+                return ward.m_piece.IsCreator();
+
+            return ward.HaveLocalAccess();
+        }
+
+        public static bool CanApplyWardSettings(PrivateArea ward, long playerID)
+        {
+            if (!modEnabled.Value || ward == null || playerID == 0L)
+                return false;
+
+            if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
+                return true;
+
+            if (wardSettingsRequireCreator.Value)
+                return ward.m_piece != null && ward.m_piece.GetCreator() == playerID;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            return HasAccessToWardOrConnectedWard(ward, playerID, mode);
+        }
+
+        public static bool CanApplyWardSettings(ZDO zdo, long playerID)
+        {
+            if (!modEnabled.Value || zdo == null || playerID == 0L)
+                return false;
+
+            if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
+                return true;
+
+            return wardSettingsRequireCreator.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == playerID;
+        }
+
+        private static bool IsLocalPlayerAdminOrHost()
+        {
+            return ZNet.instance != null && ZNet.instance.LocalPlayerIsAdminOrHost();
+        }
+
+        private static bool IsPlayerServerAdminOrHost(long playerID)
+        {
+            if (playerID == 0L || ZNet.instance == null)
+                return false;
+
+            if (ZNet.IsSinglePlayer)
+                return true;
+
+            Player localPlayer = Player.m_localPlayer;
+            if (localPlayer != null && localPlayer.GetPlayerID() == playerID && ZNet.instance.LocalPlayerIsAdminOrHost())
+                return true;
+
+            return ZNet.instance.IsAdmin(playerID.ToString());
+        }
+
+        public static bool HasZdoBool(ZDO zdo, int key)
+        {
+            return zdo != null && zdo.GetBool(key, false) == zdo.GetBool(key, true);
+        }
+
+        public static bool HasZdoFloat(ZDO zdo, int key)
+        {
+            if (zdo == null)
+                return false;
+
+            const float markerA = -987654.125f;
+            const float markerB = -987653.125f;
+            return !Mathf.Approximately(zdo.GetFloat(key, markerA), markerA) || !Mathf.Approximately(zdo.GetFloat(key, markerB), markerB);
+        }
+
+        public static bool HasZdoString(ZDO zdo, int key)
+        {
+            if (zdo == null)
+                return false;
+
+            const string markerA = "__pw_missing_a__";
+            const string markerB = "__pw_missing_b__";
+            string valueA = zdo.GetString(key, markerA);
+            string valueB = zdo.GetString(key, markerB);
+            return valueA == valueB && !String.IsNullOrEmpty(valueA);
+        }
+
+        public static bool HasZdoVec3(ZDO zdo, int key)
+        {
+            return zdo != null && zdo.GetVec3(key, out _);
+        }
+
+        public static bool GetWardBoolSetting(ZDO zdo, int key, bool defaultValue, bool disabledValue = false)
+        {
+            if (zdo != null && HasZdoBool(zdo, key))
+                return zdo.GetBool(key, defaultValue);
+
+            return wardSettingsUseDefaultsForAllWards.Value ? defaultValue : disabledValue;
+        }
+
+        public static float GetWardFloatSetting(ZDO zdo, int key, float defaultValue)
+        {
+            return zdo != null && HasZdoFloat(zdo, key) ? zdo.GetFloat(key, defaultValue) : defaultValue;
+        }
+
+        public static string GetWardStringSetting(ZDO zdo, int key, string defaultValue)
+        {
+            return zdo != null && HasZdoString(zdo, key) ? zdo.GetString(key, defaultValue) : defaultValue;
+        }
+
+        public static Vector3 GetWardVec3Setting(ZDO zdo, int key, Vector3 defaultValue)
+        {
+            return zdo != null && zdo.GetVec3(key, out Vector3 value) ? value : defaultValue;
+        }
+
+        public static void RemoveZdoBool(ZDO zdo, int key)
+        {
+            zdo?.RemoveInt(key);
+        }
+
+        public static void RemoveZdoFloat(ZDO zdo, int key)
+        {
+            zdo?.RemoveFloat(key);
+        }
+
+        public static void RemoveZdoString(ZDO zdo, int key)
+        {
+            zdo?.Set(key, "");
+        }
+
+        public static void RemoveZdoVec3(ZDO zdo, int key)
+        {
+            zdo?.RemoveVec3(key);
+        }
+
         private static void ApplyRangeEffect(Component parent, EffectArea.Type includedTypes, float newRadius)
         {
             if (parent == null)
@@ -1106,13 +1262,16 @@ namespace ProtectiveWards
                 if (!modEnabled.Value)
                     return;
 
-                if (!wardAreaMarkerPatch.Value)
+                PrivateArea ward = __instance.transform.root.GetComponent<PrivateArea>();
+                if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                     return;
 
-                if (__instance.transform.root.GetComponent<PrivateArea>() == null)
+                ZDO zdo = ward.m_nview.GetZDO();
+                if (zdo == null || !GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value))
                     return;
 
-                __instance.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (__instance.m_radius / 32f));
+                float amount = GetWardFloatSetting(zdo, s_circleAmount, wardAreaMarkerAmount.Value);
+                __instance.m_nrOfSegments = (int)(80 * amount * (__instance.m_radius / 32f));
 
                 __state = (!__instance.m_sliceLines && __instance.m_segments.Count == __instance.m_nrOfSegments) || (__instance.m_sliceLines && __instance.m_calcStart == __instance.m_start && __instance.m_calcTurns == __instance.m_turns);
             }
@@ -1136,30 +1295,37 @@ namespace ProtectiveWards
 
         private static void InitEmissionColor(PrivateArea ward)
         {
-            if (!wardEmissionColorEnabled.Value || !ward.m_model)
+            if (ward == null || !ward.m_model)
+                return;
+
+            if (ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
             ZDO zdo = ward.m_nview.GetZDO();
-            if (!zdo.GetBool(s_customColor))
+            if (zdo == null)
                 return;
 
-            int materialIndex = -1;
-            for (int i = 0; i < ward.m_model.sharedMaterials.Length; i++)
-            {
-                if (ward.m_model.sharedMaterials[i].name.StartsWith("Guardstone_OdenGlow_mat"))
-                {
-                    materialIndex = i;
-                    break;
-                }
-            }
-
+            int materialIndex = FindWardEmissionMaterialIndex(ward);
             if (materialIndex == -1)
                 return;
 
-            if (!zdo.GetVec3(s_color, out Vector3 vector))
-                return;
+            CacheWardEmissionDefaults(ward);
 
-            Color color = new Color(vector.x, vector.y, vector.z);
+            if (!GetWardBoolSetting(zdo, s_customColor, wardEmissionColorEnabled.Value))
+            {
+                ResetWardEmissionColor(ward, materialIndex);
+                return;
+            }
+
+            Vector3 defaultColor = new Vector3(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b);
+            Vector3 vector = GetWardVec3Setting(zdo, s_color, defaultColor);
+            float multiplier = GetWardFloatSetting(zdo, s_colorMultiplier, wardEmissionColorMultiplier.Value);
+
+            Color color;
+            if (HasZdoVec3(zdo, s_color) && !HasZdoFloat(zdo, s_colorMultiplier))
+                color = new Color(vector.x, vector.y, vector.z);
+            else
+                color = new Color(vector.x * multiplier, vector.y * multiplier, vector.z * multiplier);
 
             ward.m_model.GetPropertyBlock(s_matBlock, materialIndex);
             s_matBlock.SetColor("_EmissionColor", color);
@@ -1167,18 +1333,18 @@ namespace ProtectiveWards
 
             if (wardLightColorEnabled.Value && ward.m_enabledEffect)
             {
-                float multiplier = wardEmissionColorMultiplier.Value == 0f ? 1f : wardEmissionColorMultiplier.Value;
+                float lightMultiplier = multiplier == 0f ? 1f : multiplier;
 
                 foreach (ParticleSystem ps in ward.m_enabledEffect.GetComponentsInChildren<ParticleSystem>())
                 {
                     ParticleSystem.MainModule main = ps.main;
-                    main.startColor = new Color(color.r / multiplier, color.g / multiplier, color.b / multiplier, main.startColor.color.a);
+                    main.startColor = new Color(color.r / lightMultiplier, color.g / lightMultiplier, color.b / lightMultiplier, main.startColor.color.a);
                 }
 
                 Light light = ward.m_enabledEffect.GetComponentInChildren<Light>();
                 if (light)
                 {
-                    light.color = Color.Lerp(new Color(0.99f, 0.87f, 0.76f), new Color(color.r / multiplier, color.g / multiplier, color.b / multiplier), 0.5f);
+                    light.color = Color.Lerp(new Color(0.99f, 0.87f, 0.76f), new Color(color.r / lightMultiplier, color.g / lightMultiplier, color.b / lightMultiplier), 0.5f);
                     if (!light.TryGetComponent(out LightFlicker flicker) && addLightMovement.Value)
                         flicker = light.gameObject.AddComponent<LightFlicker>();
 
@@ -1194,21 +1360,99 @@ namespace ProtectiveWards
             }
         }
 
+        private static int FindWardEmissionMaterialIndex(PrivateArea ward)
+        {
+            if (ward == null || !ward.m_model)
+                return -1;
+
+            for (int i = 0; i < ward.m_model.sharedMaterials.Length; i++)
+            {
+                if (ward.m_model.sharedMaterials[i].name.StartsWith("Guardstone_OdenGlow_mat"))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private static void CacheWardEmissionDefaults(PrivateArea ward)
+        {
+            if (ward == null || s_wardEmissionDefaults.ContainsKey(ward))
+                return;
+
+            WardEmissionDefaults defaults = new WardEmissionDefaults();
+            if (ward.m_enabledEffect)
+            {
+                defaults.ParticleSystems = ward.m_enabledEffect.GetComponentsInChildren<ParticleSystem>();
+                defaults.ParticleStartColors = new ParticleSystem.MinMaxGradient[defaults.ParticleSystems.Length];
+                for (int i = 0; i < defaults.ParticleSystems.Length; i++)
+                    defaults.ParticleStartColors[i] = defaults.ParticleSystems[i].main.startColor;
+
+                defaults.Light = ward.m_enabledEffect.GetComponentInChildren<Light>();
+                if (defaults.Light)
+                {
+                    defaults.LightColor = defaults.Light.color;
+                    defaults.HadFlicker = defaults.Light.TryGetComponent(out defaults.Flicker);
+                    defaults.FlickerEnabled = defaults.Flicker != null && defaults.Flicker.enabled;
+                }
+            }
+
+            s_wardEmissionDefaults[ward] = defaults;
+        }
+
+        private static void ResetWardEmissionColor(PrivateArea ward, int materialIndex)
+        {
+            if (ward == null || !ward.m_model)
+                return;
+
+            ward.m_model.SetPropertyBlock(null, materialIndex);
+
+            if (!s_wardEmissionDefaults.TryGetValue(ward, out WardEmissionDefaults defaults))
+                return;
+
+            if (defaults.ParticleSystems != null && defaults.ParticleStartColors != null)
+            {
+                int count = Math.Min(defaults.ParticleSystems.Length, defaults.ParticleStartColors.Length);
+                for (int i = 0; i < count; i++)
+                {
+                    ParticleSystem ps = defaults.ParticleSystems[i];
+                    if (!ps)
+                        continue;
+
+                    ParticleSystem.MainModule main = ps.main;
+                    main.startColor = defaults.ParticleStartColors[i];
+                }
+            }
+
+            if (defaults.Light)
+            {
+                defaults.Light.color = defaults.LightColor;
+
+                LightFlicker flicker = defaults.Light.GetComponent<LightFlicker>();
+                if (flicker != null)
+                {
+                    if (defaults.HadFlicker)
+                        flicker.enabled = defaults.FlickerEnabled;
+                    else
+                        UnityEngine.Object.Destroy(flicker);
+                }
+            }
+        }
+
         public static void InitCircleProjectorState(CircleProjector marker, ZNetView nview)
         {
-            if (!wardAreaMarkerPatch.Value)
+            if (marker == null || nview == null || !nview.IsValid())
                 return;
 
             ZDO zdo = nview.GetZDO();
-            if (!zdo.GetBool(s_circleEnabled))
+            if (!GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value))
                 return;
 
-            string start = zdo.GetString(s_circleStartColor, "");
+            string start = GetWardStringSetting(zdo, s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value));
             Color startColor = wardAreaMarkerStartColor.Value;
             if (!start.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(start, out Color color))
                 startColor = color;
 
-            string end = zdo.GetString(s_circleEndColor, "");
+            string end = GetWardStringSetting(zdo, s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value));
             Color endColor = wardAreaMarkerEndColor.Value;
             if (!end.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(end, out Color color1))
                 endColor = color1;
@@ -1226,13 +1470,13 @@ namespace ProtectiveWards
                                  Array.Empty<GradientAlphaKey>());
             }
 
-            marker.m_speed = zdo.GetFloat(s_circleSpeed, wardAreaMarkerSpeed.Value);
+            marker.m_speed = GetWardFloatSetting(zdo, s_circleSpeed, wardAreaMarkerSpeed.Value);
 
             for (int i = 0; i < marker.m_segments.Count; i++)
             {
                 GameObject segment = marker.m_segments[i];
                 
-                segment.transform.localScale = new Vector3(marker.m_prefab.transform.localScale.x * zdo.GetFloat(s_circleWidth, wardAreaMarkerWidth.Value), marker.m_prefab.transform.localScale.y, marker.m_prefab.transform.localScale.z * zdo.GetFloat(s_circleLength, wardAreaMarkerLength.Value));
+                segment.transform.localScale = new Vector3(marker.m_prefab.transform.localScale.x * GetWardFloatSetting(zdo, s_circleWidth, wardAreaMarkerWidth.Value), marker.m_prefab.transform.localScale.y, marker.m_prefab.transform.localScale.z * GetWardFloatSetting(zdo, s_circleLength, wardAreaMarkerLength.Value));
 
                 Renderer renderer = segment.GetComponent<MeshRenderer>();
                 renderer.GetPropertyBlock(s_matBlock);
@@ -1246,15 +1490,20 @@ namespace ProtectiveWards
             if (bubble == null)
                 return;
 
-            if (!m_nview.IsValid())
+            if (m_nview == null || !m_nview.IsValid())
             {
                 bubble.SetActive(false);
                 return;
             }
 
             ZDO zdo = m_nview.GetZDO();
+            if (zdo == null)
+            {
+                bubble.SetActive(false);
+                return;
+            }
 
-            bubble.SetActive(zdo.GetBool(s_bubbleEnabled, wardBubbleShow.Value) && ward.IsEnabled());
+            bubble.SetActive(GetWardBoolSetting(zdo, s_bubbleEnabled, wardBubbleShow.Value) && ward.IsEnabled());
 
             bubble.transform.localScale = Vector3.one * ward.m_radius * 2f;
 
@@ -1264,18 +1513,18 @@ namespace ProtectiveWards
 
             MeshRenderer renderer = bubble.GetComponent<MeshRenderer>();
 
-            Vector3 vecColor = zdo.GetVec3(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
-            Color bubbleColor = new Color(vecColor.x, vecColor.y, vecColor.z, zdo.GetFloat(s_bubbleColorAlpha, 0f));
+            Vector3 vecColor = GetWardVec3Setting(zdo, s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
+            Color bubbleColor = new Color(vecColor.x, vecColor.y, vecColor.z, GetWardFloatSetting(zdo, s_bubbleColorAlpha, wardBubbleColor.Value.a));
 
             renderer.GetPropertyBlock(s_matBlock);
 
             s_matBlock.SetColor("_Color", bubbleColor);
-            s_matBlock.SetFloat("_RefractionIntensity", zdo.GetFloat(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value));
-            s_matBlock.SetFloat("_WaveVel", zdo.GetFloat(s_bubbleWaveVel, wardBubbleWaveIntensity.Value));
-            s_matBlock.SetFloat("_Glossiness", zdo.GetFloat(s_bubbleGlossiness, wardBubbleGlossiness.Value));
-            s_matBlock.SetFloat("_Metallic", zdo.GetFloat(s_bubbleMetallic, wardBubbleMetallic.Value));
-            s_matBlock.SetFloat("_NormalScale", zdo.GetFloat(s_bubbleNormalScale, wardBubbleNormalScale.Value));
-            s_matBlock.SetFloat("_DepthFade", zdo.GetFloat(s_bubbleDepthFade, wardBubbleDepthFade.Value));
+            s_matBlock.SetFloat("_RefractionIntensity", GetWardFloatSetting(zdo, s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value));
+            s_matBlock.SetFloat("_WaveVel", GetWardFloatSetting(zdo, s_bubbleWaveVel, wardBubbleWaveIntensity.Value));
+            s_matBlock.SetFloat("_Glossiness", GetWardFloatSetting(zdo, s_bubbleGlossiness, wardBubbleGlossiness.Value));
+            s_matBlock.SetFloat("_Metallic", GetWardFloatSetting(zdo, s_bubbleMetallic, wardBubbleMetallic.Value));
+            s_matBlock.SetFloat("_NormalScale", GetWardFloatSetting(zdo, s_bubbleNormalScale, wardBubbleNormalScale.Value));
+            s_matBlock.SetFloat("_DepthFade", GetWardFloatSetting(zdo, s_bubbleDepthFade, wardBubbleDepthFade.Value));
 
             renderer.SetPropertyBlock(s_matBlock);
         }
@@ -1285,7 +1534,7 @@ namespace ProtectiveWards
             if (demister == null)
                 return;
 
-            if (m_nview == null && !m_nview.IsValid())
+            if (m_nview == null || !m_nview.IsValid())
             {
                 demister.SetActive(false);
                 return;
@@ -1366,6 +1615,8 @@ namespace ProtectiveWards
                 wardIsHealing.Remove(__instance);
                 wardIsRepairing.Remove(__instance);
                 wardIsClosing.Remove(__instance);
+                s_wardDefaultRanges.Remove(__instance);
+                s_wardEmissionDefaults.Remove(__instance);
             }
         }
 
@@ -1392,15 +1643,15 @@ namespace ProtectiveWards
                     return;
 
                 bool wardEnabled = __instance.IsEnabled();
-                if (!wardEnabled && !__instance.m_piece.IsCreator())
+                if (!wardEnabled && !CanEditWardSettings(__instance, Player.m_localPlayer))
                     return;
 
                 if (!wardEnabled)
                 {
                     if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
-                        text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_apply_settings");
+                        text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_open_settings");
                     else
-                        text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_apply_settings");
+                        text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_open_settings");
                     return;
                 }
 
@@ -1533,51 +1784,10 @@ namespace ProtectiveWards
                     instance.StartCoroutine(PassiveRepairEffect(__instance, human as Player));
                     return false;
                 }
-                else if (!__instance.IsEnabled() && __instance.m_piece.IsCreator())
+                else if (!__instance.IsEnabled() && CanEditWardSettings(__instance, human as Player))
                 {
-                    ZDO zdo = __instance.m_nview.GetZDO();
-                    if (zdo == null)
-                        return false;
-
                     __result = true;
-
-                    zdo.Set(s_bubbleEnabled, wardBubbleShow.Value);
-                    if (wardBubbleShow.Value)
-                    {
-                        zdo.Set(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value);
-                        zdo.Set(s_bubbleWaveVel, wardBubbleWaveIntensity.Value);
-                        zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
-                        zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
-
-                        zdo.Set(s_bubbleGlossiness, wardBubbleGlossiness.Value);
-                        zdo.Set(s_bubbleMetallic, wardBubbleMetallic.Value);
-                        zdo.Set(s_bubbleNormalScale, wardBubbleNormalScale.Value);
-                        zdo.Set(s_bubbleDepthFade, wardBubbleDepthFade.Value);
-                    }
-
-                    zdo.Set(s_customRange, setWardRange.Value);
-                    if (setWardRange.Value)
-                        zdo.Set(s_range, wardRange.Value);
-
-                    zdo.Set(s_customColor, wardEmissionColorEnabled.Value);
-                    if (wardEmissionColorEnabled.Value)
-                        zdo.Set(s_color, new Vector3(wardEmissionColor.Value.r * wardEmissionColorMultiplier.Value, wardEmissionColor.Value.g * wardEmissionColorMultiplier.Value, wardEmissionColor.Value.b * wardEmissionColorMultiplier.Value));
-
-                    zdo.Set(s_circleEnabled, wardAreaMarkerPatch.Value);
-                    if (wardAreaMarkerPatch.Value)
-                    {
-                        zdo.Set(s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value));
-                        zdo.Set(s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value));
-                        zdo.Set(s_circleSpeed, wardAreaMarkerSpeed.Value);
-                        zdo.Set(s_circleLength, wardAreaMarkerLength.Value);
-                        zdo.Set(s_circleWidth, wardAreaMarkerWidth.Value);
-                        zdo.Set(s_circleAmount, wardAreaMarkerAmount.Value);
-                    }
-
-                    __instance.m_addPermittedEffect.Create(__instance.transform.position, __instance.transform.rotation);
-
-                    LogInfo($"Ward settings applied for {zdo}");
-
+                    WardSettingsUI.Open(__instance);
                     return false;
                 }
 
@@ -1587,10 +1797,27 @@ namespace ProtectiveWards
 
         private static bool IsWardToSetRange(PrivateArea ward)
         {
-            if (!setWardRange.Value)
-                return false;
+            return ward != null && wardPrefabNameToChangeRange.Value.Split(',').Any(name => name.Trim() == Utils.GetPrefabName(ward.name));
+        }
 
-            return wardPrefabNameToChangeRange.Value.Split(',').Any(name => name.Trim() == Utils.GetPrefabName(ward.name));
+        private static void CacheWardDefaultRange(PrivateArea ward)
+        {
+            if (ward == null || s_wardDefaultRanges.ContainsKey(ward))
+                return;
+
+            s_wardDefaultRanges[ward] = ward.m_radius;
+        }
+
+        private static void ResetWardRange(PrivateArea ward)
+        {
+            if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
+                return;
+
+            if (Math.Abs(ward.m_radius - defaultRange) < 0.001f)
+                return;
+
+            SetWardRange(ward, defaultRange);
+            SetWardPlayerBase(ward, defaultRange);
         }
 
         private static void PatchRange(PrivateArea ward)
@@ -1598,13 +1825,25 @@ namespace ProtectiveWards
             if (ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
-            ZDO zdo = ward.m_nview.GetZDO();
-
-            if (!zdo.GetBool(s_customRange))
+            if (!IsWardToSetRange(ward))
                 return;
 
-            float range = ward.m_nview.GetZDO().GetFloat(s_range, wardRange.Value);
-            if (ward.m_radius != range && IsWardToSetRange(ward))
+            ZDO zdo = ward.m_nview.GetZDO();
+            if (zdo == null)
+                return;
+
+            bool useCustomRange = HasZdoBool(zdo, s_customRange)
+                ? zdo.GetBool(s_customRange, setWardRange.Value)
+                : HasZdoFloat(zdo, s_range) || GetWardBoolSetting(zdo, s_customRange, setWardRange.Value);
+
+            if (!useCustomRange)
+            {
+                ResetWardRange(ward);
+                return;
+            }
+
+            float range = GetWardFloatSetting(zdo, s_range, wardRange.Value);
+            if (Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);
                 SetWardPlayerBase(ward, range);
@@ -1622,6 +1861,7 @@ namespace ProtectiveWards
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
+                CacheWardDefaultRange(__instance);
                 PatchRange(__instance);
 
                 if (showAreaMarker.Value)
@@ -1645,6 +1885,18 @@ namespace ProtectiveWards
 
                 InitEmissionColor(__instance);
             }
+        }
+
+        public static void RefreshWardVisuals(PrivateArea ward)
+        {
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            PatchRange(ward);
+            InitEmissionColor(ward);
+            InitBubbleState(ward, ward.transform.Find(forceFieldName)?.gameObject, ward.m_nview);
+            InitDemisterState(ward, ward.transform.Find(forceFieldDemisterName)?.gameObject, ward.m_nview);
+            InitCircleProjectorState(ward.m_areaMarker, ward.m_nview);
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.RPC_FlashShield))]
@@ -1714,6 +1966,7 @@ namespace ProtectiveWards
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
 
+                CacheWardDefaultRange(__instance);
                 PatchRange(__instance);
 
                 InitEmissionColor(__instance);

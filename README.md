@@ -23,7 +23,7 @@ Configurable protection and modifiers in active ward area. Creatures, rain, raid
 Make Ward your guard. Inside of an active and warm field of protective ward some miracles happen.
 
 ## Installation (manual)
-extract ProtectiveWards.dll file to your BepInEx\Plugins\ folder
+Install BepInEx and Jotunn, then extract ProtectiveWards.dll file to your BepInEx\Plugins\ folder
 
 ## Features
 
@@ -77,7 +77,7 @@ Offer the certain item to ward to have some handy effect.
 * several items to call a taxi to the different locations
 
 Everything mentioned above works only inside of an active ward range. Yes you can change the range, disable the flash and always see the marker.
-And yes the configuration is locked if you're playing on the server.
+And yes the server-controlled configuration is synchronized through Jotunn admin-only config entries if you're playing on the server.
 
 ### Taxi
 You can offer:
