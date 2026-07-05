@@ -232,7 +232,7 @@ namespace ProtectiveWards
         {
             private static void Postfix(Piece __instance, long uid)
             {
-                if (!modEnabled.Value || wardBuildLimitPerPlayer.Value <= 0)
+                if (wardBuildLimitPerPlayer.Value <= 0)
                     return;
 
                 if (__instance == null || uid == 0L || __instance.GetComponent<PrivateArea>() == null)
@@ -272,7 +272,7 @@ namespace ProtectiveWards
 
         private static void RPC_CheckWardBuildLimitServer(long sender, ZPackage package)
         {
-            if (!modEnabled.Value || wardBuildLimitPerPlayer.Value <= 0)
+            if (wardBuildLimitPerPlayer.Value <= 0)
                 return;
 
             long creatorID = package.ReadLong();

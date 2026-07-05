@@ -1,4 +1,4 @@
-﻿// Based on https://github.com/blaxxun-boop/LocalizationManager
+// Based on https://github.com/blaxxun-boop/LocalizationManager
 
 using BepInEx;
 using BepInEx.Configuration;

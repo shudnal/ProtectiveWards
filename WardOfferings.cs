@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using SoftReferenceableAssets;
 using System;
 using System.Collections;
@@ -669,9 +669,6 @@ namespace ProtectiveWards
         {
             static void Postfix(Player __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (__instance.InIntro())
                     return;
 
@@ -692,7 +689,6 @@ namespace ProtectiveWards
         {
             private static bool Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value) return true;
 
                 if (!offeringTaxi.Value) return true;
 
@@ -758,9 +754,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -774,9 +767,6 @@ namespace ProtectiveWards
         {
             private static void Postfix()
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -795,9 +785,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Player __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -822,9 +809,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 canTravel = true;
             }
         }
@@ -834,9 +818,6 @@ namespace ProtectiveWards
         {
             private static void Postfix()
             {
-                if (!modEnabled.Value)
-                    return;
-
                 RegisterRPCs();
             }
         }

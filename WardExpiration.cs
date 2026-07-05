@@ -19,7 +19,7 @@ namespace ProtectiveWards
 
         internal static void Update()
         {
-            if (!modEnabled.Value || wardExpirationMinutes.Value <= 0)
+            if (wardExpirationMinutes.Value <= 0)
                 return;
 
             if (ZNet.instance == null || !ZNet.instance.IsServer() || ZNet.IsSinglePlayer)

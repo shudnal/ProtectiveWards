@@ -13,13 +13,6 @@ using Jotunn.Utils;
 
 namespace ProtectiveWards
 {
-    internal sealed class ConfigurationManagerAttributes
-    {
-        public bool? IsAdminOnly;
-        public bool? Browsable;
-        public bool? ReadOnly;
-    }
-
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
@@ -30,8 +23,6 @@ namespace ProtectiveWards
         public const string pluginVersion = "1.2.11";
 
         private static Harmony _harmony;
-
-        public static ConfigEntry<bool> modEnabled;
 
         public static ConfigEntry<bool> disableFlash;
         public static ConfigEntry<bool> showAreaMarker;
@@ -289,11 +280,12 @@ namespace ProtectiveWards
 
         private void Awake()
         {
-            _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
-
             instance = this;
 
             ConfigInit();
+
+            _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
+
             StartCoroutine(LocalizationManager.Localizer.Load());
         }
 
@@ -321,7 +313,6 @@ namespace ProtectiveWards
         {
             config("General", "NexusID", 2450, "Nexus mod ID for updates", false);
 
-            modEnabled = config("General", "Enabled", defaultValue: true, "Enable the mod. Every option requires being in the zone of the active Ward.");
             wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied.");
             wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings.");
             wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, server admins can open and apply the per-ward settings window regardless of ward creator/access checks.");
@@ -909,9 +900,6 @@ namespace ProtectiveWards
 
         public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
         {
-            if (!modEnabled.Value)
-                return false;
-
             if (component == null)
                 return false;
 
@@ -1005,9 +993,6 @@ namespace ProtectiveWards
         {
             ward = null;
 
-            if (!modEnabled.Value)
-                return false;
-
             Player player = human as Player;
             if (player == null)
                 return false;
@@ -1036,7 +1021,7 @@ namespace ProtectiveWards
 
         public static bool CanEditWardSettings(PrivateArea ward, Player player)
         {
-            if (!modEnabled.Value || ward == null || player == null)
+            if (ward == null || player == null)
                 return false;
 
             if (wardSettingsAllowAdminEdit.Value && IsLocalPlayerAdminOrHost())
@@ -1053,7 +1038,7 @@ namespace ProtectiveWards
 
         public static bool CanApplyWardSettings(PrivateArea ward, long playerID)
         {
-            if (!modEnabled.Value || ward == null || playerID == 0L)
+            if (ward == null || playerID == 0L)
                 return false;
 
             if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
@@ -1068,7 +1053,7 @@ namespace ProtectiveWards
 
         public static bool CanApplyWardSettings(ZDO zdo, long playerID)
         {
-            if (!modEnabled.Value || zdo == null || playerID == 0L)
+            if (zdo == null || playerID == 0L)
                 return false;
 
             if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
@@ -1333,9 +1318,6 @@ namespace ProtectiveWards
         {
             public static void Prefix(CircleProjector __instance, ref bool __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 PrivateArea ward = __instance.transform.root.GetComponent<PrivateArea>();
                 if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                     return;
@@ -1623,9 +1605,6 @@ namespace ProtectiveWards
         {
             public static void Postfix(Door __instance, ZNetView ___m_nview, bool __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (autoCloseDoorsTime.Value == 0 || autoCloseDoorsIgnorePrefabs.Value.IndexOf(Utils.GetPrefabName(__instance.gameObject)) > -1)
                     return;
 
@@ -1681,9 +1660,6 @@ namespace ProtectiveWards
         {
             public static void Prefix(PrivateArea __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 areaCache.Clear();
 
                 wardIsHealing.Remove(__instance);
@@ -1697,22 +1673,14 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.HideMarker))]
         public static class PrivateArea_HideMarker_ShowAreaMarker
         {
-            public static bool Prefix()
-            {
-                if (!modEnabled.Value) return true;
-
-                return !showAreaMarker.Value;
+            public static bool Prefix() => !showAreaMarker.Value;
             }
-        }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
         public static class PrivateArea_AddUserList_WardAltActionCaption
         {
             public static void Prefix(PrivateArea __instance, StringBuilder text)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!__instance.HaveLocalAccess())
                     return;
 
@@ -1814,9 +1782,6 @@ namespace ProtectiveWards
         {
             public static bool Prefix(ref bool __result)
             {
-                if (!modEnabled.Value)
-                    return true;
-
                 if (!permitEveryone.Value)
                     return true;
 
@@ -1830,9 +1795,6 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, Humanoid human, bool hold, bool alt, Character.Faction ___m_ownerFaction, ref bool __result)
             {
-                if (!modEnabled.Value)
-                    return true;
-
                 if (hold)
                     return true;
 
@@ -1978,9 +1940,6 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance)
             {
-                if (!modEnabled.Value)
-                    return true;
-
                 if (__instance.m_ownerFaction == Character.Faction.Players)
                     return !disableFlash.Value;
 
@@ -2034,9 +1993,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, Piece ___m_piece)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
 

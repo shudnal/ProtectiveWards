@@ -21,9 +21,6 @@ namespace ProtectiveWards
         {
             ward = null;
 
-            if (!modEnabled.Value)
-                return false;
-
             if (!TryFindBackgroundWard(point, point, out ward))
                 return false;
 
@@ -131,7 +128,7 @@ namespace ProtectiveWards
 
         internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)
         {
-            if (!modEnabled.Value || wearNTear == null || hit == null)
+            if (wearNTear == null || hit == null)
                 return false;
 
             Piece piece = wearNTear.m_piece != null ? wearNTear.m_piece : wearNTear.GetComponent<Piece>();
@@ -180,7 +177,7 @@ namespace ProtectiveWards
 
         internal static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)
         {
-            if (!modEnabled.Value || !wardBackgroundTamesPreventDamageToStructures.Value)
+            if (!wardBackgroundTamesPreventDamageToStructures.Value)
                 return false;
 
             if (wearNTear == null || hit == null || !hit.HaveAttacker())
@@ -206,7 +203,7 @@ namespace ProtectiveWards
 
         internal static bool ShouldSuppressTameCharacterDamage(Character character, HitData hit)
         {
-            if (!modEnabled.Value || !wardBackgroundProtectTames.Value)
+            if (!wardBackgroundProtectTames.Value)
                 return false;
 
             if (character == null || !character.IsTamed())
@@ -217,7 +214,7 @@ namespace ProtectiveWards
 
         internal static bool ShouldPacifyTame(BaseAI ai)
         {
-            if (!modEnabled.Value || wardBackgroundTamePacify.Value == WardBackgroundTamePacifyMode.Off)
+            if (wardBackgroundTamePacify.Value == WardBackgroundTamePacifyMode.Off)
                 return false;
 
             if (ai == null || ai.m_character == null || !ai.m_character.IsTamed())

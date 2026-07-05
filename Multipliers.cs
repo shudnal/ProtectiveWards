@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using System;
 using static ProtectiveWards.ProtectiveWards;
 
@@ -16,9 +16,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Character ___m_character, ZNetView ___m_nview, ref float damage)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_nview == null || !InsideEnabledPlayersArea(___m_character.transform.position))
                     return;
 
@@ -31,9 +28,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Character __instance, ref HitData hit, ZNetView ___m_nview)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
                     return;
 
@@ -70,9 +64,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(WearNTear __instance, ref HitData hit, ZNetView ___m_nview)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
@@ -103,9 +94,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Player __instance, float dt, bool forceUpdate)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (foodDrainMultiplier.Value == 1.0f)
                     return;
 
@@ -128,9 +116,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Player __instance, ref float v)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (staminaDrainMultiplier.Value == 1.0f)
                     return;
 
@@ -149,9 +134,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Player __instance, ref float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (hammerDurabilityDrainMultiplier.Value == 1.0f)
                     return;
 
@@ -186,9 +168,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Player __instance, ItemDrop.ItemData toolItem, ref float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (hammerDurabilityDrainMultiplier.Value == 1.0f)
                     return;
 
@@ -219,9 +198,6 @@ namespace ProtectiveWards
         {
             static void Prefix(ref float factor, Player ___m_player)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (___m_player == null)
                     return;
 
@@ -237,9 +213,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Fireplace __instance, ref double __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (fireplaceDrainMultiplier.Value == 1.0f)
                     return;
 
@@ -255,9 +228,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Smelter __instance, ref double __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 float multiplier = (__instance.m_name == "$piece_bathtub") ? fireplaceDrainMultiplier.Value : smeltingSpeedMultiplier.Value;
 
                 if (multiplier == 1.0f)
@@ -275,9 +245,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Smelter __instance, ref float __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (cookingSpeedMultiplier.Value == 1.0f)
                     return;
 
@@ -293,9 +260,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Smelter __instance, ref float dt, ref float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if ((fireplaceDrainMultiplier.Value == 1.0f) && (cookingSpeedMultiplier.Value == 1.0f))
                     return;
 
@@ -323,9 +287,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Fermenter __instance, ref double __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (fermentingSpeedMultiplier.Value == 1.0f)
                     return;
 
@@ -341,9 +302,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(SapCollector __instance, ref float __result)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (sapCollectingSpeedMultiplier.Value == 1.0f)
                     return;
 
@@ -359,9 +317,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Turret __instance, ref float ___m_attackCooldown, ref float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (turretFireRateMultiplier.Value == 1.0f)
                     return;
 
@@ -375,9 +330,6 @@ namespace ProtectiveWards
 
             private static void Postfix(ref float ___m_attackCooldown, float __state)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (__state > 0f)
                     ___m_attackCooldown = __state;
             }
