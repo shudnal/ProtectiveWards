@@ -844,50 +844,6 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Damage))]
-        public static class WearNTear_Damage_PreventTameDamageToStructures
-        {
-            private static void Prefix(WearNTear __instance, HitData hit)
-            {
-                if (!ShouldSuppressTameDamageToStructure(__instance, hit))
-                    return;
-
-                hit.m_damage.Modify(0f);
-            }
-
-            private static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)
-            {
-                if (!modEnabled.Value)
-                    return false;
-
-                if (!wardBackgroundTamesPreventDamageToStructures.Value)
-                    return false;
-
-                if (wearNTear == null || hit == null || !hit.HaveAttacker())
-                    return false;
-
-                Piece piece = wearNTear.m_piece != null ? wearNTear.m_piece : wearNTear.GetComponent<Piece>();
-                if (piece == null || !piece.IsPlacedByPlayer())
-                    return false;
-
-                Character attacker = hit.GetAttacker();
-                if (attacker == null || attacker.IsPlayer() || !attacker.IsTamed())
-                    return false;
-
-                if (!TryFindProtectedWardNetworkXZ(attacker.transform.position, wearNTear.transform.position, out PrivateArea ward))
-                    return false;
-
-                float radius = Math.Max(wardBackgroundPresenceRadius.Value, 0f);
-                if (HasEffectiveAccessPlayerNearby(ward, attacker.transform.position, radius))
-                    return false;
-
-                if (HasEffectiveAccessPlayerNearby(ward, wearNTear.transform.position, radius))
-                    return false;
-
-                return true;
-            }
-        }
-
         [HarmonyPatch(typeof(Destructible), nameof(Destructible.Damage))]
         public static class Destructible_Damage_PlantProtection
         {

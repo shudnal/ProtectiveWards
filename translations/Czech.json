@@ -62,5 +62,15 @@
     "pw_ward_settings_bubble_visual": "Vzhled sféry",
     "pw_ward_settings_circle_visual": "Vzhled kruhu",
     "pw_ward_settings_bubble_visual_title": "Vzhled sféry",
-    "pw_ward_settings_circle_visual_title": "Vzhled kruhu"
+    "pw_ward_settings_circle_visual_title": "Vzhled kruhu",
+    "pw_permit_no_ward": "No ward within range.",
+    "pw_permit_no_access": "You do not have access to this ward.",
+    "pw_permit_no_match": "No online player matched: $1",
+    "pw_permit_multiple": "Multiple players matched: $1",
+    "pw_permit_already": "Player is already permitted.",
+    "pw_permit_added": "Added $1 to ward permitted list.",
+    "pw_ward_limit_reached": "Ward limit reached: $1/$2",
+    "pw_ward_expiration_expired": "Ward protection expired due to inactivity",
+    "pw_ward_expiration_hint": "An access player must interact with the ward to reactivate it.",
+    "pw_ward_expiration_reactivated": "Ward protection reactivated."
 }

@@ -62,5 +62,15 @@
     "pw_ward_settings_bubble_visual": "Настройки визуала сферы",
     "pw_ward_settings_circle_visual": "Настройки визуала круга",
     "pw_ward_settings_bubble_visual_title": "Настройки визуала сферы",
-    "pw_ward_settings_circle_visual_title": "Настройки визуала круга"
+    "pw_ward_settings_circle_visual_title": "Настройки визуала круга",
+    "pw_permit_no_ward": "Нет варда в радиусе.",
+    "pw_permit_no_access": "У вас нет доступа к этому варду.",
+    "pw_permit_no_match": "Не найден online-игрок: $1",
+    "pw_permit_multiple": "Найдено несколько игроков: $1",
+    "pw_permit_already": "Игрок уже добавлен в список доступа.",
+    "pw_permit_added": "$1 добавлен в список доступа варда.",
+    "pw_ward_limit_reached": "Достигнут лимит вардов: $1/$2",
+    "pw_ward_expiration_expired": "Защита варда истекла из-за неактивности",
+    "pw_ward_expiration_hint": "Игрок с доступом должен взаимодействовать с вардом, чтобы восстановить защиту.",
+    "pw_ward_expiration_reactivated": "Защита варда восстановлена."
 }
