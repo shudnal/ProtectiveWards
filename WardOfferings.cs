@@ -194,17 +194,17 @@ namespace ProtectiveWards
                     return true;
                 }
 
-                if (!__instance.HaveLocalAccess())
-                {
-                    LogInfo("No access");
-                    return true;
-                }
-
                 Player player = user as Player;
 
                 if (!player || player != Player.m_localPlayer)
                 {
                     LogInfo("UseItem user not a player");
+                    return true;
+                }
+
+                if (offeringProtectFromNonPermitted.Value && !HasAccessToWardOrConnectedWard(__instance, player))
+                {
+                    LogInfo("No access");
                     return true;
                 }
 

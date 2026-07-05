@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -47,6 +47,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> offeringEitr;
         public static ConfigEntry<bool> offeringDragonEgg;
         public static ConfigEntry<bool> offeringTaxi;
+        public static ConfigEntry<bool> offeringProtectFromNonPermitted;
 
         public static ConfigEntry<int> offeringTaxiPriceHaldorUndiscovered;
         public static ConfigEntry<int> offeringTaxiPriceHaldorDiscovered;
@@ -127,6 +128,15 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardAccessProtectItemStands;
         public static ConfigEntry<bool> wardAccessProtectCarts;
         public static ConfigEntry<WardPortalAccessMode> wardAccessProtectPortals;
+        public static ConfigEntry<bool> wardAccessProtectMapTables;
+        public static ConfigEntry<bool> wardAccessProtectFireplaces;
+        public static ConfigEntry<bool> wardAccessProtectTurrets;
+        public static ConfigEntry<bool> wardAccessProtectCraftingStations;
+        public static ConfigEntry<bool> wardAccessProtectBeds;
+        public static ConfigEntry<bool> wardAccessProtectCatapults;
+        public static ConfigEntry<bool> wardAccessProtectArcheryTargets;
+        public static ConfigEntry<bool> wardAccessProtectBarbers;
+        public static ConfigEntry<bool> wardAccessProtectInactiveWards;
         public static ConfigEntry<WardConnectedAccessMode> wardAccessConnectedAccessMode;
         public static ConfigEntry<bool> wardAccessProtectInteractables;
         public static ConfigEntry<bool> wardBackgroundTamesPreventDamageToStructures;
@@ -205,6 +215,7 @@ namespace ProtectiveWards
         public static readonly int s_bubbleMetallic = "bubble_metallic".GetStableHashCode();
         public static readonly int s_bubbleNormalScale = "bubble_normalscale".GetStableHashCode();
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
+        public static readonly int s_lastSaddleUser = "pw_last_saddle_user".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new MaterialPropertyBlock();
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new Dictionary<PrivateArea, float>();
@@ -371,6 +382,7 @@ namespace ProtectiveWards
                                                                                                                                    "\nOffer coins to travel to Haldor (x2000 if you didn't find him yet. x500 otherwise). Coins will be consumed." +
                                                                                                                                    "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed. Totem WILL be consumed." +
                                                                                                                                    "\nOffer Fuling totem to travel to Hildir. Totem WILL be consumed.");
+            offeringProtectFromNonPermitted = config("Offerings", "Protect from non-permitted players", defaultValue: false, "Set whether active Ward offerings are allowed only for players with direct or connected ward access. Disabled by default so visitors can make offerings to active wards.");
 
             offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Coins amount that must be paid to discover and travel to nearest Haldor.");
             offeringTaxiPriceHaldorDiscovered = config("Offerings - Taxi", "Price to discovered Haldor", defaultValue: 500, "Coins amount that must be paid to travel to already discovered Haldor.");
@@ -435,24 +447,33 @@ namespace ProtectiveWards
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "$item_carrot, $item_turnip, $item_onion, $item_carrotseeds, $item_turnipseeds, $item_onionseeds, $item_jotunpuffs, $item_magecap", "List of plants to be protected from damage");
             boarsHensProtectionGroupList = config("Ward protects", "Boars and hens from list", "boar, chicken", "List of tamed groups to be protected from damage");
-            wardAccessProtectChests = config("Ward access", "Chest access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
-            wardAccessProtectDoors = config("Ward access", "Door access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
-            wardAccessProtectPlants = config("Ward access", "Plant picking from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
-            wardAccessProtectBoats = config("Ward access", "Boat mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
-            wardAccessProtectTames = config("Ward access", "Tame mounting from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
-            wardAccessProtectProductionStations = config("Ward access", "Production station access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
-            wardAccessProtectItemStands = config("Ward access", "Item stand access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
-            wardAccessProtectCarts = config("Ward access", "Cart access from non-permitted players", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
-            wardAccessProtectPortals = config("Ward access", "Portal access mode from non-permitted players", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
+            wardAccessProtectChests = config("Ward access from non-permitted players", "Chests", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
+            wardAccessProtectDoors = config("Ward access from non-permitted players", "Doors", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
+            wardAccessProtectPlants = config("Ward access from non-permitted players", "Plant picking", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
+            wardAccessProtectBoats = config("Ward access from non-permitted players", "Boat mounting", true, "Set whether an active Ward blocks non-permitted players from mounting or controlling nearby boats");
+            wardAccessProtectTames = config("Ward access from non-permitted players", "Tame mounting", true, "Set whether an active Ward blocks non-permitted players from mounting nearby tamed creatures");
+            wardAccessProtectProductionStations = config("Ward access from non-permitted players", "Production stations", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
+            wardAccessProtectItemStands = config("Ward access from non-permitted players", "Item stands", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
+            wardAccessProtectCarts = config("Ward access from non-permitted players", "Carts", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
+            wardAccessProtectPortals = config("Ward access from non-permitted players", "Portal access mode", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
                                                                                                                                      + "\nAllowAll: non-permitted players can use and rename portals as usual."
                                                                                                                                      + "\nAllowTeleportOnly: non-permitted players can teleport through portals but cannot rename/change portal tags."
                                                                                                                                      + "\nBlockAll: non-permitted players cannot teleport through or rename nearby portals.");
-            wardAccessConnectedAccessMode = config("Ward access", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls whether overlapping active player wards can share access for protected interactions."
+            wardAccessProtectMapTables = config("Ward access from non-permitted players", "Map tables", true, "Set whether an active Ward blocks non-permitted players from reading from or writing to nearby map tables.");
+            wardAccessProtectFireplaces = config("Ward access from non-permitted players", "Fireplaces", false, "Set whether an active Ward blocks non-permitted players from interacting with nearby fireplaces. Disabled by default so visitors can add fuel to fires.");
+            wardAccessProtectTurrets = config("Ward access from non-permitted players", "Turrets", true, "Set whether an active Ward blocks non-permitted players from interacting with nearby turrets, including changing targets or adding ammo.");
+            wardAccessProtectCraftingStations = config("Ward access from non-permitted players", "Crafting stations", true, "Set whether an active Ward blocks non-permitted players from using or discovering nearby crafting stations.");
+            wardAccessProtectBeds = config("Ward access from non-permitted players", "Beds", true, "Set whether an active Ward blocks non-permitted players from sleeping in nearby beds, even if another mod allows it.");
+            wardAccessProtectCatapults = config("Ward access from non-permitted players", "Catapults", true, "Set whether an active Ward blocks non-permitted players from using nearby catapults.");
+            wardAccessProtectArcheryTargets = config("Ward access from non-permitted players", "Archery target", true, "Set whether an active Ward blocks non-permitted players from interacting with nearby archery targets.");
+            wardAccessProtectBarbers = config("Ward access from non-permitted players", "Barber station", true, "Set whether an active Ward blocks non-permitted players from using nearby barber stations.");
+            wardAccessProtectInactiveWards = config("Ward access from non-permitted players", "Inactive ward inside another ward", true, "Set whether an active Ward blocks non-permitted players from interacting with nearby inactive wards inside its protected area.");
+            wardAccessConnectedAccessMode = config("Ward access from non-permitted players", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls whether overlapping active player wards can share access for protected interactions."
                                                                                                                                          + "\nOff: only direct access to the ward covering the object is accepted."
                                                                                                                                          + "\nSameCreatorOnly: access may be shared only between overlapping wards created by the same player."
                                                                                                                                          + "\nMutualTrust: access may be shared only between overlapping wards whose creators are mutually trusted/permitted by the protected/root ward, not by transitive chain trust."
                                                                                                                                          + "\nAnyConnected: access to any overlapping ward can grant access to the whole connected group. Intended for single-party servers where all players share one ward network.");
-            wardAccessProtectInteractables = config("Ward access", "Generic interactable access from non-permitted players", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
+            wardAccessProtectInteractables = config("Ward access from non-permitted players", "Generic interactables", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
             wardBackgroundTamesPreventDamageToStructures = config("Ward background", "Tames prevent damage to structures without permitted players nearby", true, "Set whether tamed creatures inside a protected ward network prevent their own damage to player-built structures when no permitted/effective-access player is nearby.");
             wardBackgroundPresenceRadius = config("Ward background", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for background protection checks.");
             wardBackgroundPresenceMode = config("Ward background", "Permitted player presence mode", WardBackgroundPresenceMode.PermittedNearProtectedArea, "Controls how player presence disables background protection. PermittedNearProtectedArea: a permitted/effective player must be near the protected object. PermittedInsideConnectedArea: a permitted/effective player anywhere inside the connected ward network disables background protection. PermittedOnline: any permitted/effective online player disables background protection.");
@@ -883,14 +904,50 @@ namespace ProtectiveWards
             if (!IsOwnershipSensitiveObject(component))
                 return false;
 
+            if (interactingPlayer == null)
+                return false;
+
+            if (WasPlayerLastSaddleUser(component, interactingPlayer))
+                return true;
+
             if (!TryGetObjectCreatorId(component, out long creatorId))
                 return false;
 
-            if (interactingPlayer != null && creatorId == interactingPlayer.GetPlayerID())
+            return creatorId == interactingPlayer.GetPlayerID();
+        }
+
+        private static bool HasLastSaddleUser(ZNetView nview, long playerID)
+        {
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            return zdo != null && zdo.GetLong(s_lastSaddleUser, 0L) == playerID;
+        }
+
+        public static bool WasPlayerLastSaddleUser(Component component, Player player)
+        {
+            if (component == null || player == null)
+                return false;
+
+            long playerID = player.GetPlayerID();
+            if (playerID == 0L)
+                return false;
+
+            if (HasLastSaddleUser(component.GetComponentInParent<ZNetView>(), playerID))
                 return true;
 
-            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
-            return HasAccessToWardOrConnectedWard(protectedWard, creatorId, mode);
+            Sadle sadle = component.GetComponentInParent<Sadle>();
+            if (sadle == null)
+                sadle = component.GetComponentInChildren<Sadle>(true);
+
+            if (sadle == null)
+                return false;
+
+            if (HasLastSaddleUser(sadle.GetComponentInParent<ZNetView>(), playerID))
+                return true;
+
+            if (sadle.m_character != null && HasLastSaddleUser(sadle.m_character.GetComponent<ZNetView>(), playerID))
+                return true;
+
+            return false;
         }
 
         public static bool ShouldSkipWardBlockForOwnedObject(Component component, PrivateArea protectedWard, Player interactingPlayer)
@@ -1019,13 +1076,81 @@ namespace ProtectiveWards
             return false;
         }
 
+        private static bool IsDisabledForeignWard(PrivateArea ward, long playerID)
+        {
+            if (ward == null || ward.IsEnabled() || playerID == 0L || ward.m_piece == null)
+                return false;
+
+            return ward.m_piece.GetCreator() != playerID;
+        }
+
+        private static bool IsDisabledForeignWard(ZDO zdo, long playerID)
+        {
+            if (zdo == null || playerID == 0L || zdo.GetBool(ZDOVars.s_enabled, false))
+                return false;
+
+            return zdo.GetLong(ZDOVars.s_creator, 0L) != playerID;
+        }
+
+        public static bool ShouldBlockInactiveWardAccess(PrivateArea inactiveWard, Player player)
+        {
+            if (inactiveWard == null || inactiveWard.IsEnabled() || player == null)
+                return false;
+
+            if (wardAccessProtectInactiveWards == null || !wardAccessProtectInactiveWards.Value)
+                return false;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !area.IsInside(inactiveWard.transform.position, 0f))
+                    continue;
+
+                if (HasAccessToWardOrConnectedWard(area, player, mode))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool ShouldBlockInactiveWardAccess(PrivateArea inactiveWard, long playerID)
+        {
+            if (inactiveWard == null || inactiveWard.IsEnabled() || playerID == 0L)
+                return false;
+
+            if (wardAccessProtectInactiveWards == null || !wardAccessProtectInactiveWards.Value)
+                return false;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !area.IsInside(inactiveWard.transform.position, 0f))
+                    continue;
+
+                if (HasAccessToWardOrConnectedWard(area, playerID, mode))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
         public static bool CanEditWardSettings(PrivateArea ward, Player player)
         {
             if (ward == null || player == null)
                 return false;
 
+            if (IsDisabledForeignWard(ward, player.GetPlayerID()))
+                return false;
+
             if (wardSettingsAllowAdminEdit.Value && IsLocalPlayerAdminOrHost())
                 return true;
+
+            if (ShouldBlockInactiveWardAccess(ward, player))
+                return false;
 
             if (ward.m_piece == null)
                 return false;
@@ -1041,8 +1166,14 @@ namespace ProtectiveWards
             if (ward == null || playerID == 0L)
                 return false;
 
+            if (IsDisabledForeignWard(ward, playerID))
+                return false;
+
             if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
                 return true;
+
+            if (ShouldBlockInactiveWardAccess(ward, playerID))
+                return false;
 
             if (wardSettingsRequireCreator.Value)
                 return ward.m_piece != null && ward.m_piece.GetCreator() == playerID;
@@ -1054,6 +1185,9 @@ namespace ProtectiveWards
         public static bool CanApplyWardSettings(ZDO zdo, long playerID)
         {
             if (zdo == null || playerID == 0L)
+                return false;
+
+            if (IsDisabledForeignWard(zdo, playerID))
                 return false;
 
             if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
@@ -1674,7 +1808,7 @@ namespace ProtectiveWards
         public static class PrivateArea_HideMarker_ShowAreaMarker
         {
             public static bool Prefix() => !showAreaMarker.Value;
-            }
+        }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
         public static class PrivateArea_AddUserList_WardAltActionCaption
@@ -1900,24 +2034,59 @@ namespace ProtectiveWards
                 if (showAreaMarker.Value)
                     __instance.m_areaMarker.gameObject.SetActive(value: true);
 
-                if (forceField != null)
-                {
-                    GameObject bubble = Instantiate(forceField, __instance.transform);
-                    bubble.name = forceFieldName;
-
-                    InitBubbleState(__instance, bubble, ___m_nview);
-                }
-
-                if (forceFieldDemister != null)
-                {
-                    GameObject demister = Instantiate(forceFieldDemister, __instance.transform);
-                    demister.name = forceFieldDemisterName;
-
-                    InitDemisterState(__instance, demister, ___m_nview);
-                }
-
+                InitBubbleState(__instance, EnsureWardBubble(__instance), ___m_nview);
+                InitDemisterState(__instance, EnsureWardDemister(__instance), ___m_nview);
                 InitEmissionColor(__instance);
+
+                if (instance != null)
+                    instance.StartCoroutine(DelayedRefreshWardVisuals(__instance));
             }
+        }
+
+        private static GameObject EnsureWardBubble(PrivateArea ward)
+        {
+            if (ward == null)
+                return null;
+
+            Transform existing = ward.transform.Find(forceFieldName);
+            if (existing != null)
+                return existing.gameObject;
+
+            if (forceField == null)
+                return null;
+
+            GameObject bubble = Instantiate(forceField, ward.transform);
+            bubble.name = forceFieldName;
+            return bubble;
+        }
+
+        private static GameObject EnsureWardDemister(PrivateArea ward)
+        {
+            if (ward == null)
+                return null;
+
+            Transform existing = ward.transform.Find(forceFieldDemisterName);
+            if (existing != null)
+                return existing.gameObject;
+
+            if (forceFieldDemister == null)
+                return null;
+
+            GameObject demister = Instantiate(forceFieldDemister, ward.transform);
+            demister.name = forceFieldDemisterName;
+            return demister;
+        }
+
+        private static IEnumerator DelayedRefreshWardVisuals(PrivateArea ward)
+        {
+            yield return new WaitForSeconds(1f);
+            RefreshWardVisuals(ward);
+        }
+
+        private static void RefreshAllLoadedWardVisuals()
+        {
+            foreach (PrivateArea ward in PrivateArea.m_allAreas)
+                RefreshWardVisuals(ward);
         }
 
         public static void RefreshWardVisuals(PrivateArea ward)
@@ -1927,8 +2096,8 @@ namespace ProtectiveWards
 
             PatchRange(ward);
             InitEmissionColor(ward);
-            InitBubbleState(ward, ward.transform.Find(forceFieldName)?.gameObject, ward.m_nview);
-            InitDemisterState(ward, ward.transform.Find(forceFieldDemisterName)?.gameObject, ward.m_nview);
+            InitBubbleState(ward, EnsureWardBubble(ward), ward.m_nview);
+            InitDemisterState(ward, EnsureWardDemister(ward), ward.m_nview);
             InitCircleProjectorState(ward.m_areaMarker, ward.m_nview);
         }
 
@@ -1962,6 +2131,8 @@ namespace ProtectiveWards
                 fieldRenderer.sharedMaterial.renderQueue++;
 
                 haldor.m_prefab.Release();
+
+                RefreshAllLoadedWardVisuals();
             }
         }
 
@@ -1971,6 +2142,8 @@ namespace ProtectiveWards
             private static void Postfix(ZoneSystem __instance)
             {
                 UnityEngine.Object.Destroy(forceField);
+                forceField = null;
+                forceFieldDemister = null;
                 lightningAOE = null;
                 preLightning = null;
             }

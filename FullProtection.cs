@@ -9,7 +9,9 @@ namespace ProtectiveWards
 {
     internal class FullProtection
     {
+        private const string RPC_SetLastSaddleUser = "PW_SetLastSaddleUser";
         private static int s_privateAreaCheckBypassDepth;
+        private static bool s_saddleRpcRegistered;
 
         private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
         {
@@ -18,6 +20,33 @@ namespace ProtectiveWards
 
             result = true;
             return true;
+        }
+
+        private static bool ShouldBlockProtectedInteraction(Component component, Humanoid human)
+        {
+            return human != null && BlockUnauthorizedWardInteraction(component, human);
+        }
+
+        private static bool ShouldSilentlyBlockProtectedInteraction(Component component, Humanoid human)
+        {
+            if (component == null || !(human is Player player))
+                return false;
+
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                if (!IsActivePlayerWard(area) || !area.IsInside(component.transform.position, 0f))
+                    continue;
+
+                if (HasAccessToWardOrConnectedWard(area, player))
+                    continue;
+
+                if (ShouldSkipWardBlockForOwnedObject(component, area, player))
+                    continue;
+
+                return true;
+            }
+
+            return false;
         }
 
         private static void StartPrivateAreaCheckBypass(Component component, Humanoid human, ref bool state)
@@ -35,6 +64,140 @@ namespace ProtectiveWards
                 return;
 
             s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
+        }
+
+        private static void RegisterSaddleUserRPC()
+        {
+            if (s_saddleRpcRegistered || ZRoutedRpc.instance == null)
+                return;
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
+
+            s_saddleRpcRegistered = true;
+        }
+
+        private static void RequestSetLastSaddleUser(Sadle sadle, long playerID)
+        {
+            ZNetView nview = GetSaddleZNetView(sadle);
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            if (zdo == null || playerID == 0L)
+                return;
+
+            ZPackage package = new ZPackage();
+            package.Write(zdo.m_uid);
+            package.Write(playerID);
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_SetLastSaddleUserServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetLastSaddleUser, package);
+        }
+
+        private static void RPC_SetLastSaddleUserServer(long sender, ZPackage package)
+        {
+            ZDOID zdoID = package.ReadZDOID();
+            long playerID = package.ReadLong();
+            if (playerID == 0L || ZDOMan.instance == null)
+                return;
+
+            ZDO zdo = ZDOMan.instance.GetZDO(zdoID);
+            if (zdo == null)
+                return;
+
+            zdo.Set(s_lastSaddleUser, playerID);
+        }
+
+        private static void SetLastSaddleUserLocal(Sadle sadle, long playerID)
+        {
+            if (sadle == null || playerID == 0L)
+                return;
+
+            SetLastSaddleUserOnView(sadle.GetComponentInParent<ZNetView>(), playerID);
+
+            if (sadle.m_character != null)
+                SetLastSaddleUserOnView(sadle.m_character.GetComponent<ZNetView>(), playerID);
+        }
+
+        private static ZNetView GetSaddleZNetView(Sadle sadle)
+        {
+            if (sadle == null)
+                return null;
+
+            if (sadle.m_character != null)
+            {
+                ZNetView characterView = sadle.m_character.GetComponent<ZNetView>();
+                if (characterView != null)
+                    return characterView;
+            }
+
+            return sadle.GetComponentInParent<ZNetView>();
+        }
+
+        private static void SetLastSaddleUserOnView(ZNetView nview, long playerID)
+        {
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            if (zdo != null && playerID != 0L)
+                zdo.Set(s_lastSaddleUser, playerID);
+        }
+
+        private static Component GetProtectedSwitchTarget(Switch sw)
+        {
+            if (sw == null)
+                return null;
+
+            ArmorStand armorStand = sw.GetComponentInParent<ArmorStand>();
+            if (armorStand != null && wardAccessProtectItemStands.Value)
+                return armorStand;
+
+            MapTable mapTable = sw.GetComponentInParent<MapTable>();
+            if (mapTable != null && wardAccessProtectMapTables.Value)
+                return mapTable;
+
+            Catapult catapult = sw.GetComponentInParent<Catapult>();
+            if (catapult != null && wardAccessProtectCatapults.Value)
+                return catapult;
+
+            Barber barber = sw.GetComponentInParent<Barber>();
+            if (barber != null && wardAccessProtectBarbers.Value)
+                return barber;
+
+            CraftingStation craftingStation = sw.GetComponentInParent<CraftingStation>();
+            if (craftingStation != null && wardAccessProtectCraftingStations.Value)
+                return craftingStation;
+
+            Fireplace fireplace = sw.GetComponentInParent<Fireplace>();
+            if (fireplace != null && wardAccessProtectFireplaces.Value)
+                return fireplace;
+
+            Turret turret = sw.GetComponentInParent<Turret>();
+            if (turret != null && wardAccessProtectTurrets.Value)
+                return turret;
+
+            if (wardAccessProtectProductionStations.Value)
+            {
+                CookingStation cookingStation = sw.GetComponentInParent<CookingStation>();
+                if (cookingStation != null)
+                    return cookingStation;
+
+                Smelter smelter = sw.GetComponentInParent<Smelter>();
+                if (smelter != null)
+                    return smelter;
+
+                Fermenter fermenter = sw.GetComponentInParent<Fermenter>();
+                if (fermenter != null)
+                    return fermenter;
+
+                Beehive beehive = sw.GetComponentInParent<Beehive>();
+                if (beehive != null)
+                    return beehive;
+
+                SapCollector sapCollector = sw.GetComponentInParent<SapCollector>();
+                if (sapCollector != null)
+                    return sapCollector;
+            }
+
+            return null;
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.CheckAccess))]
@@ -669,21 +832,18 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(Switch), nameof(Switch.Interact))]
-        public static class Switch_Interact_PreventUnauthorizedArmorStandAccess
+        public static class Switch_Interact_PreventUnauthorizedExplicitAccess
         {
             private static bool Prefix(Switch __instance, Humanoid character, ref bool __result, ref bool __state)
             {
-                if (!wardAccessProtectItemStands.Value)
+                Component target = GetProtectedSwitchTarget(__instance);
+                if (target == null)
                     return true;
 
-                ArmorStand armorStand = __instance.GetComponentInParent<ArmorStand>();
-                if (armorStand == null)
-                    return true;
-
-                if (BlockProtectedInteraction(armorStand, character, ref __result))
+                if (BlockProtectedInteraction(target, character, ref __result))
                     return false;
 
-                StartPrivateAreaCheckBypass(armorStand, character, ref __state);
+                StartPrivateAreaCheckBypass(target, character, ref __state);
                 return true;
             }
 
@@ -694,21 +854,18 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(Switch), nameof(Switch.UseItem))]
-        public static class Switch_UseItem_PreventUnauthorizedArmorStandAccess
+        public static class Switch_UseItem_PreventUnauthorizedExplicitAccess
         {
             private static bool Prefix(Switch __instance, Humanoid user, ref bool __result, ref bool __state)
             {
-                if (!wardAccessProtectItemStands.Value)
+                Component target = GetProtectedSwitchTarget(__instance);
+                if (target == null)
                     return true;
 
-                ArmorStand armorStand = __instance.GetComponentInParent<ArmorStand>();
-                if (armorStand == null)
-                    return true;
-
-                if (BlockProtectedInteraction(armorStand, user, ref __result))
+                if (BlockProtectedInteraction(target, user, ref __result))
                     return false;
 
-                StartPrivateAreaCheckBypass(armorStand, user, ref __state);
+                StartPrivateAreaCheckBypass(target, user, ref __state);
                 return true;
             }
 
@@ -736,6 +893,240 @@ namespace ProtectiveWards
             private static void Finalizer(bool __state)
             {
                 StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        [HarmonyPatch(typeof(MapTable), nameof(MapTable.OnRead), new Type[] { typeof(Switch), typeof(Humanoid), typeof(ItemDrop.ItemData), typeof(bool) })]
+        public static class MapTable_OnRead_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(MapTable __instance, Humanoid user)
+            {
+                if (!wardAccessProtectMapTables.Value)
+                    return true;
+
+                return !ShouldBlockProtectedInteraction(__instance, user);
+            }
+        }
+
+        [HarmonyPatch(typeof(MapTable), nameof(MapTable.OnWrite))]
+        public static class MapTable_OnWrite_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(MapTable __instance, Humanoid user)
+            {
+                if (!wardAccessProtectMapTables.Value)
+                    return true;
+
+                return !ShouldBlockProtectedInteraction(__instance, user);
+            }
+        }
+
+        [HarmonyPatch(typeof(Fireplace), nameof(Fireplace.Interact))]
+        public static class Fireplace_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Fireplace __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectFireplaces.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Fireplace), nameof(Fireplace.UseItem))]
+        public static class Fireplace_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Fireplace __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectFireplaces.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Turret), nameof(Turret.Interact))]
+        public static class Turret_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Turret __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardAccessProtectTurrets.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, character, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Turret), nameof(Turret.UseItem))]
+        public static class Turret_UseItem_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Turret __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectTurrets.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(CraftingStation), nameof(CraftingStation.Interact))]
+        public static class CraftingStation_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(CraftingStation __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectCraftingStations.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.AddKnownStation))]
+        public static class Player_AddKnownStation_PreventUnauthorizedStationDiscovery
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Player __instance, CraftingStation station)
+            {
+                if (!wardAccessProtectCraftingStations.Value)
+                    return true;
+
+                if (__instance == null || station == null)
+                    return true;
+
+                int level = station.GetLevel();
+                if (__instance.m_knownStations.TryGetValue(station.m_name, out int knownLevel) && knownLevel >= level)
+                    return true;
+
+                return !ShouldSilentlyBlockProtectedInteraction(station, __instance);
+            }
+        }
+
+        [HarmonyPatch(typeof(Bed), nameof(Bed.Interact))]
+        public static class Bed_Interact_PreventUnauthorizedSleep
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Bed __instance, Humanoid human, ref bool __result)
+            {
+                if (!wardAccessProtectBeds.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, human, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Catapult), nameof(Catapult.OnLegUse))]
+        public static class Catapult_OnLegUse_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Catapult __instance, Humanoid user)
+            {
+                if (!wardAccessProtectCatapults.Value)
+                    return true;
+
+                return !ShouldBlockProtectedInteraction(__instance, user);
+            }
+        }
+
+        [HarmonyPatch(typeof(Catapult), nameof(Catapult.OnLoadPointUse))]
+        public static class Catapult_OnLoadPointUse_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Catapult __instance, Humanoid user)
+            {
+                if (!wardAccessProtectCatapults.Value)
+                    return true;
+
+                return !ShouldBlockProtectedInteraction(__instance, user);
+            }
+        }
+
+        [HarmonyPatch(typeof(ArcheryTarget), nameof(ArcheryTarget.Interact))]
+        public static class ArcheryTarget_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ArcheryTarget __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectArcheryTargets.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Barber), nameof(Barber.Interact))]
+        public static class Barber_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Barber __instance, Humanoid human, ref bool __result)
+            {
+                if (!wardAccessProtectBarbers.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, human, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Interact))]
+        public static class PrivateArea_Interact_PreventInactiveWardAccessInsideOtherWard
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(PrivateArea __instance, Humanoid human, ref bool __result)
+            {
+                if (!wardAccessProtectInactiveWards.Value)
+                    return true;
+
+                if (__instance == null || __instance.IsEnabled())
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, human, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+        public static class ZoneSystem_Start_RegisterSaddleUserRPC
+        {
+            private static void Postfix()
+            {
+                RegisterSaddleUserRPC();
+            }
+        }
+
+        [HarmonyPatch(typeof(Sadle), nameof(Sadle.RPC_RequestRespons))]
+        public static class Sadle_RPC_RequestRespons_RecordLastUser
+        {
+            private static void Postfix(Sadle __instance, bool granted)
+            {
+                if (!granted || Player.m_localPlayer == null)
+                    return;
+
+                long playerID = Player.m_localPlayer.GetPlayerID();
+                if (playerID == 0L)
+                    return;
+
+                SetLastSaddleUserLocal(__instance, playerID);
+                RequestSetLastSaddleUser(__instance, playerID);
             }
         }
 
@@ -768,7 +1159,15 @@ namespace ProtectiveWards
                 typeof(PickableItem),
                 typeof(Fish),
                 typeof(RopeAttachment),
-                typeof(Teleport)
+                typeof(Teleport),
+                typeof(MapTable),
+                typeof(Fireplace),
+                typeof(Turret),
+                typeof(CraftingStation),
+                typeof(Bed),
+                typeof(Catapult),
+                typeof(ArcheryTarget),
+                typeof(Barber)
             };
 
             private static IEnumerable<MethodBase> TargetMethods()
@@ -808,21 +1207,42 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(Trap), nameof(Trap.Interact))]
+        public static class Trap_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Trap __instance, Humanoid character, ref bool __result)
+            {
+                if (!wardTrapProtection.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, character, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(Trap), nameof(Trap.OnTriggerEnter))]
         static class Trap_OnTriggerEnter_TrapProtection
         {
             private static bool Prefix(Trap __instance, Collider collider)
             {
-                if (!modEnabled.Value)
-                    return true;
-
                 if (!wardTrapProtection.Value)
                     return true;
 
-                if (collider.GetComponentInParent<Player>() == null)
+                Player player = collider.GetComponentInParent<Player>();
+                if (player == null)
                     return true;
 
-                return !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true);
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
+                    return true;
+
+                if (BackgroundProtection.IsBackgroundProtectionActiveAt(__instance.transform.position, out PrivateArea backgroundWard)
+                    && backgroundWard != null
+                    && !HasAccessToWardOrConnectedWard(backgroundWard, player, wardBackgroundConnectedAccessMode.Value))
+                    return true;
+
+                return false;
             }
         }
 
@@ -836,9 +1256,6 @@ namespace ProtectiveWards
 
             private static void Prefix(Destructible __instance, bool ___m_destroyed, HitData hit)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!wardPlantProtection.Value)
                     return;
 
