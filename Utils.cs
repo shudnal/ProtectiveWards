@@ -9,7 +9,7 @@ namespace ProtectiveWards
 
     internal static class ComponentExtensions
     {
-        internal static ZNetView GetWardZNetView(this UnityEngine.Component component)
+        internal static ZNetView GetComponentZNetView(this UnityEngine.Component component)
         {
             if (component == null)
                 return null;
@@ -52,7 +52,7 @@ namespace ProtectiveWards
 
         internal static ZDO GetWardZDO(this UnityEngine.Component component)
         {
-            ZNetView nview = component.GetWardZNetView();
+            ZNetView nview = component.GetComponentZNetView();
             return nview != null && nview.IsValid() ? nview.GetZDO() : null;
         }
     }
@@ -61,33 +61,26 @@ namespace ProtectiveWards
     {
         internal static ZDO GetWardZDO(this PrivateArea ward)
         {
-            ZNetView nview = ward.GetWardZNetView();
+            ZNetView nview = ward.GetComponentZNetView();
             return nview != null && nview.IsValid() ? nview.GetZDO() : null;
         }
 
-        internal static bool HasDirectWardAccess(this PrivateArea ward, long playerID)
-        {
-            return ProtectiveWards.HasDirectAccessToWard(ward, playerID);
-        }
+        internal static bool HasDirectWardAccess(this PrivateArea ward, long playerID) => ProtectiveWards.HasDirectAccessToWard(ward, playerID);
 
-        internal static bool HasConnectedWardAccess(this PrivateArea ward, long playerID, ProtectiveWards.WardConnectedAccessMode mode)
-        {
-            return ProtectiveWards.HasAccessToWardOrConnectedWard(ward, playerID, mode);
-        }
+        internal static bool HasConnectedWardAccess(this PrivateArea ward, long playerID, ProtectiveWards.WardConnectedAccessMode mode) => ProtectiveWards.HasAccessToWardOrConnectedWard(ward, playerID, mode);
     }
 
     internal static class WardZdoExtensions
     {
-        internal static bool IsWardZdo(this ZDO zdo) => WardZdoUtils.IsWardZdo(zdo);
+        internal static bool IsWard(this ZDO zdo) => WardZdoUtils.IsWard(zdo);
 
-        internal static long GetWardCreatorId(this ZDO zdo) => WardZdoUtils.GetCreatorID(zdo);
+        internal static long GetCreatorId(this ZDO zdo) => zdo != null ? zdo.GetLong(ZDOVars.s_creator, 0L) : 0L;
+
+        internal static bool IsCreator(this ZDO zdo, long creatorID) => zdo.GetCreatorId() == creatorID;
 
         internal static bool HasDirectWardAccess(this ZDO zdo, long playerID) => WardZdoUtils.HasDirectAccessToWardZdo(zdo, playerID);
 
-        internal static bool HasConnectedWardAccess(this ZDO zdo, long playerID, ProtectiveWards.WardConnectedAccessMode mode, System.Func<ZDO, bool> isActiveCandidate)
-        {
-            return WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, isActiveCandidate);
-        }
+        internal static bool HasConnectedWardAccess(this ZDO zdo, long playerID, ProtectiveWards.WardConnectedAccessMode mode, System.Func<ZDO, bool> isActiveCandidate) => WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, isActiveCandidate);
 
         internal static float GetWardRadius(this ZDO zdo) => WardZdoUtils.GetWardRadius(zdo);
 

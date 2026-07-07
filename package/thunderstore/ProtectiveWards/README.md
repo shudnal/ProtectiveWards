@@ -12,7 +12,7 @@ Protective Wards is aimed at public PvE servers: it helps keep non-permitted pla
 - Jotunn 2.29.1 or newer compatible 2.x version
 - YamlDotNet
 
-The mod uses Jotunn network compatibility and server-synced configuration. On a server, all players are expected to have the mod installed.
+The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-synced configuration. In client-server mode, the mod is required on both the server and all clients.
 
 ## Main features
 
@@ -91,36 +91,34 @@ Access protection, background protection and expiration can use separate connect
 
 ### Admin/server tools
 
-#### `pw_permit <player name>` / `pw_unpermit <player name>`
+#### Ward permitted-list commands
 
-`pw_permit` adds an online player to the nearest ward's permitted list.
+`pw_permit <player name>` / `ward_permit <player name>` adds an online player to the nearest ward's permitted list.
 
-Alias:
+`pw_unpermit <player name>` / `ward_unpermit <player name>` removes a player from the nearest ward's permitted list. It matches the existing permitted list, so the player does not need to be online.
 
-```text
-ward_permit <player name>
-```
-
-`pw_unpermit` removes a player from the nearest ward's permitted list. It matches the existing permitted list, so the player does not need to be online.
-
-Both commands validate on the server that:
+Both commands use `Ward admin / Enable external ward control commands` and `Ward admin / External ward control command range`.
+They validate on the server that:
 
 - the ward exists and is close enough;
 - the requester has ward access;
 - the target can be uniquely resolved;
 - the requested permitted-list change is still valid.
 
-#### `pw_enable` / `pw_disable`
+#### Ward toggle commands
 
-Enables or disables the nearest ward within the configured command range.
+`pw_enable` / `ward_enable` enables the nearest ward within the configured command range.
 
-The command is creator/admin controlled: the ward creator may toggle their own ward, and players allowed by `Ward admin / Ward admin access` may toggle any nearby ward.
+`pw_disable` / `ward_disable` disables the nearest ward within the configured command range.
+
+The commands use the same external ward control enable/range configs as the permitted-list commands.
+They are creator/admin controlled: the ward creator may toggle their own ward, and players allowed by `Ward admin / Ward admin access` may toggle any nearby ward.
 
 #### Ward build limit
 
 The server can limit how many wards each player may have in the world.
 
-Existing wards are never removed. If a player already exceeds the configured limit, only newly built wards are blocked: after a new ward is placed, the server counts all ward ZDOs in the world for that creator and destroys only the newly placed ward if the limit is exceeded.
+Existing wards are never removed. If a player already exceeds the configured limit, only newly built wards are blocked: after a new ward is placed, the server checks the tracked ward ZDO collection for that creator and destroys only the newly placed ward if the limit is exceeded.
 
 ### Background/passive protection
 
@@ -143,7 +141,7 @@ Trap protection still lets permitted players move through their own traps safely
 
 Inactive ward expiration is disabled by default.
 
-When enabled, the server periodically scans all ward ZDOs in the world. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
+When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
 
 Important details:
 

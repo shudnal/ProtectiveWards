@@ -29,7 +29,7 @@ namespace ProtectiveWards
                 return;
 
             s_nextCheckTime = Time.time + GetCheckIntervalSeconds();
-            CheckAllWardZdos();
+            CheckTrackedWards();
         }
 
         private static float GetCheckIntervalSeconds()
@@ -41,12 +41,12 @@ namespace ProtectiveWards
             return Mathf.Clamp(minutes / 10f, 10f, 60f) * 60f;
         }
 
-        private static void CheckAllWardZdos()
+        private static void CheckTrackedWards()
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long expirationSeconds = Math.Max(wardExpirationMinutes.Value, 1) * 60L;
 
-            foreach (ZDO zdo in WardZdoUtils.GetAllWardZdos())
+            foreach (ZDO zdo in WardZdoUtils.GetAllWards())
             {
                 if (zdo == null)
                     continue;
@@ -109,7 +109,7 @@ namespace ProtectiveWards
 
         private static bool IsActiveForExpirationConnectedAccess(ZDO zdo)
         {
-            return zdo.IsWardZdo()
+            return zdo.IsWard()
                    && zdo.GetBool(ZDOVars.s_enabled, false)
                    && !IsExpired(zdo);
         }

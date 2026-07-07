@@ -61,7 +61,6 @@ namespace ProtectiveWards
         public static ConfigEntry<int> autoCloseDoorsTime;
         public static ConfigEntry<string> autoCloseDoorsIgnorePrefabs;
 
-        public static ConfigEntry<string> wardPrefabNameToChangeRange;
         public static ConfigEntry<bool> setWardRange;
         public static ConfigEntry<float> wardRange;
         public static ConfigEntry<bool> supressSpawnInRange;
@@ -152,8 +151,8 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardBackgroundPreventBuildingAndDemolishing;
 
         public static ConfigEntry<WardAdminAccessMode> wardAdminAccess;
-        public static ConfigEntry<bool> wardCommandPermitEnabled;
-        public static ConfigEntry<float> wardCommandPermitRange;
+        public static ConfigEntry<bool> wardExternalControlCommandsEnabled;
+        public static ConfigEntry<float> wardExternalControlCommandRange;
         public static ConfigEntry<int> wardBuildLimitPerPlayer;
 
         public static ConfigEntry<int> wardExpirationMinutes;
@@ -406,8 +405,6 @@ namespace ProtectiveWards
             autoCloseDoorsTime = config("Passive", "Auto close doors after", defaultValue: 0, "Automatically close doors after a specified number of seconds. 0 to disable. 5 recommended");
             autoCloseDoorsIgnorePrefabs = config("Passive", "Auto close doors ignore prefabs", defaultValue: "", "Comma-separated list of prefab names which should not be auto closed.");
 
-
-            wardPrefabNameToChangeRange = config("Range", "Ward prefab names to control range", defaultValue: "guard_stone", "Prefab name of ward to control range in case.");
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
@@ -503,11 +500,11 @@ namespace ProtectiveWards
                                                                                                     + "\nOff: admins do not bypass ward access checks."
                                                                                                     + "\nAdmins: server admins and host bypass ward access checks."
                                                                                                     + "\nAdminsInGodMode: server admins and host bypass ward access checks only while god mode is enabled.");
-            wardCommandPermitEnabled = config("Ward admin", "Enable permit command", true, "Enables pw_permit and ward_permit console commands for adding an online player to the nearest ward permitted list.");
-            wardCommandPermitRange = config("Ward admin", "Permit command ward range", 5f, "Maximum horizontal distance from the player to the ward used by pw_permit.");
+            wardExternalControlCommandsEnabled = config("Ward admin", "Enable external ward control commands", true, "Enables external ward management console commands and aliases for changing nearby wards, including permitted-list and enabled-state commands.");
+            wardExternalControlCommandRange = config("Ward admin", "External ward control command range", 5f, "Maximum horizontal distance from the player to the ward used by external ward management commands.");
             wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
 
-            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically scans all ward ZDOs and expires wards after this many real-time minutes without activity from players who can refresh them.");
+            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically checks the tracked ward ZDO collection and expires wards after this many real-time minutes without activity from players who can refresh them.");
             wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls who can refresh inactive ward expiration. DirectPermitted: only direct ward creator/permitted players. EffectiveAccess: connected/effective access can refresh according to expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for inactive ward expiration refresh/reactivation.");
             wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "ManualInteraction: expired wards stay inactive until an access player interacts with them. AutomaticOnLogin: an access player being online automatically reactivates expired wards.");
@@ -586,26 +583,11 @@ namespace ProtectiveWards
             return false;
         }
 
-        public static bool IsActivePlayerWard(PrivateArea ward)
-        {
-            return ward != null && ward.IsEnabled() && ward.m_ownerFaction == Character.Faction.Players;
-        }
+        public static bool IsActivePlayerWard(PrivateArea ward) => ward != null && ward.IsEnabled() && ward.m_ownerFaction == Character.Faction.Players;
 
-        private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate)
-        {
-            if (ward == null || candidate == null)
-                return false;
+        private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate) => ward != null && candidate != null && ward.m_radius + candidate.m_radius >= Utils.DistanceXZ(ward.transform.position, candidate.transform.position);
 
-            return ward.m_radius + candidate.m_radius >= Utils.DistanceXZ(ward.transform.position, candidate.transform.position);
-        }
-
-        public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f)
-        {
-            if (ward == null)
-                return false;
-
-            return Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
-        }
+        public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f) => ward != null && Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
 
         public static bool HasDirectAccessToWard(PrivateArea ward, Player player)
         {
@@ -632,18 +614,9 @@ namespace ProtectiveWards
             return ward.IsPermitted(playerID);
         }
 
-        public static bool HasAccessToWard(PrivateArea ward, Player player)
-        {
-            return HasDirectAccessToWard(ward, player);
-        }
+        public static bool HasAccessToWard(PrivateArea ward, Player player) => HasDirectAccessToWard(ward, player);
 
-        private static long GetWardCreatorId(PrivateArea ward)
-        {
-            if (ward == null || ward.m_piece == null)
-                return 0L;
-
-            return ward.m_piece.GetCreator();
-        }
+        private static long GetCreatorId(PrivateArea ward) => ward?.m_piece != null ? ward.m_piece.GetCreator() : 0L;
 
         public static bool CanShareConnectedAccess(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
         {
@@ -659,12 +632,12 @@ namespace ProtectiveWards
             switch (mode)
             {
                 case WardConnectedAccessMode.SameCreatorOnly:
-                    long protectedCreator = GetWardCreatorId(protectedWard);
-                    long candidateCreator = GetWardCreatorId(candidateWard);
+                    long protectedCreator = GetCreatorId(protectedWard);
+                    long candidateCreator = GetCreatorId(candidateWard);
                     return protectedCreator != 0L && protectedCreator == candidateCreator;
                 case WardConnectedAccessMode.MutualTrust:
-                    protectedCreator = GetWardCreatorId(protectedWard);
-                    candidateCreator = GetWardCreatorId(candidateWard);
+                    protectedCreator = GetCreatorId(protectedWard);
+                    candidateCreator = GetCreatorId(candidateWard);
                     return protectedCreator != 0L
                            && candidateCreator != 0L
                            && HasDirectAccessToWard(protectedWard, candidateCreator)
@@ -844,7 +817,7 @@ namespace ProtectiveWards
 
             if (creatorId == 0L)
             {
-                ZNetView zNetView = component.GetWardZNetView();
+                ZNetView zNetView = component.GetComponentZNetView();
                 ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
                 if (zdo != null)
                     creatorId = zdo.GetLong(ZDOVars.s_creator, 0L);
@@ -880,7 +853,7 @@ namespace ProtectiveWards
 
             if (string.IsNullOrWhiteSpace(creatorName))
             {
-                ZNetView zNetView = component.GetWardZNetView();
+                ZNetView zNetView = component.GetComponentZNetView();
                 ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
                 if (zdo != null)
                     creatorName = zdo.GetString(ZDOVars.s_creatorName);
@@ -947,7 +920,7 @@ namespace ProtectiveWards
             if (playerID == 0L)
                 return false;
 
-            if (HasLastSaddleUser(component.GetWardZNetView(), playerID))
+            if (HasLastSaddleUser(component.GetComponentZNetView(), playerID))
                 return true;
 
             Sadle sadle = component.GetComponentInParent<Sadle>();
@@ -957,19 +930,16 @@ namespace ProtectiveWards
             if (sadle == null)
                 return false;
 
-            if (HasLastSaddleUser(sadle.GetWardZNetView(), playerID))
+            if (HasLastSaddleUser(sadle.GetComponentZNetView(), playerID))
                 return true;
 
-            if (sadle.m_character != null && HasLastSaddleUser(sadle.m_character.GetWardZNetView(), playerID))
+            if (sadle.m_character != null && HasLastSaddleUser(sadle.m_character.GetComponentZNetView(), playerID))
                 return true;
 
             return false;
         }
 
-        public static bool ShouldSkipWardBlockForOwnedObject(Component component, PrivateArea protectedWard, Player interactingPlayer)
-        {
-            return IsObjectOwnedByPlayerWithWardAccess(component, protectedWard, interactingPlayer);
-        }
+        public static bool ShouldSkipWardBlockForOwnedObject(Component component, PrivateArea protectedWard, Player interactingPlayer) => IsObjectOwnedByPlayerWithWardAccess(component, protectedWard, interactingPlayer);
 
         public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
         {
@@ -1514,7 +1484,7 @@ namespace ProtectiveWards
                 if (__state)
                     return;
 
-                ZNetView m_nview = __instance.GetWardZNetView();
+                ZNetView m_nview = __instance.GetComponentZNetView();
                 if (!m_nview || !m_nview.IsValid())
                     return;
 
@@ -2012,10 +1982,7 @@ namespace ProtectiveWards
             }
         }
 
-        private static bool IsWardToSetRange(PrivateArea ward)
-        {
-            return ward != null && wardPrefabNameToChangeRange.Value.Split(',').Any(name => name.Trim() == Utils.GetPrefabName(ward.name));
-        }
+        private static bool IsWardToSetRange(PrivateArea ward) => WardZdoUtils.IsWardPrefab(ward?.gameObject);
 
         private static void CacheWardDefaultRange(PrivateArea ward)
         {

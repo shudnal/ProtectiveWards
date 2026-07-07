@@ -2,17 +2,18 @@
 * migrated configuration sync to Jotunn and added Jotunn as a required dependency
 * removed the global Enabled config; use individual feature configs instead
 * added per-ward settings UI for range, emission color, sphere visuals, and ward circle visuals
+* removed configurable ward prefab-name range filter; range customization is now bound to the vanilla guard_stone ward prefab
 * added access protection from non-permitted players for containers, doors, plants, ships, tames, saddles, carts, portals, production stations, item stands, armor stands, map tables, turrets, crafting stations, beds, catapults, archery targets, barber stations, traps, fireplaces, and generic interactables
 * added connected ward access modes: Off, SameCreatorOnly, MutualTrust, and AnyConnected
 * added ownership-aware exemptions so players are not trapped out of their own ships, carts, portals, tombstones, saddles, and similar owned objects under another ward
 * added portal access modes, including teleport-only access and full teleport blocking
 * full portal blocking now also checks the destination portal before teleporting, preventing one-way traps into protected portal rooms
-* added server-side pw_permit / ward_permit, pw_unpermit, pw_enable, and pw_disable commands for nearby wards
+* added server-side pw_permit / ward_permit, pw_unpermit / ward_unpermit, pw_enable / ward_enable, and pw_disable / ward_disable commands for nearby wards, controlled by shared external ward control enable/range configs
 * fixed pw_permit so it adds permitted players directly instead of using the vanilla TogglePermitted RPC, which only works while a ward is disabled
-* added optional per-player ward build limit based on all ward ZDOs in the world
+* added optional per-player ward build limit based on tracked server-side ward ZDOs
 * added background protection for qualified warded bases when no permitted/effective-access player is nearby
 * added protection for tames, ships, carts, fire damage, tame pacify, building, and demolishing under the background protection mode
-* added inactive ward expiration with server-side ZDO scan, manual/automatic reactivation modes, and admin hover details
+* added inactive ward expiration with tracked server-side ward ZDOs, manual/automatic reactivation modes, and admin hover details
 * admin bypass is now controlled by Ward admin access and can require god mode so admins can play normally without bypassing ward protection
 * added and updated localization strings for new ward settings, access, admin, background protection, and expiration features
 * updated Thunderstore README with Jotunn requirement and new feature documentation

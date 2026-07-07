@@ -1,3 +1,4 @@
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -9,30 +10,23 @@ namespace ProtectiveWards
     {
         internal const string WardPrefabName = "guard_stone";
         internal static readonly int s_wardPrefabHash = WardPrefabName.GetStableHashCode();
+        private static readonly HashSet<ZDO> s_wardObjects = new HashSet<ZDO>();
         private static bool s_wardDefaultRadiusCached;
         private static float s_wardDefaultRadius = 32f;
 
-        internal static bool IsWardPrefab(GameObject gameObject)
-        {
-            return gameObject != null && Utils.GetPrefabName(gameObject) == WardPrefabName;
-        }
+        internal static bool IsWardPrefab(GameObject gameObject) => gameObject != null && Utils.GetPrefabName(gameObject) == WardPrefabName;
 
-        internal static bool IsWardZdo(ZDO zdo)
-        {
-            return zdo != null && zdo.GetPrefab() == s_wardPrefabHash;
-        }
+        internal static bool IsWard(ZDO zdo) => zdo != null && zdo.GetPrefab() == s_wardPrefabHash;
 
-        internal static IEnumerable<ZDO> GetAllWardZdos()
+        internal static IEnumerable<ZDO> GetAllWards()
         {
-            if (ZDOMan.instance == null)
+            if (!ShouldTrackServerWards())
                 yield break;
 
-            foreach (KeyValuePair<ZDOID, ZDO> pair in ZDOMan.instance.m_objectsByID)
-            {
-                ZDO zdo = pair.Value;
-                if (IsWardZdo(zdo))
-                    yield return zdo;
-            }
+            PruneWardObjects();
+
+            foreach (ZDO zdo in s_wardObjects)
+                yield return zdo;
         }
 
         internal static int CountWardsByCreator(long creatorID)
@@ -41,9 +35,9 @@ namespace ProtectiveWards
                 return 0;
 
             int count = 0;
-            foreach (ZDO zdo in GetAllWardZdos())
+            foreach (ZDO zdo in GetAllWards())
             {
-                if (GetCreatorID(zdo) == creatorID)
+                if (zdo.IsCreator(creatorID))
                     count++;
             }
 
@@ -63,11 +57,6 @@ namespace ProtectiveWards
             }
 
             return null;
-        }
-
-        internal static long GetCreatorID(ZDO zdo)
-        {
-            return zdo != null ? zdo.GetLong(ZDOVars.s_creator, 0L) : 0L;
         }
 
         internal static bool IsPermitted(ZDO zdo, long playerID)
@@ -99,10 +88,10 @@ namespace ProtectiveWards
             if (playerID == 0L)
                 return false;
 
-            if (!IsWardZdo(zdo))
+            if (!IsWard(zdo))
                 return false;
 
-            if (GetCreatorID(zdo) == playerID)
+            if (zdo.IsCreator(playerID))
                 return true;
 
             return IsPermitted(zdo, playerID);
@@ -120,10 +109,7 @@ namespace ProtectiveWards
             return zdo.GetBool(s_customRange, fallback);
         }
 
-        internal static float GetConfiguredWardRange(ZDO zdo)
-        {
-            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
-        }
+        internal static float GetConfiguredWardRange(ZDO zdo) => zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
 
         internal static float GetWardDefaultRadius()
         {
@@ -152,7 +138,7 @@ namespace ProtectiveWards
 
         internal static bool AreWardZdosOverlapping(ZDO protectedWard, ZDO candidateWard)
         {
-            if (!IsWardZdo(protectedWard) || !IsWardZdo(candidateWard))
+            if (!IsWard(protectedWard) || !IsWard(candidateWard))
                 return false;
 
             float protectedRadius = GetWardRadius(protectedWard);
@@ -165,7 +151,7 @@ namespace ProtectiveWards
             if (mode == WardConnectedAccessMode.Off)
                 return false;
 
-            if (!IsWardZdo(protectedWard) || !IsWardZdo(candidateWard))
+            if (!IsWard(protectedWard) || !IsWard(candidateWard))
                 return false;
 
             if (protectedWard == candidateWard || protectedWard.m_uid.Equals(candidateWard.m_uid))
@@ -174,13 +160,13 @@ namespace ProtectiveWards
             switch (mode)
             {
                 case WardConnectedAccessMode.SameCreatorOnly:
-                    long protectedCreator = GetCreatorID(protectedWard);
-                    long candidateCreator = GetCreatorID(candidateWard);
+                    long protectedCreator = protectedWard.GetCreatorId();
+                    long candidateCreator = candidateWard.GetCreatorId();
                     return protectedCreator != 0L && protectedCreator == candidateCreator;
 
                 case WardConnectedAccessMode.MutualTrust:
-                    protectedCreator = GetCreatorID(protectedWard);
-                    candidateCreator = GetCreatorID(candidateWard);
+                    protectedCreator = protectedWard.GetCreatorId();
+                    candidateCreator = candidateWard.GetCreatorId();
                     return protectedCreator != 0L
                            && candidateCreator != 0L
                            && HasDirectAccessToWardZdo(protectedWard, candidateCreator)
@@ -196,7 +182,7 @@ namespace ProtectiveWards
 
         internal static IEnumerable<ZDO> ConnectedAccessWardZdos(ZDO rootWard, WardConnectedAccessMode mode, Func<ZDO, bool> isActiveCandidate)
         {
-            if (!IsWardZdo(rootWard))
+            if (!IsWard(rootWard))
                 yield break;
 
             HashSet<ZDOID> visited = new HashSet<ZDOID>();
@@ -214,7 +200,7 @@ namespace ProtectiveWards
                 if (mode == WardConnectedAccessMode.Off)
                     continue;
 
-                foreach (ZDO candidate in GetAllWardZdos())
+                foreach (ZDO candidate in GetAllWards())
                 {
                     if (candidate == null || visited.Contains(candidate.m_uid))
                         continue;
@@ -254,6 +240,78 @@ namespace ProtectiveWards
             }
 
             return false;
+        }
+
+        private static bool ShouldTrackServerWards() => ZNet.instance != null && ZNet.instance.IsServer();
+
+        private static void AddIfWard(ZDO zdo)
+        {
+            if (ShouldTrackServerWards() && IsWard(zdo))
+                s_wardObjects.Add(zdo);
+        }
+
+        private static void RemoveIfWard(ZDO zdo)
+        {
+            if (zdo != null && IsWard(zdo))
+                s_wardObjects.Remove(zdo);
+        }
+
+        private static void PruneWardObjects() => s_wardObjects.RemoveWhere(zdo => zdo == null || !IsWard(zdo));
+
+        private static void RebuildWardObjects(ZDOMan zdoMan)
+        {
+            s_wardObjects.Clear();
+
+            if (!ShouldTrackServerWards() || zdoMan == null)
+                return;
+
+            foreach (KeyValuePair<ZDOID, ZDO> pair in zdoMan.m_objectsByID)
+                AddIfWard(pair.Value);
+        }
+
+        [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
+        private static class ZDOMan_Load_WardListInit
+        {
+            private static void Postfix(ZDOMan __instance) => RebuildWardObjects(__instance);
+        }
+
+        [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.CreateNewZDO), new Type[3] { typeof(ZDOID), typeof(Vector3), typeof(int) })]
+        private static class ZDOMan_CreateNewZDO_WardListAddNew
+        {
+            private static void Postfix(int prefabHashIn, ZDO __result)
+            {
+                if (!ShouldTrackServerWards())
+                    return;
+
+                if (prefabHashIn != 0 && prefabHashIn != s_wardPrefabHash)
+                    return;
+
+                AddIfWard(__result);
+            }
+        }
+
+        [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.HandleDestroyedZDO))]
+        private static class ZDOMan_HandleDestroyedZDO_WardListRemove
+        {
+            private static void Prefix(ZDOMan __instance, ZDOID uid)
+            {
+                if (__instance == null)
+                    return;
+
+                RemoveIfWard(__instance.GetZDO(uid));
+            }
+        }
+
+        [HarmonyPatch(typeof(ZDO), nameof(ZDO.Deserialize))]
+        private static class ZDO_Deserialize_WardListAdd
+        {
+            private static void Postfix(ZDO __instance) => AddIfWard(__instance);
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        private static class ZoneSystem_OnDestroy_WardListClear
+        {
+            private static void Postfix() => s_wardObjects.Clear();
         }
     }
 }

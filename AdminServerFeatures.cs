@@ -41,74 +41,60 @@ namespace ProtectiveWards
             if (s_commandRegistered)
                 return;
 
-            new Terminal.ConsoleCommand("pw_permit", "<player name> - add an online player to the nearest ward within configured range", args =>
-            {
-                if (!wardCommandPermitEnabled.Value)
-                {
-                    args.Context.AddString("pw_permit is disabled.");
-                    return;
-                }
-
-                if (args.Length < 2)
-                {
-                    args.Context.AddString("Usage: pw_permit <player name>");
-                    return;
-                }
-
-                RequestPermit(GetCommandQuery(args), args.Context);
-            });
-
-            new Terminal.ConsoleCommand("ward_permit", "<player name> - alias for pw_permit", args =>
-            {
-                if (!wardCommandPermitEnabled.Value)
-                {
-                    args.Context.AddString("ward_permit is disabled.");
-                    return;
-                }
-
-                if (args.Length < 2)
-                {
-                    args.Context.AddString("Usage: ward_permit <player name>");
-                    return;
-                }
-
-                RequestPermit(GetCommandQuery(args), args.Context);
-            });
-
-            new Terminal.ConsoleCommand("pw_unpermit", "<player name> - remove a player from the nearest ward permitted list", args =>
-            {
-                if (!wardCommandPermitEnabled.Value)
-                {
-                    args.Context.AddString("pw_unpermit is disabled.");
-                    return;
-                }
-
-                if (args.Length < 2)
-                {
-                    args.Context.AddString("Usage: pw_unpermit <player name>");
-                    return;
-                }
-
-                RequestUnpermit(GetCommandQuery(args), args.Context);
-            });
-
-            new Terminal.ConsoleCommand("pw_enable", "enable the nearest ward within configured range", args =>
-            {
-                RequestSetWardEnabled(enabled: true, args.Context);
-            });
-
-            new Terminal.ConsoleCommand("pw_disable", "disable the nearest ward within configured range", args =>
-            {
-                RequestSetWardEnabled(enabled: false, args.Context);
-            });
+            RegisterPlayerListCommand("pw_permit", "<player name> - add an online player to the nearest ward within configured range", RequestPermit);
+            RegisterPlayerListCommand("ward_permit", "<player name> - add an online player to the nearest ward within configured range", RequestPermit);
+            RegisterPlayerListCommand("pw_unpermit", "<player name> - remove a player from the nearest ward permitted list", RequestUnpermit);
+            RegisterPlayerListCommand("ward_unpermit", "<player name> - remove a player from the nearest ward permitted list", RequestUnpermit);
+            RegisterWardStateCommand("pw_enable", "enable the nearest ward within configured range", enabled: true);
+            RegisterWardStateCommand("ward_enable", "enable the nearest ward within configured range", enabled: true);
+            RegisterWardStateCommand("pw_disable", "disable the nearest ward within configured range", enabled: false);
+            RegisterWardStateCommand("ward_disable", "disable the nearest ward within configured range", enabled: false);
 
             s_commandRegistered = true;
         }
 
-        private static string GetCommandQuery(Terminal.ConsoleEventArgs args)
+        private static void RegisterPlayerListCommand(string command, string description, Action<string, Terminal> action)
         {
-            return string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
+            new Terminal.ConsoleCommand(command, description, args =>
+            {
+                if (!ValidateWardControlCommand(args.Context))
+                    return;
+
+                if (args.Length < 2)
+                {
+                    args.Context.AddString("Usage: <player name>");
+                    return;
+                }
+
+                action(GetCommandQuery(args), args.Context);
+            });
         }
+
+        private static void RegisterWardStateCommand(string command, string description, bool enabled)
+        {
+            new Terminal.ConsoleCommand(command, description, args =>
+            {
+                if (!ValidateWardControlCommand(args.Context))
+                    return;
+
+                RequestSetWardEnabled(enabled, args.Context);
+            });
+        }
+
+        private static string GetCommandQuery(Terminal.ConsoleEventArgs args) => string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
+
+        private static bool ValidateWardControlCommand(Terminal context)
+        {
+            if (AreWardControlCommandsEnabled())
+                return true;
+
+            context.AddString("Ward control commands are disabled.");
+            return false;
+        }
+
+        private static bool AreWardControlCommandsEnabled() => wardExternalControlCommandsEnabled.Value;
+
+        private static float GetWardControlCommandRange() => Math.Max(wardExternalControlCommandRange.Value, 0f);
 
         private static void RequestPermit(string query, Terminal context)
         {
@@ -119,7 +105,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
+            PrivateArea ward = FindNearestWard(player.transform.position, GetWardControlCommandRange());
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
             {
                 context.AddString("$pw_permit_no_ward".Localize());
@@ -175,7 +161,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
+            PrivateArea ward = FindNearestWard(player.transform.position, GetWardControlCommandRange());
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
             {
                 context.AddString("$pw_permit_no_ward".Localize());
@@ -224,7 +210,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
+            PrivateArea ward = FindNearestWard(player.transform.position, GetWardControlCommandRange());
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
             {
                 context.AddString("$pw_permit_no_ward".Localize());
@@ -257,6 +243,9 @@ namespace ProtectiveWards
             long targetID = package.ReadLong();
             string targetName = package.ReadString();
 
+            if (!AreWardControlCommandsEnabled())
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
@@ -265,7 +254,7 @@ namespace ProtectiveWards
                 return;
 
             Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > Math.Max(wardCommandPermitRange.Value, 0f))
+            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
                 return;
 
             Player target = Player.GetPlayer(targetID);
@@ -285,6 +274,9 @@ namespace ProtectiveWards
             long requesterID = package.ReadLong();
             long targetID = package.ReadLong();
 
+            if (!AreWardControlCommandsEnabled())
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
@@ -293,7 +285,7 @@ namespace ProtectiveWards
                 return;
 
             Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > Math.Max(wardCommandPermitRange.Value, 0f))
+            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
                 return;
 
             if (!IsPlayerInPermittedList(ward, targetID))
@@ -310,6 +302,9 @@ namespace ProtectiveWards
             long requesterID = package.ReadLong();
             bool enabled = package.ReadBool();
 
+            if (!AreWardControlCommandsEnabled())
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
@@ -318,7 +313,7 @@ namespace ProtectiveWards
                 return;
 
             Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > Math.Max(wardCommandPermitRange.Value, 0f))
+            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
                 return;
 
             if (ward.IsEnabled() == enabled)
@@ -328,21 +323,9 @@ namespace ProtectiveWards
             LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
         }
 
-        private static bool CanRequesterPermit(PrivateArea ward, long requesterID)
-        {
-            if (ward == null || requesterID == 0L)
-                return false;
+        private static bool CanRequesterPermit(PrivateArea ward, long requesterID) => ward != null && requesterID != 0L && HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
 
-            return HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
-        }
-
-        private static bool CanLocalToggleWard(PrivateArea ward)
-        {
-            if (ward == null)
-                return false;
-
-            return (ward.m_piece != null && ward.m_piece.IsCreator()) || HasLocalWardAdminAccess();
-        }
+        private static bool CanLocalToggleWard(PrivateArea ward) => ward != null && ((ward.m_piece != null && ward.m_piece.IsCreator()) || HasLocalWardAdminAccess());
 
         private static bool CanRequesterToggleWard(PrivateArea ward, long requesterID)
         {
@@ -355,10 +338,7 @@ namespace ProtectiveWards
             return ward.m_piece != null && ward.m_piece.GetCreator() == requesterID;
         }
 
-        private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID)
-        {
-            return ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);
-        }
+        private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID) => ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);
 
         private static List<KeyValuePair<long, string>> FindPermittedPlayers(PrivateArea ward, string query)
         {
@@ -434,7 +414,7 @@ namespace ProtectiveWards
                 if (!WardZdoUtils.IsWardPrefab(__instance.gameObject))
                     return;
 
-                ZNetView nview = __instance.GetWardZNetView();
+                ZNetView nview = __instance.GetComponentZNetView();
                 if (nview == null || !nview.IsValid())
                     return;
 
@@ -474,7 +454,7 @@ namespace ProtectiveWards
                 return;
 
             ZDO newWardZdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(newWardID) : null;
-            if (!newWardZdo.IsWardZdo())
+            if (!newWardZdo.IsWard())
                 return;
 
             if (newWardZdo.GetLong(ZDOVars.s_creator, 0L) != creatorID)

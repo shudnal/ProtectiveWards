@@ -121,7 +121,7 @@ namespace ProtectiveWards
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
 
-            foreach (ZDO zdo in WardZdoUtils.GetAllWardZdos())
+            foreach (ZDO zdo in WardZdoUtils.GetAllWards())
             {
                 if (!IsActiveWardZdo(zdo))
                     continue;
@@ -141,7 +141,7 @@ namespace ProtectiveWards
 
         private static bool IsActiveWardZdo(ZDO zdo)
         {
-            return zdo.IsWardZdo()
+            return zdo.IsWard()
                    && zdo.GetBool(ZDOVars.s_enabled, false)
                    && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
         }
@@ -159,7 +159,7 @@ namespace ProtectiveWards
 
         private static void RequestSetLastSaddleUser(Sadle sadle, long playerID)
         {
-            ZNetView nview = sadle.GetWardZNetView();
+            ZNetView nview = sadle.GetComponentZNetView();
             ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null || playerID == 0L)
                 return;
@@ -193,10 +193,10 @@ namespace ProtectiveWards
             if (sadle == null || playerID == 0L)
                 return;
 
-            SetLastSaddleUserOnView(sadle.GetWardZNetView(), playerID);
+            SetLastSaddleUserOnView(sadle.GetComponentZNetView(), playerID);
 
             if (sadle.m_character != null)
-                SetLastSaddleUserOnView(sadle.m_character.GetWardZNetView(), playerID);
+                SetLastSaddleUserOnView(sadle.m_character.GetComponentZNetView(), playerID);
         }
 
         private static void SetLastSaddleUserOnView(ZNetView nview, long playerID)
