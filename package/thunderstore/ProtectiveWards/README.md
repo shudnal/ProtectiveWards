@@ -91,9 +91,9 @@ Access protection, background protection and expiration can use separate connect
 
 ### Admin/server tools
 
-#### `pw_permit <player name>`
+#### `pw_permit <player name>` / `pw_unpermit <player name>`
 
-Adds an online player to the nearest ward's permitted list.
+`pw_permit` adds an online player to the nearest ward's permitted list.
 
 Alias:
 
@@ -101,18 +101,24 @@ Alias:
 ward_permit <player name>
 ```
 
-The command validates on the server that:
+`pw_unpermit` removes a player from the nearest ward's permitted list. It matches the existing permitted list, so the player does not need to be online.
+
+Both commands validate on the server that:
 
 - the ward exists and is close enough;
 - the requester has ward access;
-- the target player is online;
-- the target is not already permitted.
+- the target can be uniquely resolved;
+- the requested permitted-list change is still valid.
 
-Admins can use the command without ward access only when the permit-command bypass is enabled and `Ward admin / Ward admin access` allows the player.
+#### `pw_enable` / `pw_disable`
+
+Enables or disables the nearest ward within the configured command range.
+
+The command is creator/admin controlled: the ward creator may toggle their own ward, and players allowed by `Ward admin / Ward admin access` may toggle any nearby ward.
 
 #### Ward build limit
 
-The server can limit how many `guard_stone` wards each player may have in the world.
+The server can limit how many wards each player may have in the world.
 
 Existing wards are never removed. If a player already exceeds the configured limit, only newly built wards are blocked: after a new ward is placed, the server counts all ward ZDOs in the world for that creator and destroys only the newly placed ward if the limit is exceeded.
 
@@ -137,7 +143,7 @@ Trap protection still lets permitted players move through their own traps safely
 
 Inactive ward expiration is disabled by default.
 
-When enabled, the server periodically scans all `guard_stone` ward ZDOs in the world. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
+When enabled, the server periodically scans all ward ZDOs in the world. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
 
 Important details:
 

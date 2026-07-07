@@ -7,22 +7,22 @@ namespace ProtectiveWards
 {
     internal static class WardZdoUtils
     {
-        internal const string GuardStonePrefabName = "guard_stone";
-        internal static readonly int s_guardStonePrefabHash = GuardStonePrefabName.GetStableHashCode();
-        private static bool s_guardStoneDefaultRadiusCached;
-        private static float s_guardStoneDefaultRadius = 32f;
+        internal const string WardPrefabName = "guard_stone";
+        internal static readonly int s_wardPrefabHash = WardPrefabName.GetStableHashCode();
+        private static bool s_wardDefaultRadiusCached;
+        private static float s_wardDefaultRadius = 32f;
 
-        internal static bool IsGuardStonePrefab(GameObject gameObject)
+        internal static bool IsWardPrefab(GameObject gameObject)
         {
-            return gameObject != null && Utils.GetPrefabName(gameObject) == GuardStonePrefabName;
+            return gameObject != null && Utils.GetPrefabName(gameObject) == WardPrefabName;
         }
 
-        internal static bool IsGuardStoneZdo(ZDO zdo)
+        internal static bool IsWardZdo(ZDO zdo)
         {
-            return zdo != null && zdo.GetPrefab() == s_guardStonePrefabHash;
+            return zdo != null && zdo.GetPrefab() == s_wardPrefabHash;
         }
 
-        internal static IEnumerable<ZDO> GetAllGuardStoneZdos()
+        internal static IEnumerable<ZDO> GetAllWardZdos()
         {
             if (ZDOMan.instance == null)
                 yield break;
@@ -30,18 +30,18 @@ namespace ProtectiveWards
             foreach (KeyValuePair<ZDOID, ZDO> pair in ZDOMan.instance.m_objectsByID)
             {
                 ZDO zdo = pair.Value;
-                if (IsGuardStoneZdo(zdo))
+                if (IsWardZdo(zdo))
                     yield return zdo;
             }
         }
 
-        internal static int CountGuardStonesByCreator(long creatorID)
+        internal static int CountWardsByCreator(long creatorID)
         {
             if (creatorID == 0L)
                 return 0;
 
             int count = 0;
-            foreach (ZDO zdo in GetAllGuardStoneZdos())
+            foreach (ZDO zdo in GetAllWardZdos())
             {
                 if (GetCreatorID(zdo) == creatorID)
                     count++;
@@ -78,6 +78,9 @@ namespace ProtectiveWards
             if (permitEveryone != null && permitEveryone.Value)
                 return true;
 
+            if (HasWardAdminAccess(playerID))
+                return true;
+
             int count = Math.Max(zdo.GetInt(ZDOVars.s_permitted, 0), 0);
             for (int i = 0; i < count; i++)
             {
@@ -96,7 +99,7 @@ namespace ProtectiveWards
             if (playerID == 0L)
                 return false;
 
-            if (!IsGuardStoneZdo(zdo))
+            if (!IsWardZdo(zdo))
                 return false;
 
             if (GetCreatorID(zdo) == playerID)
@@ -105,7 +108,7 @@ namespace ProtectiveWards
             return IsPermitted(zdo, playerID);
         }
 
-        internal static bool UseCustomGuardStoneRange(ZDO zdo)
+        internal static bool UseCustomWardRange(ZDO zdo)
         {
             if (zdo == null)
                 return false;
@@ -117,52 +120,52 @@ namespace ProtectiveWards
             return zdo.GetBool(s_customRange, fallback);
         }
 
-        internal static float GetConfiguredGuardStoneRange(ZDO zdo)
+        internal static float GetConfiguredWardRange(ZDO zdo)
         {
-            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetGuardStoneDefaultRadius()) : wardRange.Value;
+            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
         }
 
-        internal static float GetGuardStoneDefaultRadius()
+        internal static float GetWardDefaultRadius()
         {
-            if (s_guardStoneDefaultRadiusCached)
-                return s_guardStoneDefaultRadius;
+            if (s_wardDefaultRadiusCached)
+                return s_wardDefaultRadius;
 
             if (ZNetScene.instance != null)
             {
-                GameObject prefab = ZNetScene.instance.GetPrefab(GuardStonePrefabName);
+                GameObject prefab = ZNetScene.instance.GetPrefab(WardPrefabName);
                 PrivateArea prefabWard = prefab != null ? prefab.GetComponent<PrivateArea>() : null;
                 if (prefabWard != null)
-                    s_guardStoneDefaultRadius = prefabWard.m_radius;
+                    s_wardDefaultRadius = prefabWard.m_radius;
             }
 
-            s_guardStoneDefaultRadiusCached = true;
-            return s_guardStoneDefaultRadius;
+            s_wardDefaultRadiusCached = true;
+            return s_wardDefaultRadius;
         }
 
-        internal static float GetGuardStoneRadius(ZDO zdo)
+        internal static float GetWardRadius(ZDO zdo)
         {
             if (zdo == null)
-                return GetGuardStoneDefaultRadius();
+                return GetWardDefaultRadius();
 
-            return UseCustomGuardStoneRange(zdo) ? GetConfiguredGuardStoneRange(zdo) : GetGuardStoneDefaultRadius();
+            return UseCustomWardRange(zdo) ? GetConfiguredWardRange(zdo) : GetWardDefaultRadius();
         }
 
-        internal static bool AreGuardStoneZdosOverlapping(ZDO protectedWard, ZDO candidateWard)
+        internal static bool AreWardZdosOverlapping(ZDO protectedWard, ZDO candidateWard)
         {
-            if (!IsGuardStoneZdo(protectedWard) || !IsGuardStoneZdo(candidateWard))
+            if (!IsWardZdo(protectedWard) || !IsWardZdo(candidateWard))
                 return false;
 
-            float protectedRadius = GetGuardStoneRadius(protectedWard);
-            float candidateRadius = GetGuardStoneRadius(candidateWard);
+            float protectedRadius = GetWardRadius(protectedWard);
+            float candidateRadius = GetWardRadius(candidateWard);
             return Utils.DistanceXZ(protectedWard.GetPosition(), candidateWard.GetPosition()) <= protectedRadius + candidateRadius;
         }
 
-        internal static bool CanShareConnectedAccess(ZDO protectedWard, ZDO candidateWard, WardConnectedAccessMode mode)
+        internal static bool CanShareConnectedWardAccess(ZDO protectedWard, ZDO candidateWard, WardConnectedAccessMode mode)
         {
             if (mode == WardConnectedAccessMode.Off)
                 return false;
 
-            if (!IsGuardStoneZdo(protectedWard) || !IsGuardStoneZdo(candidateWard))
+            if (!IsWardZdo(protectedWard) || !IsWardZdo(candidateWard))
                 return false;
 
             if (protectedWard == candidateWard || protectedWard.m_uid.Equals(candidateWard.m_uid))
@@ -193,7 +196,7 @@ namespace ProtectiveWards
 
         internal static IEnumerable<ZDO> ConnectedAccessWardZdos(ZDO rootWard, WardConnectedAccessMode mode, Func<ZDO, bool> isActiveCandidate)
         {
-            if (!IsGuardStoneZdo(rootWard))
+            if (!IsWardZdo(rootWard))
                 yield break;
 
             HashSet<ZDOID> visited = new HashSet<ZDOID>();
@@ -211,7 +214,7 @@ namespace ProtectiveWards
                 if (mode == WardConnectedAccessMode.Off)
                     continue;
 
-                foreach (ZDO candidate in GetAllGuardStoneZdos())
+                foreach (ZDO candidate in GetAllWardZdos())
                 {
                     if (candidate == null || visited.Contains(candidate.m_uid))
                         continue;
@@ -219,12 +222,12 @@ namespace ProtectiveWards
                     if (isActiveCandidate != null && !isActiveCandidate(candidate))
                         continue;
 
-                    if (!AreGuardStoneZdosOverlapping(current, candidate))
+                    if (!AreWardZdosOverlapping(current, candidate))
                         continue;
 
                     // Connected sharing rules are checked against the protected/root ward,
                     // matching the loaded PrivateArea connected-access logic.
-                    if (!CanShareConnectedAccess(rootWard, candidate, mode))
+                    if (!CanShareConnectedWardAccess(rootWard, candidate, mode))
                         continue;
 
                     visited.Add(candidate.m_uid);

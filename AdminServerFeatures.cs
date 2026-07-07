@@ -10,6 +10,8 @@ namespace ProtectiveWards
     internal static class AdminServerFeatures
     {
         private const string RPC_PermitPlayer = "PW_PermitPlayer";
+        private const string RPC_UnpermitPlayer = "PW_UnpermitPlayer";
+        private const string RPC_SetWardEnabled = "PW_SetWardEnabled";
         private const string RPC_CheckWardBuildLimit = "PW_CheckWardBuildLimit";
         private const string RPC_DestroyWardForBuildLimit = "PW_DestroyWardForBuildLimit";
         private static readonly HashSet<ZDOID> s_requestedWardLimitChecks = new HashSet<ZDOID>();
@@ -26,6 +28,8 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
             {
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_PermitPlayer, RPC_PermitPlayerServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardEnabled, RPC_SetWardEnabledServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckWardBuildLimit, RPC_CheckWardBuildLimitServer);
             }
 
@@ -51,8 +55,7 @@ namespace ProtectiveWards
                     return;
                 }
 
-                string query = string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
-                RequestPermit(query, args.Context);
+                RequestPermit(GetCommandQuery(args), args.Context);
             });
 
             new Terminal.ConsoleCommand("ward_permit", "<player name> - alias for pw_permit", args =>
@@ -69,11 +72,42 @@ namespace ProtectiveWards
                     return;
                 }
 
-                string query = string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
-                RequestPermit(query, args.Context);
+                RequestPermit(GetCommandQuery(args), args.Context);
+            });
+
+            new Terminal.ConsoleCommand("pw_unpermit", "<player name> - remove a player from the nearest ward permitted list", args =>
+            {
+                if (!wardCommandPermitEnabled.Value)
+                {
+                    args.Context.AddString("pw_unpermit is disabled.");
+                    return;
+                }
+
+                if (args.Length < 2)
+                {
+                    args.Context.AddString("Usage: pw_unpermit <player name>");
+                    return;
+                }
+
+                RequestUnpermit(GetCommandQuery(args), args.Context);
+            });
+
+            new Terminal.ConsoleCommand("pw_enable", "enable the nearest ward within configured range", args =>
+            {
+                RequestSetWardEnabled(enabled: true, args.Context);
+            });
+
+            new Terminal.ConsoleCommand("pw_disable", "disable the nearest ward within configured range", args =>
+            {
+                RequestSetWardEnabled(enabled: false, args.Context);
             });
 
             s_commandRegistered = true;
+        }
+
+        private static string GetCommandQuery(Terminal.ConsoleEventArgs args)
+        {
+            return string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
         }
 
         private static void RequestPermit(string query, Terminal context)
@@ -92,7 +126,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!HasAccessToWardOrConnectedWard(ward, player) && !(wardCommandPermitAdminsBypass.Value && HasLocalWardAdminAccess()))
+            if (!HasAccessToWardOrConnectedWard(ward, player))
             {
                 context.AddString("$pw_permit_no_access".Localize());
                 return;
@@ -112,7 +146,7 @@ namespace ProtectiveWards
             }
 
             Player target = matches[0];
-            if (ward.IsPermitted(target.GetPlayerID()))
+            if (IsPlayerInPermittedList(ward, target.GetPlayerID()))
             {
                 context.AddString("$pw_permit_already".Localize());
                 return;
@@ -130,6 +164,90 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_PermitPlayer, package);
 
             context.AddString("$pw_permit_added".Localize(target.GetPlayerName()));
+        }
+
+        private static void RequestUnpermit(string query, Terminal context)
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null)
+            {
+                context.AddString("Player is not available.");
+                return;
+            }
+
+            PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            {
+                context.AddString("$pw_permit_no_ward".Localize());
+                return;
+            }
+
+            if (!HasAccessToWardOrConnectedWard(ward, player))
+            {
+                context.AddString("$pw_permit_no_access".Localize());
+                return;
+            }
+
+            List<KeyValuePair<long, string>> matches = FindPermittedPlayers(ward, query);
+            if (matches.Count == 0)
+            {
+                context.AddString($"No permitted player matched: {query}");
+                return;
+            }
+
+            if (matches.Count > 1)
+            {
+                context.AddString($"Multiple permitted players matched: {string.Join(", ", matches.Select(p => p.Value).ToArray())}");
+                return;
+            }
+
+            KeyValuePair<long, string> target = matches[0];
+            ZPackage package = new ZPackage();
+            package.Write(ward.m_nview.GetZDO().m_uid);
+            package.Write(player.GetPlayerID());
+            package.Write(target.Key);
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_UnpermitPlayerServer(0L, new ZPackage(package.GetArray()));
+            else
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UnpermitPlayer, package);
+
+            context.AddString($"Removed {target.Value} from ward permitted list.");
+        }
+
+        private static void RequestSetWardEnabled(bool enabled, Terminal context)
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null)
+            {
+                context.AddString("Player is not available.");
+                return;
+            }
+
+            PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            {
+                context.AddString("$pw_permit_no_ward".Localize());
+                return;
+            }
+
+            if (!CanLocalToggleWard(ward))
+            {
+                context.AddString("$pw_permit_no_access".Localize());
+                return;
+            }
+
+            ZPackage package = new ZPackage();
+            package.Write(ward.m_nview.GetZDO().m_uid);
+            package.Write(player.GetPlayerID());
+            package.Write(enabled);
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_SetWardEnabledServer(0L, new ZPackage(package.GetArray()));
+            else
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardEnabled, package);
+
+            context.AddString(enabled ? "Ward enable requested." : "Ward disable requested.");
         }
 
         private static void RPC_PermitPlayerServer(long sender, ZPackage package)
@@ -154,11 +272,60 @@ namespace ProtectiveWards
             if (target == null || target.GetPlayerName() != targetName)
                 return;
 
-            if (ward.IsPermitted(targetID))
+            if (IsPlayerInPermittedList(ward, targetID))
                 return;
 
             ward.AddPermitted(targetID, targetName);
             LogInfo($"Added {targetName} to ward permitted list by command");
+        }
+
+        private static void RPC_UnpermitPlayerServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long requesterID = package.ReadLong();
+            long targetID = package.ReadLong();
+
+            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            if (!CanRequesterPermit(ward, requesterID))
+                return;
+
+            Player requester = Player.GetPlayer(requesterID);
+            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > Math.Max(wardCommandPermitRange.Value, 0f))
+                return;
+
+            if (!IsPlayerInPermittedList(ward, targetID))
+                return;
+
+            string targetName = ward.GetPermittedPlayers().FirstOrDefault(player => player.Key == targetID).Value;
+            ward.RemovePermitted(targetID);
+            LogInfo($"Removed {targetName} from ward permitted list by command");
+        }
+
+        private static void RPC_SetWardEnabledServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long requesterID = package.ReadLong();
+            bool enabled = package.ReadBool();
+
+            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            if (!CanRequesterToggleWard(ward, requesterID))
+                return;
+
+            Player requester = Player.GetPlayer(requesterID);
+            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > Math.Max(wardCommandPermitRange.Value, 0f))
+                return;
+
+            if (ward.IsEnabled() == enabled)
+                return;
+
+            ward.SetEnabled(enabled);
+            LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
         }
 
         private static bool CanRequesterPermit(PrivateArea ward, long requesterID)
@@ -166,10 +333,47 @@ namespace ProtectiveWards
             if (ward == null || requesterID == 0L)
                 return false;
 
-            if (wardCommandPermitAdminsBypass.Value && HasWardAdminAccess(requesterID))
+            return HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
+        }
+
+        private static bool CanLocalToggleWard(PrivateArea ward)
+        {
+            if (ward == null)
+                return false;
+
+            return (ward.m_piece != null && ward.m_piece.IsCreator()) || HasLocalWardAdminAccess();
+        }
+
+        private static bool CanRequesterToggleWard(PrivateArea ward, long requesterID)
+        {
+            if (ward == null || requesterID == 0L)
+                return false;
+
+            if (HasWardAdminAccess(requesterID))
                 return true;
 
-            return HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
+            return ward.m_piece != null && ward.m_piece.GetCreator() == requesterID;
+        }
+
+        private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID)
+        {
+            return ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);
+        }
+
+        private static List<KeyValuePair<long, string>> FindPermittedPlayers(PrivateArea ward, string query)
+        {
+            string normalized = query.Trim();
+            List<KeyValuePair<long, string>> permitted = ward.GetPermittedPlayers();
+            List<KeyValuePair<long, string>> exact = permitted
+                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (exact.Count > 0)
+                return exact;
+
+            return permitted
+                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
         }
 
         private static PrivateArea FindNearestWard(Vector3 point, float range)
@@ -227,10 +431,10 @@ namespace ProtectiveWards
                 if (__instance == null || uid == 0L || __instance.GetComponent<PrivateArea>() == null)
                     return;
 
-                if (!WardZdoUtils.IsGuardStonePrefab(__instance.gameObject))
+                if (!WardZdoUtils.IsWardPrefab(__instance.gameObject))
                     return;
 
-                ZNetView nview = __instance.GetComponent<ZNetView>();
+                ZNetView nview = __instance.GetWardZNetView();
                 if (nview == null || !nview.IsValid())
                     return;
 
@@ -270,14 +474,14 @@ namespace ProtectiveWards
                 return;
 
             ZDO newWardZdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(newWardID) : null;
-            if (!WardZdoUtils.IsGuardStoneZdo(newWardZdo))
+            if (!newWardZdo.IsWardZdo())
                 return;
 
             if (newWardZdo.GetLong(ZDOVars.s_creator, 0L) != creatorID)
                 return;
 
             int limit = wardBuildLimitPerPlayer.Value;
-            int total = WardZdoUtils.CountGuardStonesByCreator(creatorID);
+            int total = WardZdoUtils.CountWardsByCreator(creatorID);
             if (total <= limit)
                 return;
 

@@ -121,15 +121,15 @@ namespace ProtectiveWards
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
 
-            foreach (ZDO zdo in WardZdoUtils.GetAllGuardStoneZdos())
+            foreach (ZDO zdo in WardZdoUtils.GetAllWardZdos())
             {
-                if (!IsActiveGuardStoneZdo(zdo))
+                if (!IsActiveWardZdo(zdo))
                     continue;
 
-                if (Utils.DistanceXZ(zdo.GetPosition(), targetPoint) > WardZdoUtils.GetGuardStoneRadius(zdo))
+                if (Utils.DistanceXZ(zdo.GetPosition(), targetPoint) > zdo.GetWardRadius())
                     continue;
 
-                if (WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, IsActiveGuardStoneZdo))
+                if (zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdo))
                     continue;
 
                 blockingOwnerName = GetWardOwnerName(zdo);
@@ -139,9 +139,9 @@ namespace ProtectiveWards
             return true;
         }
 
-        private static bool IsActiveGuardStoneZdo(ZDO zdo)
+        private static bool IsActiveWardZdo(ZDO zdo)
         {
-            return WardZdoUtils.IsGuardStoneZdo(zdo)
+            return zdo.IsWardZdo()
                    && zdo.GetBool(ZDOVars.s_enabled, false)
                    && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
         }
@@ -159,7 +159,7 @@ namespace ProtectiveWards
 
         private static void RequestSetLastSaddleUser(Sadle sadle, long playerID)
         {
-            ZNetView nview = sadle.m_nview;
+            ZNetView nview = sadle.GetWardZNetView();
             ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null || playerID == 0L)
                 return;
@@ -193,10 +193,10 @@ namespace ProtectiveWards
             if (sadle == null || playerID == 0L)
                 return;
 
-            SetLastSaddleUserOnView(sadle.GetComponentInParent<ZNetView>(), playerID);
+            SetLastSaddleUserOnView(sadle.GetWardZNetView(), playerID);
 
             if (sadle.m_character != null)
-                SetLastSaddleUserOnView(sadle.m_character.GetComponent<ZNetView>(), playerID);
+                SetLastSaddleUserOnView(sadle.m_character.GetWardZNetView(), playerID);
         }
 
         private static void SetLastSaddleUserOnView(ZNetView nview, long playerID)

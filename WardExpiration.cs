@@ -46,7 +46,7 @@ namespace ProtectiveWards
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long expirationSeconds = Math.Max(wardExpirationMinutes.Value, 1) * 60L;
 
-            foreach (ZDO zdo in WardZdoUtils.GetAllGuardStoneZdos())
+            foreach (ZDO zdo in WardZdoUtils.GetAllWardZdos())
             {
                 if (zdo == null)
                     continue;
@@ -92,13 +92,13 @@ namespace ProtectiveWards
                 switch (wardExpirationRefreshMode.Value)
                 {
                     case WardExpirationRefreshMode.DirectPermitted:
-                        if (WardZdoUtils.HasDirectAccessToWardZdo(zdo, playerID))
+                        if (zdo.HasDirectWardAccess(playerID))
                             return player;
                         break;
 
                     case WardExpirationRefreshMode.EffectiveAccess:
                     default:
-                        if (WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, IsActiveForExpirationConnectedAccess))
+                        if (zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess))
                             return player;
                         break;
                 }
@@ -109,7 +109,7 @@ namespace ProtectiveWards
 
         private static bool IsActiveForExpirationConnectedAccess(ZDO zdo)
         {
-            return WardZdoUtils.IsGuardStoneZdo(zdo)
+            return zdo.IsWardZdo()
                    && zdo.GetBool(ZDOVars.s_enabled, false)
                    && !IsExpired(zdo);
         }
@@ -157,8 +157,8 @@ namespace ProtectiveWards
             WardConnectedAccessMode mode = wardExpirationConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardExpirationConnectedAccessMode.Value;
 
             return wardExpirationRefreshMode.Value == WardExpirationRefreshMode.DirectPermitted
-                ? WardZdoUtils.HasDirectAccessToWardZdo(zdo, playerID)
-                : WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, IsActiveForExpirationConnectedAccess);
+                ? zdo.HasDirectWardAccess(playerID)
+                : zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess);
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsEnabled))]

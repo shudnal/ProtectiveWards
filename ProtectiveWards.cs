@@ -154,7 +154,6 @@ namespace ProtectiveWards
         public static ConfigEntry<WardAdminAccessMode> wardAdminAccess;
         public static ConfigEntry<bool> wardCommandPermitEnabled;
         public static ConfigEntry<float> wardCommandPermitRange;
-        public static ConfigEntry<bool> wardCommandPermitAdminsBypass;
         public static ConfigEntry<int> wardBuildLimitPerPlayer;
 
         public static ConfigEntry<int> wardExpirationMinutes;
@@ -506,10 +505,9 @@ namespace ProtectiveWards
                                                                                                     + "\nAdminsInGodMode: server admins and host bypass ward access checks only while god mode is enabled.");
             wardCommandPermitEnabled = config("Ward admin", "Enable permit command", true, "Enables pw_permit and ward_permit console commands for adding an online player to the nearest ward permitted list.");
             wardCommandPermitRange = config("Ward admin", "Permit command ward range", 5f, "Maximum horizontal distance from the player to the ward used by pw_permit.");
-            wardCommandPermitAdminsBypass = config("Ward admin", "Admins can use permit command without ward access", true, "If enabled, players allowed by Ward admin access can use pw_permit on the nearest ward even without direct/effective ward access.");
-            wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of guard_stone wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
+            wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
 
-            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically scans all guard_stone ward ZDOs and expires wards after this many real-time minutes without activity from players who can refresh them.");
+            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically scans all ward ZDOs and expires wards after this many real-time minutes without activity from players who can refresh them.");
             wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls who can refresh inactive ward expiration. DirectPermitted: only direct ward creator/permitted players. EffectiveAccess: connected/effective access can refresh according to expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for inactive ward expiration refresh/reactivation.");
             wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "ManualInteraction: expired wards stay inactive until an access player interacts with them. AutomaticOnLogin: an access player being online automatically reactivates expired wards.");
@@ -846,7 +844,7 @@ namespace ProtectiveWards
 
             if (creatorId == 0L)
             {
-                ZNetView zNetView = component.GetComponentInParent<ZNetView>();
+                ZNetView zNetView = component.GetWardZNetView();
                 ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
                 if (zdo != null)
                     creatorId = zdo.GetLong(ZDOVars.s_creator, 0L);
@@ -882,7 +880,7 @@ namespace ProtectiveWards
 
             if (string.IsNullOrWhiteSpace(creatorName))
             {
-                ZNetView zNetView = component.GetComponentInParent<ZNetView>();
+                ZNetView zNetView = component.GetWardZNetView();
                 ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
                 if (zdo != null)
                     creatorName = zdo.GetString(ZDOVars.s_creatorName);
@@ -949,7 +947,7 @@ namespace ProtectiveWards
             if (playerID == 0L)
                 return false;
 
-            if (HasLastSaddleUser(component.GetComponentInParent<ZNetView>(), playerID))
+            if (HasLastSaddleUser(component.GetWardZNetView(), playerID))
                 return true;
 
             Sadle sadle = component.GetComponentInParent<Sadle>();
@@ -959,10 +957,10 @@ namespace ProtectiveWards
             if (sadle == null)
                 return false;
 
-            if (HasLastSaddleUser(sadle.GetComponentInParent<ZNetView>(), playerID))
+            if (HasLastSaddleUser(sadle.GetWardZNetView(), playerID))
                 return true;
 
-            if (sadle.m_character != null && HasLastSaddleUser(sadle.m_character.GetComponent<ZNetView>(), playerID))
+            if (sadle.m_character != null && HasLastSaddleUser(sadle.m_character.GetWardZNetView(), playerID))
                 return true;
 
             return false;
@@ -1166,11 +1164,11 @@ namespace ProtectiveWards
             if (ward == null || player == null)
                 return false;
 
-            if (IsDisabledForeignWard(ward, player.GetPlayerID()))
-                return false;
-
             if (wardSettingsAllowAdminEdit.Value && HasLocalWardAdminAccess())
                 return true;
+
+            if (IsDisabledForeignWard(ward, player.GetPlayerID()))
+                return false;
 
             if (ShouldBlockInactiveWardAccess(ward, player))
                 return false;
@@ -1189,11 +1187,11 @@ namespace ProtectiveWards
             if (ward == null || playerID == 0L)
                 return false;
 
-            if (IsDisabledForeignWard(ward, playerID))
-                return false;
-
             if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
+
+            if (IsDisabledForeignWard(ward, playerID))
+                return false;
 
             if (ShouldBlockInactiveWardAccess(ward, playerID))
                 return false;
@@ -1210,11 +1208,11 @@ namespace ProtectiveWards
             if (zdo == null || playerID == 0L)
                 return false;
 
-            if (IsDisabledForeignWard(zdo, playerID))
-                return false;
-
             if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
+
+            if (IsDisabledForeignWard(zdo, playerID))
+                return false;
 
             return wardSettingsRequireCreator.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == playerID;
         }
@@ -1516,7 +1514,7 @@ namespace ProtectiveWards
                 if (__state)
                     return;
 
-                ZNetView m_nview = __instance.GetComponentInParent<ZNetView>();
+                ZNetView m_nview = __instance.GetWardZNetView();
                 if (!m_nview || !m_nview.IsValid())
                     return;
 
@@ -1961,11 +1959,11 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
-        public static class PrivateArea_AddUserList_PermittanceToEveryone
+        public static class PrivateArea_IsPermitted_GlobalAccessBypass
         {
-            public static bool Prefix(ref bool __result)
+            public static bool Prefix(long playerID, ref bool __result)
             {
-                if (!permitEveryone.Value)
+                if ((permitEveryone == null || !permitEveryone.Value) && !HasWardAdminAccess(playerID))
                     return true;
 
                 __result = true;
@@ -2051,13 +2049,13 @@ namespace ProtectiveWards
             if (zdo == null)
                 return;
 
-            if (!WardZdoUtils.UseCustomGuardStoneRange(zdo))
+            if (!WardZdoUtils.UseCustomWardRange(zdo))
             {
                 ResetWardRange(ward);
                 return;
             }
 
-            float range = WardZdoUtils.GetConfiguredGuardStoneRange(zdo);
+            float range = WardZdoUtils.GetConfiguredWardRange(zdo);
             if (Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);

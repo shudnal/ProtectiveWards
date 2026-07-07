@@ -7,9 +7,9 @@
 * added ownership-aware exemptions so players are not trapped out of their own ships, carts, portals, tombstones, saddles, and similar owned objects under another ward
 * added portal access modes, including teleport-only access and full teleport blocking
 * full portal blocking now also checks the destination portal before teleporting, preventing one-way traps into protected portal rooms
-* added server-side pw_permit and ward_permit commands for adding online players to nearby wards
+* added server-side pw_permit / ward_permit, pw_unpermit, pw_enable, and pw_disable commands for nearby wards
 * fixed pw_permit so it adds permitted players directly instead of using the vanilla TogglePermitted RPC, which only works while a ward is disabled
-* added optional per-player ward build limit based on all guard stone ZDOs in the world
+* added optional per-player ward build limit based on all ward ZDOs in the world
 * added background protection for qualified warded bases when no permitted/effective-access player is nearby
 * added protection for tames, ships, carts, fire damage, tame pacify, building, and demolishing under the background protection mode
 * added inactive ward expiration with server-side ZDO scan, manual/automatic reactivation modes, and admin hover details
