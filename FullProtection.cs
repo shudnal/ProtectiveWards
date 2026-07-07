@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -10,6 +10,8 @@ namespace ProtectiveWards
     internal class FullProtection
     {
         private const string RPC_SetLastSaddleUser = "PW_SetLastSaddleUser";
+        private const string RPC_CheckTeleportTargetAccess = "PW_CheckTeleportTargetAccess";
+        private const string RPC_TeleportTargetAccessResponse = "PW_TeleportTargetAccessResponse";
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
 
@@ -66,6 +68,84 @@ namespace ProtectiveWards
             s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
         }
 
+        private static void RegisterTeleportAccessRPC(TeleportWorld teleport)
+        {
+            if (teleport.m_nview?.IsValid() != true)
+                return;
+
+            teleport.m_nview.Register<long, Vector3>(RPC_CheckTeleportTargetAccess, (sender, playerID, targetPoint) => RPC_CheckTeleportTargetAccessServer(teleport, teleport.m_nview, sender, playerID, targetPoint));
+            teleport.m_nview.Register<bool, string>(RPC_TeleportTargetAccessResponse, (sender, granted, blockingOwnerName) => RPC_TeleportTargetAccessResponseClient(teleport, sender, granted, blockingOwnerName));
+        }
+
+        private static bool TeleportTargetAccessCheckStarted(TeleportWorld teleport, Player player)
+        {
+            if (player == null || teleport?.TargetFound() != true)
+                return false;
+
+            ZDO zDO = ZDOMan.instance.GetZDO(teleport.m_nview.GetZDO().GetConnectionZDOID(ZDOExtraData.ConnectionType.Portal));
+            if (zDO == null)
+                return false;
+
+            teleport.m_nview.InvokeRPC(RPC_CheckTeleportTargetAccess, player.GetPlayerID(), zDO.GetPosition());
+            return true;
+        }
+
+        private static void RPC_CheckTeleportTargetAccessServer(TeleportWorld teleport, ZNetView nview, long sender, long playerID, Vector3 targetPoint)
+        {
+            bool granted = IsTeleportTargetAccessibleToPlayer(targetPoint, playerID, out string blockingOwnerName);
+            if (nview != null && nview.IsValid())
+                nview.InvokeRPC(sender, RPC_TeleportTargetAccessResponse, granted, blockingOwnerName);
+        }
+
+        private static void RPC_TeleportTargetAccessResponseClient(TeleportWorld teleport, long sender, bool granted, string blockingOwnerName)
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null || teleport == null)
+                return;
+
+            if (!granted)
+            {
+                player.Message(MessageHud.MessageType.Center, GetPrivateZoneDeniedMessage(blockingOwnerName));
+                return;
+            }
+
+            teleport.Teleport(player);
+        }
+
+        private static bool IsTeleportTargetAccessibleToPlayer(Vector3 targetPoint, long playerID, out string blockingOwnerName)
+        {
+            blockingOwnerName = "";
+
+            if (playerID == 0L)
+                return true;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+
+            foreach (ZDO zdo in WardZdoUtils.GetAllGuardStoneZdos())
+            {
+                if (!IsActiveGuardStoneZdo(zdo))
+                    continue;
+
+                if (Utils.DistanceXZ(zdo.GetPosition(), targetPoint) > WardZdoUtils.GetGuardStoneRadius(zdo))
+                    continue;
+
+                if (WardZdoUtils.HasAccessToWardOrConnectedWardZdo(zdo, playerID, mode, IsActiveGuardStoneZdo))
+                    continue;
+
+                blockingOwnerName = GetWardOwnerName(zdo);
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsActiveGuardStoneZdo(ZDO zdo)
+        {
+            return WardZdoUtils.IsGuardStoneZdo(zdo)
+                   && zdo.GetBool(ZDOVars.s_enabled, false)
+                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
+        }
+
         private static void RegisterSaddleUserRPC()
         {
             if (s_saddleRpcRegistered || ZRoutedRpc.instance == null)
@@ -79,7 +159,7 @@ namespace ProtectiveWards
 
         private static void RequestSetLastSaddleUser(Sadle sadle, long playerID)
         {
-            ZNetView nview = GetSaddleZNetView(sadle);
+            ZNetView nview = sadle.m_nview;
             ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo == null || playerID == 0L)
                 return;
@@ -117,21 +197,6 @@ namespace ProtectiveWards
 
             if (sadle.m_character != null)
                 SetLastSaddleUserOnView(sadle.m_character.GetComponent<ZNetView>(), playerID);
-        }
-
-        private static ZNetView GetSaddleZNetView(Sadle sadle)
-        {
-            if (sadle == null)
-                return null;
-
-            if (sadle.m_character != null)
-            {
-                ZNetView characterView = sadle.m_character.GetComponent<ZNetView>();
-                if (characterView != null)
-                    return characterView;
-            }
-
-            return sadle.GetComponentInParent<ZNetView>();
         }
 
         private static void SetLastSaddleUserOnView(ZNetView nview, long playerID)
@@ -531,6 +596,12 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Awake))]
+        public static class TeleportWorld_Awake_PreventUnauthorizedAccess
+        {
+            private static void Postfix(TeleportWorld __instance) => RegisterTeleportAccessRPC(__instance);
+        }
+
         [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Interact))]
         public static class TeleportWorld_Interact_PreventUnauthorizedAccess
         {
@@ -571,18 +642,28 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Teleport))]
-        public static class TeleportWorld_Teleport_PreventUnauthorizedAccess
+        [HarmonyPatch(typeof(TeleportWorldTrigger), nameof(TeleportWorldTrigger.OnTriggerEnter))]
+        public static class TeleportWorldTrigger_OnTriggerEnter_PreventUnauthorizedTargetAccess
         {
-            private static bool Prefix(TeleportWorld __instance, Player player)
+            private static bool Prefix(TeleportWorldTrigger __instance, Collider colliderIn)
             {
                 if (wardAccessProtectPortals.Value != WardPortalAccessMode.BlockAll)
                     return true;
 
-                if (player == null)
+                if (__instance == null || __instance.m_teleportWorld == null || colliderIn == null)
                     return true;
 
-                return !BlockUnauthorizedWardInteraction(__instance, player);
+                Player player = colliderIn.GetComponent<Player>();
+                if (player == null || Player.m_localPlayer != player)
+                    return true;
+
+                if (BlockUnauthorizedWardInteraction(__instance.m_teleportWorld, player))
+                    return false;
+
+                if (TeleportTargetAccessCheckStarted(__instance.m_teleportWorld, player))
+                    return false;
+
+                return true;
             }
         }
 

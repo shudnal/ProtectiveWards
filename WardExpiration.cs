@@ -208,7 +208,7 @@ namespace ProtectiveWards
                 text.Append("\n<color=orange>$pw_ward_expiration_expired</color>");
                 text.Append("\n$pw_ward_expiration_hint");
 
-                if (!wardExpirationAdminHover.Value || Player.m_localPlayer == null || !ZNet.instance.LocalPlayerIsAdminOrHost())
+                if (!wardExpirationAdminHover.Value || !HasLocalWardAdminAccess())
                     return;
 
                 ZDO zdo = __instance.m_nview.GetZDO();

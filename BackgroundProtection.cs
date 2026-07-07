@@ -246,9 +246,71 @@ namespace ProtectiveWards
             ai.SetTargetInfo(ZDOID.None);
         }
 
-        private static bool IsFireDamage(HitData hit)
+        internal static bool IsBuildingRestricted(Player player, Vector3 point)
         {
-            return hit != null && (hit.m_damage.m_fire > 0f || hit.m_hitType == HitData.HitType.Burning);
+            if (!wardBackgroundPreventBuildingAndDemolishing.Value)
+                return false;
+
+            if (player == null)
+                return false;
+
+            long playerID = player.GetPlayerID();
+            if (HasWardAdminAccess(playerID))
+                return false;
+
+            if (!TryFindBackgroundWard(point, point, out PrivateArea ward))
+                return false;
+
+            if (!IsQualifiedProtectedBase(ward))
+                return false;
+
+            if (HasAccessToWardOrConnectedWard(ward, player, wardBackgroundConnectedAccessMode.Value))
+                return false;
+
+            return !HasEffectiveAccessPresence(ward, point);
+        }
+
+        private static bool IsFireDamage(HitData hit) => hit != null && (hit.m_damage.m_fire > 0f || hit.m_hitType == HitData.HitType.Burning);
+
+        [HarmonyPatch(typeof(Player), nameof(Player.TryPlacePiece))]
+        private static class Player_TryPlacePiece_PreventBuildingWithoutPermittedPlayersNearby
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Player __instance, Piece piece, ref bool __result)
+            {
+                if (__instance == null || piece == null)
+                    return true;
+
+                if (!IsBuildingRestricted(__instance, __instance.m_placementGhost.transform.position))
+                    return true;
+
+                __instance.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+
+                __result = false;
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.CheckCanRemovePiece))]
+        private static class Player_CheckCanRemovePiece_PreventDemolishingWithoutPermittedPlayersNearby
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Player __instance, Piece piece, ref bool __result)
+            {
+                if (__instance == null || piece == null)
+                    return true;
+
+                if (piece.IsCreator())
+                    return true;
+
+                if (!IsBuildingRestricted(__instance, piece.transform.position))
+                    return true;
+
+                __instance.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+
+                __result = false;
+                return false;
+            }
         }
 
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Damage))]

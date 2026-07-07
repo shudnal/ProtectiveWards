@@ -104,7 +104,7 @@ namespace ProtectiveWards
 
             for (int i = seconds; i >= 0; i--)
             {
-                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_back", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
+                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, "$pw_msg_travel_back".Localize(TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                 yield return wait1sec;
             }
 
@@ -149,21 +149,21 @@ namespace ProtectiveWards
 
             if (augmented > 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
                 if (repaired > 0)
-                    initiator.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
+                    initiator.Message(MessageHud.MessageType.TopLeft, "$msg_repaired".Localize(repaired.ToString()));
             }
             else if (repaired > 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_repaired".Localize(repaired.ToString()));
             }
             else if (augment)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
             }
             else
             {
-                string str = Localization.instance.Localize("$msg_doesnotneedrepair");
+                string str = "$msg_doesnotneedrepair".Localize();
                 initiator.Message(MessageHud.MessageType.Center, char.ToUpper(str[0]) + str.Substring(1));
             }
         }
@@ -290,11 +290,11 @@ namespace ProtectiveWards
             if (killed)
             {
                 initiator.GetInventory().RemoveOneItem(item);
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
             }
             else
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerwrong"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerwrong".Localize());
             }
         }
 
@@ -311,7 +311,7 @@ namespace ProtectiveWards
             instance.StartCoroutine(LightningStrikeEffect(ward));
 
             initiator.GetInventory().RemoveOneItem(item);
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$piece_incinerator_conversion"));
+            initiator.Message(MessageHud.MessageType.Center, "$piece_incinerator_conversion".Localize());
         }
 
         private static void ApplyConsumableEffectToNearestPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
@@ -320,7 +320,7 @@ namespace ProtectiveWards
             {
                 if (wardIsHealing.ContainsKey(ward))
                 {
-                    initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerwrong"));
+                    initiator.Message(MessageHud.MessageType.Center, "$msg_offerwrong".Localize());
                     return;
                 }
 
@@ -329,7 +329,7 @@ namespace ProtectiveWards
                 instance.StartCoroutine(PassiveHealingEffect(ward, amount: item.m_shared.m_foodRegen / 2, seconds: 1));
                 LogInfo("Passive healing begins");
 
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize($"$msg_consumed: {item.m_shared.m_name}"));
+                initiator.Message(MessageHud.MessageType.Center, $"{"$msg_consumed".Localize()}: {item.m_shared.m_name}");
                 initiator.GetInventory().RemoveOneItem(item);
 
                 return;
@@ -354,12 +354,12 @@ namespace ProtectiveWards
 
             if (!applied)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
                 return;
             }
 
             initiator.GetInventory().RemoveOneItem(item);
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+            initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
         }
 
         private static void ApplyInstantGrowthEffectOnNearbyPlants(PrivateArea ward, ItemDrop.ItemData item, Player initiator, bool growableOnly = true)
@@ -369,14 +369,14 @@ namespace ProtectiveWards
 
             if (plants.Count == 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
                 return;
             }
 
             Inventory inventory = initiator.GetInventory();
             if (item.m_shared.m_name == "$item_eitr" && inventory.CountItems("$item_eitr") < 5)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_incompleteoffering".Localize());
                 return;
             }
 
@@ -393,7 +393,7 @@ namespace ProtectiveWards
                 LogInfo($"Offered {item.m_shared.m_name}");
             }
 
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+            initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
         }
 
         private static void ApplyModerPowerEffectToNearbyPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
@@ -417,19 +417,19 @@ namespace ProtectiveWards
         {
             if (initiator.IsEncumbered())
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$se_encumbered_start"));
+                initiator.Message(MessageHud.MessageType.Center, "$se_encumbered_start".Localize());
                 return;
             }
 
             if (!IsTeleportable(initiator))
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_notravel"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_notravel".Localize());
                 return;
             }
 
             if (!canTravel)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_canttravel"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_canttravel".Localize());
                 return;
             }
 
@@ -533,7 +533,7 @@ namespace ProtectiveWards
         {
             if (Utils.DistanceXZ(initiator.transform.position, position) < 300f)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_tooclose"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_tooclose".Localize());
                 return;
             }
 
@@ -541,7 +541,7 @@ namespace ProtectiveWards
             {
                 if (initiator.GetInventory().CountItems(itemName) < stack)
                 {
-                    initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                    initiator.Message(MessageHud.MessageType.Center, "$msg_incompleteoffering".Localize());
                     return;
                 }
                 initiator.GetInventory().RemoveItem(itemName, stack);
@@ -619,14 +619,14 @@ namespace ProtectiveWards
             {
                 for (int i = waitSeconds; i > 0; i--)
                 {
-                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_starting", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
+                    player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_starting".Localize(TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                     yield return wait1sec;
                 }
             }
 
             while (Valkyrie.m_instance != null)
             {
-                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$menu_pleasewait"));
+                player.Message(MessageHud.MessageType.Center, "$menu_pleasewait".Localize());
                 yield return wait1sec;
             }
 
@@ -639,9 +639,9 @@ namespace ProtectiveWards
             {
                 string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
                 if (playerShouldExit)
-                    player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$pw_msg_travel_inside", timeSpent));
+                    player.Message(MessageHud.MessageType.TopLeft, "$pw_msg_travel_inside".Localize(timeSpent));
                 else
-                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
+                    player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_blocked".Localize(timeSpent) + (player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport").Localize());
 
                 yield return wait1sec;
 
@@ -649,7 +649,7 @@ namespace ProtectiveWards
                                             || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
             }
 
-            player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_start"));
+            player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_start".Localize());
 
             taxiTargetPosition = position;
             taxiReturnBack = returnBack;

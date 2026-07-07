@@ -51,7 +51,7 @@ namespace ProtectiveWards
                     return;
                 }
 
-                string query = String.Join(" ", args.Args.Skip(1).ToArray()).Trim();
+                string query = string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
                 RequestPermit(query, args.Context);
             });
 
@@ -69,7 +69,7 @@ namespace ProtectiveWards
                     return;
                 }
 
-                string query = String.Join(" ", args.Args.Skip(1).ToArray()).Trim();
+                string query = string.Join(" ", args.Args.Skip(1).ToArray()).Trim();
                 RequestPermit(query, args.Context);
             });
 
@@ -88,33 +88,33 @@ namespace ProtectiveWards
             PrivateArea ward = FindNearestWard(player.transform.position, wardCommandPermitRange.Value);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
             {
-                context.AddString(Localize("$pw_permit_no_ward"));
+                context.AddString("$pw_permit_no_ward".Localize());
                 return;
             }
 
-            if (!HasAccessToWardOrConnectedWard(ward, player))
+            if (!HasAccessToWardOrConnectedWard(ward, player) && !(wardCommandPermitAdminsBypass.Value && HasLocalWardAdminAccess()))
             {
-                context.AddString(Localize("$pw_permit_no_access"));
+                context.AddString("$pw_permit_no_access".Localize());
                 return;
             }
 
             List<Player> matches = FindOnlinePlayers(query);
             if (matches.Count == 0)
             {
-                context.AddString(Localize("$pw_permit_no_match").Replace("$1", query));
+                context.AddString("$pw_permit_no_match".Localize(query));
                 return;
             }
 
             if (matches.Count > 1)
             {
-                context.AddString(Localize("$pw_permit_multiple").Replace("$1", String.Join(", ", matches.Select(p => p.GetPlayerName()).ToArray())));
+                context.AddString("$pw_permit_multiple".Localize(string.Join(", ", matches.Select(p => p.GetPlayerName()).ToArray())));
                 return;
             }
 
             Player target = matches[0];
             if (ward.IsPermitted(target.GetPlayerID()))
             {
-                context.AddString(Localize("$pw_permit_already"));
+                context.AddString("$pw_permit_already".Localize());
                 return;
             }
 
@@ -129,7 +129,7 @@ namespace ProtectiveWards
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_PermitPlayer, package);
 
-            context.AddString(Localize("$pw_permit_added").Replace("$1", target.GetPlayerName()));
+            context.AddString("$pw_permit_added".Localize(target.GetPlayerName()));
         }
 
         private static void RPC_PermitPlayerServer(long sender, ZPackage package)
@@ -157,7 +157,7 @@ namespace ProtectiveWards
             if (ward.IsPermitted(targetID))
                 return;
 
-            ward.m_nview.InvokeRPC("TogglePermitted", targetID, targetName);
+            ward.AddPermitted(targetID, targetName);
             LogInfo($"Added {targetName} to ward permitted list by command");
         }
 
@@ -166,7 +166,7 @@ namespace ProtectiveWards
             if (ward == null || requesterID == 0L)
                 return false;
 
-            if (wardCommandPermitAdminsBypass.Value && IsPlayerServerAdminOrHost(requesterID))
+            if (wardCommandPermitAdminsBypass.Value && HasWardAdminAccess(requesterID))
                 return true;
 
             return HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
@@ -197,34 +197,23 @@ namespace ProtectiveWards
         {
             List<Player> players = Player.GetAllPlayers();
             string normalized = query.Trim();
-            List<Player> exact = players.Where(player => String.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase)).ToList();
+            List<Player> exact = players.Where(player => string.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase)).ToList();
             if (exact.Count > 0)
                 return exact;
 
             return players.Where(player => player.GetPlayerName().IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
         }
 
-        private static string Localize(string token)
-        {
-            return Localization.instance != null ? Localization.instance.Localize(token) : token;
-        }
-
         [HarmonyPatch(typeof(Terminal), nameof(Terminal.InitTerminal))]
         private static class Terminal_InitTerminal_RegisterCommands
         {
-            private static void Postfix()
-            {
-                RegisterCommands();
-            }
+            private static void Postfix() => RegisterCommands();
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
         private static class ZoneSystem_Start_RegisterAdminRPCs
         {
-            private static void Postfix()
-            {
-                RegisterRPCs();
-            }
+            private static void Postfix() => RegisterRPCs();
         }
 
         [HarmonyPatch(typeof(Piece), nameof(Piece.SetCreator))]
@@ -323,7 +312,7 @@ namespace ProtectiveWards
 
             Player player = Player.m_localPlayer;
             if (player != null)
-                player.Message(MessageHud.MessageType.Center, Localize("$pw_ward_limit_reached").Replace("$1", current.ToString()).Replace("$2", limit.ToString()));
+                player.Message(MessageHud.MessageType.Center, "$pw_ward_limit_reached".Localize(current.ToString(), limit.ToString()));
         }
 
         private static void DestroyLocalWard(ZDOID wardID)

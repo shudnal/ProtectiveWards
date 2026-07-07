@@ -1,15 +1,14 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Reflection;
-using System.Text;
-using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
-using UnityEngine;
-using Jotunn;
 using Jotunn.Utils;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using UnityEngine;
 
 namespace ProtectiveWards
 {
@@ -20,7 +19,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "1.2.11";
+        public const string pluginVersion = "2.0.0";
 
         private static Harmony _harmony;
 
@@ -150,7 +149,9 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardBackgroundProtectBoats;
         public static ConfigEntry<bool> wardBackgroundProtectCarts;
         public static ConfigEntry<WardBackgroundTamePacifyMode> wardBackgroundTamePacify;
+        public static ConfigEntry<bool> wardBackgroundPreventBuildingAndDemolishing;
 
+        public static ConfigEntry<WardAdminAccessMode> wardAdminAccess;
         public static ConfigEntry<bool> wardCommandPermitEnabled;
         public static ConfigEntry<float> wardCommandPermitRange;
         public static ConfigEntry<bool> wardCommandPermitAdminsBypass;
@@ -277,6 +278,13 @@ namespace ProtectiveWards
             WhenNoPermittedNearby
         }
 
+        public enum WardAdminAccessMode
+        {
+            Off,
+            Admins,
+            AdminsInGodMode
+        }
+
         public enum WardExpirationRefreshMode
         {
             DirectPermitted,
@@ -326,7 +334,7 @@ namespace ProtectiveWards
 
             wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied.");
             wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings.");
-            wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, server admins can open and apply the per-ward settings window regardless of ward creator/access checks.");
+            wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, players allowed by Ward admin access can open and apply the per-ward settings window regardless of ward creator/access checks.");
 
             
             disableFlash = config("Misc", "Disable flash", defaultValue: false, "Disable flash on hit [Not Synced with Server]", false);
@@ -455,7 +463,7 @@ namespace ProtectiveWards
             wardAccessProtectProductionStations = config("Ward access from non-permitted players", "Production stations", true, "Set whether an active Ward blocks non-permitted players from using nearby production stations such as smelters, kilns, ovens, cooking stations, fermenters, windmills, beehives and sap collectors.");
             wardAccessProtectItemStands = config("Ward access from non-permitted players", "Item stands", true, "Set whether an active Ward blocks non-permitted players from taking, placing, or changing items and equipment on nearby item stands and armor stands.");
             wardAccessProtectCarts = config("Ward access from non-permitted players", "Carts", true, "Set whether an active Ward blocks non-permitted players from dragging nearby carts and wagons.");
-            wardAccessProtectPortals = config("Ward access from non-permitted players", "Portal access mode", WardPortalAccessMode.AllowAll, "Controls how an active Ward protects nearby portals from non-permitted players."
+            wardAccessProtectPortals = config("Ward access from non-permitted players", "Portal access mode", WardPortalAccessMode.AllowTeleportOnly, "Controls how an active Ward protects nearby portals from non-permitted players."
                                                                                                                                      + "\nAllowAll: non-permitted players can use and rename portals as usual."
                                                                                                                                      + "\nAllowTeleportOnly: non-permitted players can teleport through portals but cannot rename/change portal tags."
                                                                                                                                      + "\nBlockAll: non-permitted players cannot teleport through or rename nearby portals.");
@@ -474,28 +482,38 @@ namespace ProtectiveWards
                                                                                                                                          + "\nMutualTrust: access may be shared only between overlapping wards whose creators are mutually trusted/permitted by the protected/root ward, not by transitive chain trust."
                                                                                                                                          + "\nAnyConnected: access to any overlapping ward can grant access to the whole connected group. Intended for single-party servers where all players share one ward network.");
             wardAccessProtectInteractables = config("Ward access from non-permitted players", "Generic interactables", false, "Set whether an active Ward blocks non-permitted players from using generic nearby interactable objects. This is a broad compatibility layer for vanilla and modded interactables. Ownership-sensitive objects and special cases are excluded or handled separately.");
-            wardBackgroundTamesPreventDamageToStructures = config("Ward background", "Tames prevent damage to structures without permitted players nearby", true, "Set whether tamed creatures inside a protected ward network prevent their own damage to player-built structures when no permitted/effective-access player is nearby.");
-            wardBackgroundPresenceRadius = config("Ward background", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for background protection checks.");
-            wardBackgroundPresenceMode = config("Ward background", "Permitted player presence mode", WardBackgroundPresenceMode.PermittedNearProtectedArea, "Controls how player presence disables background protection. PermittedNearProtectedArea: a permitted/effective player must be near the protected object. PermittedInsideConnectedArea: a permitted/effective player anywhere inside the connected ward network disables background protection. PermittedOnline: any permitted/effective online player disables background protection.");
-            wardBackgroundConnectedAccessMode = config("Ward background", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls which overlapping wards are treated as one protected network for background protection.");
-            wardBackgroundProtectedBaseMinPieces = config("Ward background", "Protected base minimum player pieces", 80, "Minimum number of player-built pieces inside the connected ward network required for broad background protection. 0 disables this qualification check.");
-            wardBackgroundStructureProtection = config("Ward background", "Structure background protection mode", WardBackgroundStructureProtectionMode.Off, "Off: no broad structure background protection. BlockNonPermittedPlayerDamage: blocks direct damage from non-permitted players. BlockAllDamageWhenNoPermittedNearby: blocks all damage to player-built structures while no permitted/effective player is nearby.");
-            wardBackgroundProtectFire = config("Ward background", "Prevent structure fire damage without permitted players nearby", true, "Blocks fire/burning damage to player-built structures in a protected ward network while no permitted/effective player is nearby.");
-            wardBackgroundProtectTames = config("Ward background", "Protect tames without permitted players nearby", false, "Blocks damage to tamed creatures inside a protected ward network while no permitted/effective player is nearby.");
-            wardBackgroundProtectBoats = config("Ward background", "Protect boats without permitted players nearby", false, "Blocks damage to boats inside a protected ward network while no permitted/effective player is nearby.");
-            wardBackgroundProtectCarts = config("Ward background", "Protect carts without permitted players nearby", false, "Blocks damage to carts/wagons inside a protected ward network while no permitted/effective player is nearby.");
-            wardBackgroundTamePacify = config("Ward background", "Tame pacify without permitted players nearby", WardBackgroundTamePacifyMode.Off, "When enabled, tamed creatures inside a protected ward network drop creature/static targets and do not acquire new combat targets while no permitted/effective player is nearby.");
+            wardBackgroundTamesPreventDamageToStructures = config("Ward without permitted players nearby", "Tames prevent damage to structures", true, "Set whether tamed creatures inside a protected ward network prevent their own damage to player-built structures when no permitted/effective-access player is nearby.");
+            wardBackgroundPresenceRadius = config("Ward without permitted players nearby", "Permitted player presence radius", 64f, "Horizontal radius used to detect a permitted/effective-access player for background protection checks.");
+            wardBackgroundPresenceMode = config("Ward without permitted players nearby", "Permitted player presence mode", WardBackgroundPresenceMode.PermittedNearProtectedArea, "Controls how player presence disables background protection."
+                                                                                                                                                                                + "\nPermittedNearProtectedArea: a permitted/effective player must be near the protected object."
+                                                                                                                                                                                + "\nPermittedInsideConnectedArea: a permitted/effective player anywhere inside the connected ward network disables background protection."
+                                                                                                                                                                                + "\nPermittedOnline: any permitted/effective online player disables background protection.");
+            wardBackgroundConnectedAccessMode = config("Ward without permitted players nearby", "Connected ward access mode", WardConnectedAccessMode.Off, "Controls which overlapping wards are treated as one protected network for background protection.");
+            wardBackgroundProtectedBaseMinPieces = config("Ward without permitted players nearby", "Protected base minimum player pieces", 80, "Minimum number of player-built pieces inside the connected ward network required for broad background protection. 0 disables this qualification check.");
+            wardBackgroundStructureProtection = config("Ward without permitted players nearby", "Background protection mode", WardBackgroundStructureProtectionMode.BlockNonPermittedPlayerDamage, "Off: no broad structure background protection."
+                                                                                                                                                                               + "\nBlockNonPermittedPlayerDamage: blocks direct damage from non-permitted players."
+                                                                                                                                                                               + "\nBlockAllDamageWhenNoPermittedNearby: blocks all damage to player-built structures while no permitted/effective player is nearby.");
+            wardBackgroundProtectFire = config("Ward without permitted players nearby", "Prevent structure fire damage", true, "Blocks fire/burning damage to player-built structures in a protected ward network while no permitted/effective player is nearby.");
+            wardBackgroundProtectTames = config("Ward without permitted players nearby", "Protect tames", true, "Blocks damage to tamed creatures inside a protected ward network while no permitted/effective player is nearby.");
+            wardBackgroundProtectBoats = config("Ward without permitted players nearby", "Protect boats", true, "Blocks damage to boats inside a protected ward network while no permitted/effective player is nearby.");
+            wardBackgroundProtectCarts = config("Ward without permitted players nearby", "Protect carts", true, "Blocks damage to carts/wagons inside a protected ward network while no permitted/effective player is nearby.");
+            wardBackgroundTamePacify = config("Ward without permitted players nearby", "Tame pacify", WardBackgroundTamePacifyMode.WhenNoPermittedNearby, "When enabled, tamed creatures inside a protected ward network drop creature/static targets and do not acquire new combat targets while no permitted/effective player is nearby.");
+            wardBackgroundPreventBuildingAndDemolishing = config("Ward without permitted players nearby", "Prevent building and demolishing", true, "Blocks non-permitted players from placing new pieces or demolishing other players' pieces inside a protected ward network while no permitted/effective player is nearby. Players can always demolish their own pieces.");
 
+            wardAdminAccess = config("Ward admin", "Ward admin access", WardAdminAccessMode.AdminsInGodMode, "Controls global admin bypass behavior used by ward settings, permit command bypass, and admin-only expiration hover details."
+                                                                                                    + "\nOff: admins do not bypass ward access checks."
+                                                                                                    + "\nAdmins: server admins and host bypass ward access checks."
+                                                                                                    + "\nAdminsInGodMode: server admins and host bypass ward access checks only while god mode is enabled.");
             wardCommandPermitEnabled = config("Ward admin", "Enable permit command", true, "Enables pw_permit and ward_permit console commands for adding an online player to the nearest ward permitted list.");
             wardCommandPermitRange = config("Ward admin", "Permit command ward range", 5f, "Maximum horizontal distance from the player to the ward used by pw_permit.");
-            wardCommandPermitAdminsBypass = config("Ward admin", "Admins can use permit command without ward access", true, "If enabled, server admins can use pw_permit on the nearest ward even without direct/effective ward access.");
+            wardCommandPermitAdminsBypass = config("Ward admin", "Admins can use permit command without ward access", true, "If enabled, players allowed by Ward admin access can use pw_permit on the nearest ward even without direct/effective ward access.");
             wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of guard_stone wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
 
             wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically scans all guard_stone ward ZDOs and expires wards after this many real-time minutes without activity from players who can refresh them.");
             wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls who can refresh inactive ward expiration. DirectPermitted: only direct ward creator/permitted players. EffectiveAccess: connected/effective access can refresh according to expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for inactive ward expiration refresh/reactivation.");
             wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "ManualInteraction: expired wards stay inactive until an access player interacts with them. AutomaticOnLogin: an access player being online automatically reactivates expired wards.");
-            wardExpirationAdminHover = config("Ward expiration", "Show expiration admin hover details", false, "Shows additional expiration debug details in ward hover text for admins.", false);
+            wardExpirationAdminHover = config("Ward expiration", "Show expiration admin hover details", false, "Shows additional expiration debug details in ward hover text for players allowed by Ward admin access.", false);
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -848,21 +866,21 @@ namespace ProtectiveWards
             if (tombStone != null)
                 creatorName = tombStone.GetOwnerName();
 
-            if (String.IsNullOrWhiteSpace(creatorName))
+            if (string.IsNullOrWhiteSpace(creatorName))
             {
                 Bed bed = component.GetComponentInParent<Bed>();
                 if (bed != null)
                     creatorName = bed.GetOwnerName();
             }
 
-            if (String.IsNullOrWhiteSpace(creatorName))
+            if (string.IsNullOrWhiteSpace(creatorName))
             {
                 PrivateArea ward = component.GetComponentInParent<PrivateArea>();
                 if (ward != null)
                     creatorName = ward.GetCreatorName();
             }
 
-            if (String.IsNullOrWhiteSpace(creatorName))
+            if (string.IsNullOrWhiteSpace(creatorName))
             {
                 ZNetView zNetView = component.GetComponentInParent<ZNetView>();
                 ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
@@ -870,14 +888,14 @@ namespace ProtectiveWards
                     creatorName = zdo.GetString(ZDOVars.s_creatorName);
             }
 
-            if (String.IsNullOrWhiteSpace(creatorName) && TryGetObjectCreatorId(component, out long creatorId))
+            if (string.IsNullOrWhiteSpace(creatorName) && TryGetObjectCreatorId(component, out long creatorId))
             {
                 Player player = Player.GetPlayer(creatorId);
                 if (player != null)
                     creatorName = player.GetPlayerName();
             }
 
-            return !String.IsNullOrWhiteSpace(creatorName);
+            return !string.IsNullOrWhiteSpace(creatorName);
         }
 
         private static bool IsOwnershipSensitiveObject(Component component)
@@ -995,15 +1013,23 @@ namespace ProtectiveWards
             if (ward != null)
                 ownerName = ward.GetCreatorName();
 
-            return String.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
+            return string.IsNullOrWhiteSpace(ownerName) ? "Unknown" : ownerName;
         }
 
-        public static string GetPrivateZoneDeniedMessage(PrivateArea ward)
+        internal static string GetWardOwnerName(ZDO zdo)
         {
-            string privateZone = Localization.instance != null ? Localization.instance.Localize("$msg_privatezone") : "$msg_privatezone";
-            string owner = Localization.instance != null ? Localization.instance.Localize("$piece_guardstone_owner") : "$piece_guardstone_owner";
-            return $"{privateZone}. {owner}: {GetWardOwnerName(ward)}";
+            if (zdo == null)
+                return "";
+
+            string name = zdo.GetString(ZDOVars.s_creatorName);
+            long creator = zdo.GetLong(ZDOVars.s_creator, 0L);
+
+            return string.IsNullOrEmpty(name) ? (creator != 0L ? creator.ToString() : "") : CensorShittyWords.FilterUGC(name, UGCType.CharacterName, creator);
         }
+
+        public static string GetPrivateZoneDeniedMessage(PrivateArea ward) => GetPrivateZoneDeniedMessage(GetWardOwnerName(ward));
+
+        public static string GetPrivateZoneDeniedMessage(string ownerName) => $"{"$msg_privatezone".Localize()}. {"$piece_guardstone_owner".Localize()}: {ownerName}";
 
         public static bool HasEffectiveAccessPlayerNearby(PrivateArea ward, Vector3 point, float radius)
         {
@@ -1021,10 +1047,7 @@ namespace ProtectiveWards
             return false;
         }
 
-        public static bool ShouldBlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash, out PrivateArea ward)
-        {
-            return ShouldBlockUnauthorizedWardInteraction(point, human, flash, out ward, null);
-        }
+        public static bool ShouldBlockUnauthorizedWardInteraction(Vector3 point, Humanoid human, bool flash, out PrivateArea ward) => ShouldBlockUnauthorizedWardInteraction(point, human, flash, out ward, null);
 
         public static bool ShouldBlockUnauthorizedWardInteraction(Component component, Humanoid human, bool flash, out PrivateArea ward)
         {
@@ -1146,7 +1169,7 @@ namespace ProtectiveWards
             if (IsDisabledForeignWard(ward, player.GetPlayerID()))
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && IsLocalPlayerAdminOrHost())
+            if (wardSettingsAllowAdminEdit.Value && HasLocalWardAdminAccess())
                 return true;
 
             if (ShouldBlockInactiveWardAccess(ward, player))
@@ -1169,7 +1192,7 @@ namespace ProtectiveWards
             if (IsDisabledForeignWard(ward, playerID))
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
+            if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
 
             if (ShouldBlockInactiveWardAccess(ward, playerID))
@@ -1190,15 +1213,35 @@ namespace ProtectiveWards
             if (IsDisabledForeignWard(zdo, playerID))
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && IsPlayerServerAdminOrHost(playerID))
+            if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
 
             return wardSettingsRequireCreator.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == playerID;
         }
 
-        private static bool IsLocalPlayerAdminOrHost()
+        public static bool HasLocalWardAdminAccess()
         {
-            return ZNet.instance != null && ZNet.instance.LocalPlayerIsAdminOrHost();
+            Player localPlayer = Player.m_localPlayer;
+            return localPlayer != null && HasWardAdminAccess(localPlayer.GetPlayerID());
+        }
+
+        public static bool HasWardAdminAccess(long playerID)
+        {
+            if (playerID == 0L || wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
+                return false;
+
+            if (!IsPlayerServerAdminOrHost(playerID))
+                return false;
+
+            if (wardAdminAccess.Value == WardAdminAccessMode.Admins)
+                return true;
+
+            Player player = Player.GetPlayer(playerID);
+            if (player != null)
+                return player.InGodMode();
+
+            Player localPlayer = Player.m_localPlayer;
+            return localPlayer != null && localPlayer.GetPlayerID() == playerID && localPlayer.InGodMode();
         }
 
         public static bool IsPlayerServerAdminOrHost(long playerID)
@@ -1240,7 +1283,7 @@ namespace ProtectiveWards
             const string markerB = "__pw_missing_b__";
             string valueA = zdo.GetString(key, markerA);
             string valueB = zdo.GetString(key, markerB);
-            return valueA == valueB && !String.IsNullOrEmpty(valueA);
+            return valueA == valueB && !string.IsNullOrEmpty(valueA);
         }
 
         public static bool HasZdoVec3(ZDO zdo, int key)
@@ -1250,20 +1293,22 @@ namespace ProtectiveWards
 
         public static bool GetWardBoolSetting(ZDO zdo, int key, bool defaultValue, bool disabledValue = false)
         {
-            if (zdo != null && HasZdoBool(zdo, key))
-                return zdo.GetBool(key, defaultValue);
-
-            return wardSettingsUseDefaultsForAllWards.Value ? defaultValue : disabledValue;
+            bool fallback = wardSettingsUseDefaultsForAllWards.Value ? defaultValue : disabledValue;
+            return zdo != null ? zdo.GetBool(key, fallback) : fallback;
         }
 
         public static float GetWardFloatSetting(ZDO zdo, int key, float defaultValue)
         {
-            return zdo != null && HasZdoFloat(zdo, key) ? zdo.GetFloat(key, defaultValue) : defaultValue;
+            return zdo != null ? zdo.GetFloat(key, defaultValue) : defaultValue;
         }
 
         public static string GetWardStringSetting(ZDO zdo, int key, string defaultValue)
         {
-            return zdo != null && HasZdoString(zdo, key) ? zdo.GetString(key, defaultValue) : defaultValue;
+            if (zdo == null)
+                return defaultValue;
+
+            string value = zdo.GetString(key, defaultValue);
+            return string.IsNullOrEmpty(value) ? defaultValue : value;
         }
 
         public static Vector3 GetWardVec3Setting(ZDO zdo, int key, Vector3 defaultValue)
@@ -1373,7 +1418,7 @@ namespace ProtectiveWards
 
                     if (initiator != null)
                     {
-                        string str = Localization.instance.Localize("$msg_doesnotneedrepair");
+                        string str = "$msg_doesnotneedrepair".Localize();
                         initiator.Message(MessageHud.MessageType.TopLeft, char.ToUpper(str[0]) + str.Substring(1));
                     }
 
@@ -1390,7 +1435,7 @@ namespace ProtectiveWards
                         wardIsRepairing.TryGetValue(ward, out int toRepair);
                         wardIsRepairing[ward] = Math.Max(toRepair - 1, 0);
 
-                        initiator?.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$piece_repair"));
+                        initiator?.Message(MessageHud.MessageType.TopLeft, "$piece_repair".Localize());
                         break;
                     }
                 }
@@ -1807,7 +1852,11 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.HideMarker))]
         public static class PrivateArea_HideMarker_ShowAreaMarker
         {
-            public static bool Prefix() => !showAreaMarker.Value;
+            public static bool Prefix()
+            {
+
+                return !showAreaMarker.Value;
+            }
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.AddUserList))]
@@ -1851,7 +1900,7 @@ namespace ProtectiveWards
                 if (status.Count > 0)
                 {
                     text.Append("\n$guardianstone_hook_power_activate: ");
-                    text.Append(String.Join(", ", status.ToArray()));
+                    text.Append(string.Join(", ", status.ToArray()));
                 }
 
                 if (offeringsTimer < showOfferingsInHoverAfterSeconds.Value + 0.5f)
@@ -1904,7 +1953,7 @@ namespace ProtectiveWards
                     if (offeringsList.Count > 0)
                     {
                         text.Append("\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem:\n");
-                        text.Append(String.Join("\n", offeringsList));
+                        text.Append(string.Join("\n", offeringsList));
                         text.Append('\n');
                     }
                 }
@@ -2002,17 +2051,13 @@ namespace ProtectiveWards
             if (zdo == null)
                 return;
 
-            bool useCustomRange = HasZdoBool(zdo, s_customRange)
-                ? zdo.GetBool(s_customRange, setWardRange.Value)
-                : HasZdoFloat(zdo, s_range) || GetWardBoolSetting(zdo, s_customRange, setWardRange.Value);
-
-            if (!useCustomRange)
+            if (!WardZdoUtils.UseCustomGuardStoneRange(zdo))
             {
                 ResetWardRange(ward);
                 return;
             }
 
-            float range = GetWardFloatSetting(zdo, s_range, wardRange.Value);
+            float range = WardZdoUtils.GetConfiguredGuardStoneRange(zdo);
             if (Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);
@@ -2178,6 +2223,5 @@ namespace ProtectiveWards
                 InitCircleProjectorState(__instance.m_areaMarker, ___m_nview);
             }
         }
-        
     }
 }

@@ -214,11 +214,11 @@ namespace ProtectiveWards
 
             float measuredLabelWidth = 0f;
             foreach (string token in s_labelLayoutTokens)
-                measuredLabelWidth = Math.Max(measuredLabelWidth, EstimateTextWidth(Localize(token), RowFontSize) + 14f);
+                measuredLabelWidth = Math.Max(measuredLabelWidth, EstimateTextWidth(token.Localize(), RowFontSize) + 14f);
 
             float measuredSectionWidth = 0f;
             foreach (string token in s_sectionLayoutTokens)
-                measuredSectionWidth = Math.Max(measuredSectionWidth, EstimateTextWidth(Localize(token), HeaderFontSize) + 18f);
+                measuredSectionWidth = Math.Max(measuredSectionWidth, EstimateTextWidth(token.Localize(), HeaderFontSize) + 18f);
 
             float valueBlockWidth = ValueWidth * 2f + ValueGap;
             s_labelWidth = Mathf.Clamp(measuredLabelWidth, MinLabelWidth, MaxLabelWidth);
@@ -253,22 +253,22 @@ namespace ProtectiveWards
         {
             List<string> values = new List<string>(s_labelLayoutTokens.Length + s_sectionLayoutTokens.Length);
             foreach (string token in s_labelLayoutTokens)
-                values.Add(Localize(token));
+                values.Add(token.Localize());
             foreach (string token in s_sectionLayoutTokens)
-                values.Add(Localize(token));
+                values.Add(token.Localize());
 
-            return String.Join("|", values.ToArray());
+            return string.Join("|", values.ToArray());
         }
 
         private static float EstimateTextWidth(string text, int fontSize)
         {
-            if (String.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
                 return 0f;
 
             float width = 0f;
             foreach (char c in text)
             {
-                if (Char.IsWhiteSpace(c))
+                if (char.IsWhiteSpace(c))
                     width += fontSize * 0.28f;
                 else if (c <= 0x007F)
                     width += fontSize * 0.52f;
@@ -303,7 +303,7 @@ namespace ProtectiveWards
                     ? "$pw_ward_settings_circle_visual_title"
                     : "$pw_ward_settings_title";
 
-            CreateText(Localize(title), new Vector2(0f, 315f), TitleFontSize, 650f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
+            CreateText(title.Localize(), new Vector2(0f, 315f), TitleFontSize, 650f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
             CreateColumnHeaders();
 
             float y = 240f;
@@ -369,8 +369,8 @@ namespace ProtectiveWards
 
         private static void CreateColumnHeaders()
         {
-            CreateText(Localize("$pw_ward_settings_use_default"), new Vector2(s_useDefaultHeaderX, 278f), HeaderFontSize, s_useDefaultHeaderWidth, 30f, Color.white, TextAnchor.MiddleRight, FontStyle.Bold);
-            CreateText(Localize("$pw_ward_settings_value"), new Vector2(s_valueHeaderX + s_valueHeaderWidth * 0.5f, 278f), HeaderFontSize, s_valueHeaderWidth, 30f, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            CreateText("$pw_ward_settings_use_default".Localize(), new Vector2(s_useDefaultHeaderX, 278f), HeaderFontSize, s_useDefaultHeaderWidth, 30f, Color.white, TextAnchor.MiddleRight, FontStyle.Bold);
+            CreateText("$pw_ward_settings_value".Localize(), new Vector2(s_valueHeaderX + s_valueHeaderWidth * 0.5f, 278f), HeaderFontSize, s_valueHeaderWidth, 30f, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
         }
 
         private static void CreateFooterButtons(bool showBack)
@@ -378,7 +378,7 @@ namespace ProtectiveWards
             if (showBack)
             {
                 GameObject backButton = GUIManager.Instance.CreateButton(
-                    text: Localize("$pw_ward_settings_back"),
+                    text: "$pw_ward_settings_back".Localize(),
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
@@ -390,7 +390,7 @@ namespace ProtectiveWards
             else
             {
                 GameObject applyButton = GUIManager.Instance.CreateButton(
-                    text: Localize("$pw_ward_settings_apply"),
+                    text: "$pw_ward_settings_apply".Localize(),
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
@@ -400,7 +400,7 @@ namespace ProtectiveWards
                 applyButton.GetComponent<Button>().onClick.AddListener(Apply);
 
                 GameObject cancelButton = GUIManager.Instance.CreateButton(
-                    text: Localize("$pw_ward_settings_cancel"),
+                    text: "$pw_ward_settings_cancel".Localize(),
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
@@ -652,7 +652,7 @@ namespace ProtectiveWards
             else
             {
                 string value = package.ReadString();
-                zdo.Set(key, String.IsNullOrEmpty(value) ? "#FFFFFFFF" : value);
+                zdo.Set(key, string.IsNullOrEmpty(value) ? "#FFFFFFFF" : value);
             }
         }
 
@@ -803,16 +803,16 @@ namespace ProtectiveWards
         private static void AddSection(string labelToken, ref float y)
         {
             y -= 8f;
-            CreateText(Localize(labelToken), new Vector2(s_sectionX, y), HeaderFontSize, s_labelWidth, 30f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleLeft, FontStyle.Bold);
+            CreateText(labelToken.Localize(), new Vector2(s_sectionX, y), HeaderFontSize, s_labelWidth, 30f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleLeft, FontStyle.Bold);
             CreateDivider(new Vector2(s_sectionDividerX, y - 1f), s_sectionDividerWidth);
             y -= 34f;
         }
 
         private static void AddNavigationRow(string labelToken, string buttonToken, SettingsPage targetPage, ref float y)
         {
-            CreateRowText(s_panel.transform, Localize(labelToken), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            CreateRowText(s_panel.transform, labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
             GameObject button = GUIManager.Instance.CreateButton(
-                text: Localize(buttonToken),
+                text: buttonToken.Localize(),
                 parent: s_panel.transform,
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
@@ -893,11 +893,6 @@ namespace ProtectiveWards
             rect.sizeDelta = new Vector2(width, height);
         }
 
-        private static string Localize(string token)
-        {
-            return Localization.instance != null ? Localization.instance.Localize(token) : token;
-        }
-
         private static string ColorToHtml(Color color, bool includeAlpha)
         {
             return includeAlpha ? "#" + ColorUtility.ToHtmlStringRGBA(color) : "#" + ColorUtility.ToHtmlStringRGB(color);
@@ -950,7 +945,7 @@ namespace ProtectiveWards
 
             public void Create(Transform parent, float y)
             {
-                CreateRowText(parent, Localize(m_labelToken), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+                CreateRowText(parent, m_labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
 
                 GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
                 SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
@@ -1093,7 +1088,7 @@ namespace ProtectiveWards
                 Input.onValueChanged.AddListener(_ => ConfigureColorInputText());
 
                 GameObject buttonObject = GUIManager.Instance.CreateButton(
-                    text: Localize("$pw_ward_settings_set_color"),
+                    text: "$pw_ward_settings_set_color".Localize(),
                     parent: parent,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
@@ -1124,7 +1119,7 @@ namespace ProtectiveWards
                     new Vector2(0.5f, 0.5f),
                     Vector2.zero,
                     current,
-                    Localize("$pw_ward_settings_set_color"),
+                    "$pw_ward_settings_set_color".Localize(),
                     color => SetColor(color),
                     color => SetColor(color),
                     true);

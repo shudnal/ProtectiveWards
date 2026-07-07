@@ -9,6 +9,8 @@ namespace ProtectiveWards
     {
         internal const string GuardStonePrefabName = "guard_stone";
         internal static readonly int s_guardStonePrefabHash = GuardStonePrefabName.GetStableHashCode();
+        private static bool s_guardStoneDefaultRadiusCached;
+        private static float s_guardStoneDefaultRadius = 32f;
 
         internal static bool IsGuardStonePrefab(GameObject gameObject)
         {
@@ -103,16 +105,46 @@ namespace ProtectiveWards
             return IsPermitted(zdo, playerID);
         }
 
+        internal static bool UseCustomGuardStoneRange(ZDO zdo)
+        {
+            if (zdo == null)
+                return false;
+
+            bool fallback = wardSettingsUseDefaultsForAllWards.Value ? setWardRange.Value : false;
+            if (HasZdoFloat(zdo, s_range))
+                fallback = true;
+
+            return zdo.GetBool(s_customRange, fallback);
+        }
+
+        internal static float GetConfiguredGuardStoneRange(ZDO zdo)
+        {
+            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetGuardStoneDefaultRadius()) : wardRange.Value;
+        }
+
+        internal static float GetGuardStoneDefaultRadius()
+        {
+            if (s_guardStoneDefaultRadiusCached)
+                return s_guardStoneDefaultRadius;
+
+            if (ZNetScene.instance != null)
+            {
+                GameObject prefab = ZNetScene.instance.GetPrefab(GuardStonePrefabName);
+                PrivateArea prefabWard = prefab != null ? prefab.GetComponent<PrivateArea>() : null;
+                if (prefabWard != null)
+                    s_guardStoneDefaultRadius = prefabWard.m_radius;
+            }
+
+            s_guardStoneDefaultRadiusCached = true;
+            return s_guardStoneDefaultRadius;
+        }
+
         internal static float GetGuardStoneRadius(ZDO zdo)
         {
             if (zdo == null)
-                return 10f;
+                return GetGuardStoneDefaultRadius();
 
-            bool useCustomRange = HasZdoBool(zdo, s_customRange)
-                ? zdo.GetBool(s_customRange, setWardRange.Value)
-                : HasZdoFloat(zdo, s_range) || GetWardBoolSetting(zdo, s_customRange, setWardRange.Value);
-
-            return useCustomRange ? GetWardFloatSetting(zdo, s_range, wardRange.Value) : 10f;
+            return UseCustomGuardStoneRange(zdo) ? GetConfiguredGuardStoneRange(zdo) : GetGuardStoneDefaultRadius();
         }
 
         internal static bool AreGuardStoneZdosOverlapping(ZDO protectedWard, ZDO candidateWard)
