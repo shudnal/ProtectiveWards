@@ -12,6 +12,7 @@ namespace ProtectiveWards
         private const string RPC_PermitPlayer = "PW_PermitPlayer";
         private const string RPC_UnpermitPlayer = "PW_UnpermitPlayer";
         private const string RPC_SetWardEnabled = "PW_SetWardEnabled";
+        private const string RPC_SetWardExpired = "PW_SetWardExpired";
         private const string RPC_CheckWardBuildLimit = "PW_CheckWardBuildLimit";
         private const string RPC_DestroyWardForBuildLimit = "PW_DestroyWardForBuildLimit";
         private static readonly HashSet<ZDOID> s_requestedWardLimitChecks = new HashSet<ZDOID>();
@@ -30,6 +31,7 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_PermitPlayer, RPC_PermitPlayerServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardEnabled, RPC_SetWardEnabledServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardExpired, RPC_SetWardExpiredServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckWardBuildLimit, RPC_CheckWardBuildLimitServer);
             }
 
@@ -49,6 +51,10 @@ namespace ProtectiveWards
             RegisterWardStateCommand("ward_enable", "enable the nearest ward within configured range", enabled: true);
             RegisterWardStateCommand("pw_disable", "disable the nearest ward within configured range", enabled: false);
             RegisterWardStateCommand("ward_disable", "disable the nearest ward within configured range", enabled: false);
+            RegisterWardExpirationStateCommand("pw_set_expired", "mark the nearest ward as expired", expired: true);
+            RegisterWardExpirationStateCommand("ward_set_expired", "mark the nearest ward as expired", expired: true);
+            RegisterWardExpirationStateCommand("pw_set_unexpired", "clear expired state from the nearest ward", expired: false);
+            RegisterWardExpirationStateCommand("ward_set_unexpired", "clear expired state from the nearest ward", expired: false);
 
             s_commandRegistered = true;
         }
@@ -78,6 +84,17 @@ namespace ProtectiveWards
                     return;
 
                 RequestSetWardEnabled(enabled, args.Context);
+            });
+        }
+
+        private static void RegisterWardExpirationStateCommand(string command, string description, bool expired)
+        {
+            new Terminal.ConsoleCommand(command, description, args =>
+            {
+                if (!ValidateWardControlCommand(args.Context))
+                    return;
+
+                RequestSetWardExpired(expired, args.Context);
             });
         }
 
@@ -236,6 +253,42 @@ namespace ProtectiveWards
             context.AddString(enabled ? "Ward enable requested." : "Ward disable requested.");
         }
 
+        private static void RequestSetWardExpired(bool expired, Terminal context)
+        {
+            Player player = Player.m_localPlayer;
+            if (player == null)
+            {
+                context.AddString("Player is not available.");
+                return;
+            }
+
+            if (!HasLocalWardAdminAccess())
+            {
+                context.AddString("$pw_permit_no_access".Localize());
+                return;
+            }
+
+            PrivateArea ward = FindNearestWard(player.transform.position, GetWardControlCommandRange());
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            {
+                context.AddString("$pw_permit_no_ward".Localize());
+                return;
+            }
+
+            ZPackage package = new ZPackage();
+            package.Write(ward.m_nview.GetZDO().m_uid);
+            package.Write(player.GetPlayerID());
+            package.Write(player.GetPlayerName());
+            package.Write(expired);
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_SetWardExpiredServer(0L, new ZPackage(package.GetArray()));
+            else
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardExpired, package);
+
+            context.AddString(expired ? "Ward expired state requested." : "Ward unexpired state requested.");
+        }
+
         private static void RPC_PermitPlayerServer(long sender, ZPackage package)
         {
             ZDOID wardID = package.ReadZDOID();
@@ -321,6 +374,31 @@ namespace ProtectiveWards
 
             ward.SetEnabled(enabled);
             LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
+        }
+
+        private static void RPC_SetWardExpiredServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long requesterID = package.ReadLong();
+            string requesterName = package.ReadString();
+            bool expired = package.ReadBool();
+
+            if (!AreWardControlCommandsEnabled())
+                return;
+
+            if (!HasWardAdminAccess(requesterID))
+                return;
+
+            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            Player requester = Player.GetPlayer(requesterID);
+            if (requester == null || requester.GetPlayerName() != requesterName || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
+                return;
+
+            WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired, requesterID, requesterName);
+            LogInfo($"{(expired ? "Marked" : "Cleared")} ward expired state by admin command");
         }
 
         private static bool CanRequesterPermit(PrivateArea ward, long requesterID) => ward != null && requesterID != 0L && HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
@@ -457,7 +535,7 @@ namespace ProtectiveWards
             if (!newWardZdo.IsWard())
                 return;
 
-            if (newWardZdo.GetLong(ZDOVars.s_creator, 0L) != creatorID)
+            if (!newWardZdo.IsCreator(creatorID))
                 return;
 
             int limit = wardBuildLimitPerPlayer.Value;

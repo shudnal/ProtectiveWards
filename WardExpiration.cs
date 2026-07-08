@@ -17,6 +17,34 @@ namespace ProtectiveWards
 
         private static float s_nextCheckTime;
 
+        internal static void ResetNextCheckTime() => s_nextCheckTime = 0f;
+
+        internal static void SetExpired(ZDO zdo, bool expired, long playerID, string playerName)
+        {
+            if (zdo == null)
+                return;
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            zdo.Set(s_expirationExpired, expired);
+
+            if (expired)
+            {
+                zdo.Set(s_expirationExpiredUnix, now);
+                zdo.Set(s_expirationExpiredReason, "admin_command");
+            }
+            else
+            {
+                zdo.Set(s_expirationLastActiveUnix, now);
+                zdo.Set(s_expirationExpiredReason, "admin_command_reactivated");
+            }
+
+            if (playerID == 0L)
+                return;
+
+            zdo.Set(s_expirationLastPlayerId, playerID);
+            zdo.Set(s_expirationLastPlayerName, playerName ?? "");
+        }
+
         internal static void Update()
         {
             if (wardExpirationMinutes.Value <= 0)
@@ -159,6 +187,18 @@ namespace ProtectiveWards
             return wardExpirationRefreshMode.Value == WardExpirationRefreshMode.DirectPermitted
                 ? zdo.HasDirectWardAccess(playerID)
                 : zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess);
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+        private static class ZoneSystem_Start_ResetExpirationCheckTime
+        {
+            private static void Postfix() => ResetNextCheckTime();
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        private static class ZoneSystem_OnDestroy_ResetExpirationCheckTime
+        {
+            private static void Postfix() => ResetNextCheckTime();
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsEnabled))]

@@ -64,9 +64,6 @@ namespace ProtectiveWards
             if (zdo == null || playerID == 0L)
                 return false;
 
-            if (permitEveryone != null && permitEveryone.Value)
-                return true;
-
             if (HasWardAdminAccess(playerID))
                 return true;
 

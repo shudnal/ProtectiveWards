@@ -47,6 +47,8 @@ Disabled wards owned by another player cannot be edited. Admin bypass is control
 
 The default is `AdminsInGodMode`, so admins can play normally without accidentally bypassing protections.
 
+`Ward admin / Permit everyone` is a stronger global bypass mode. When it is enabled, ward access checks are not enforced and every player is treated as having ward admin access. Permitted lists are still stored, but they do not restrict access. This can also be used on multiplayer servers that do not need ward ownership restrictions or inactive ward expiration enforcement.
+
 ### Access protection from non-permitted players
 
 The `Ward access from non-permitted players` config group controls what non-permitted players are blocked from using inside another player's active ward.
@@ -114,6 +116,15 @@ They validate on the server that:
 The commands use the same external ward control enable/range configs as the permitted-list commands.
 They are creator/admin controlled: the ward creator may toggle their own ward, and players allowed by `Ward admin / Ward admin access` may toggle any nearby ward.
 
+#### Ward expiration admin commands
+
+`pw_set_expired` / `ward_set_expired` marks the nearest ward as expired.
+
+`pw_set_unexpired` / `ward_set_unexpired` clears the expired state from the nearest ward.
+
+The commands use the same external ward control enable/range configs as the permitted-list and toggle commands.
+They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`, or by `Ward admin / Permit everyone`.
+
 #### Ward build limit
 
 The server can limit how many wards each player may have in the world.
@@ -141,7 +152,7 @@ Trap protection still lets permitted players move through their own traps safely
 
 Inactive ward expiration is disabled by default.
 
-When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
+This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
 
 Important details:
 

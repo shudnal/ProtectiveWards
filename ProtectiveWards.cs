@@ -408,7 +408,7 @@ namespace ProtectiveWards
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
             wardRange = config("Range", "Ward range", defaultValue: 10f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
-            permitEveryone = config("Range", "Grant permittance to everyone", defaultValue: false, "Grant permittance to every player. There still will be permittance list on ward but it won't take any effect.");
+            permitEveryone = config("Ward admin", "Permit everyone", defaultValue: false, "Bypasses ward access checks completely. When enabled, every player is treated as having ward admin access, regardless of the Ward admin access mode. Permitted lists are still stored on wards but do not restrict access.");
 
 
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
@@ -496,19 +496,21 @@ namespace ProtectiveWards
             wardBackgroundTamePacify = config("Ward without permitted players nearby", "Tame pacify", WardBackgroundTamePacifyMode.WhenNoPermittedNearby, "When enabled, tamed creatures inside a protected ward network drop creature/static targets and do not acquire new combat targets while no permitted/effective player is nearby.");
             wardBackgroundPreventBuildingAndDemolishing = config("Ward without permitted players nearby", "Prevent building and demolishing", true, "Blocks non-permitted players from placing new pieces or demolishing other players' pieces inside a protected ward network while no permitted/effective player is nearby. Players can always demolish their own pieces.");
 
-            wardAdminAccess = config("Ward admin", "Ward admin access", WardAdminAccessMode.AdminsInGodMode, "Controls global admin bypass behavior used by ward settings, permit command bypass, and admin-only expiration hover details."
+            wardAdminAccess = config("Ward admin", "Ward admin access", WardAdminAccessMode.AdminsInGodMode, "Controls global admin bypass behavior used by ward settings, permit command bypass, admin-only expiration commands, and admin-only expiration hover details. Ignored when Permit everyone is enabled."
                                                                                                     + "\nOff: admins do not bypass ward access checks."
                                                                                                     + "\nAdmins: server admins and host bypass ward access checks."
                                                                                                     + "\nAdminsInGodMode: server admins and host bypass ward access checks only while god mode is enabled.");
-            wardExternalControlCommandsEnabled = config("Ward admin", "Enable external ward control commands", true, "Enables external ward management console commands and aliases for changing nearby wards, including permitted-list and enabled-state commands.");
+            wardExternalControlCommandsEnabled = config("Ward admin", "Enable external ward control commands", true, "Enables external ward management console commands and aliases for changing nearby wards, including permitted-list, enabled-state, and expiration-state commands.");
             wardExternalControlCommandRange = config("Ward admin", "External ward control command range", 5f, "Maximum horizontal distance from the player to the ward used by external ward management commands.");
             wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
 
-            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. If greater than 0, server periodically checks the tracked ward ZDO collection and expires wards after this many real-time minutes without activity from players who can refresh them.");
+            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. This multiplayer/server-side mechanic is ignored in singleplayer. If greater than 0, the server periodically checks the tracked ward ZDO collection and expires wards after this many real-time minutes without activity from players who can refresh them.");
             wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls who can refresh inactive ward expiration. DirectPermitted: only direct ward creator/permitted players. EffectiveAccess: connected/effective access can refresh according to expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for inactive ward expiration refresh/reactivation.");
             wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "ManualInteraction: expired wards stay inactive until an access player interacts with them. AutomaticOnLogin: an access player being online automatically reactivates expired wards.");
             wardExpirationAdminHover = config("Ward expiration", "Show expiration admin hover details", false, "Shows additional expiration debug details in ward hover text for players allowed by Ward admin access.", false);
+
+            wardExpirationMinutes.SettingChanged += (sender, args) => WardExpiration.ResetNextCheckTime();
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -1195,7 +1197,13 @@ namespace ProtectiveWards
 
         public static bool HasWardAdminAccess(long playerID)
         {
-            if (playerID == 0L || wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
+            if (playerID == 0L)
+                return false;
+
+            if (permitEveryone != null && permitEveryone.Value)
+                return true;
+
+            if (wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
                 return false;
 
             if (!IsPlayerServerAdminOrHost(playerID))
@@ -1933,7 +1941,7 @@ namespace ProtectiveWards
         {
             public static bool Prefix(long playerID, ref bool __result)
             {
-                if ((permitEveryone == null || !permitEveryone.Value) && !HasWardAdminAccess(playerID))
+                if (!HasWardAdminAccess(playerID))
                     return true;
 
                 __result = true;
