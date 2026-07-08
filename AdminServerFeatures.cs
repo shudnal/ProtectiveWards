@@ -552,16 +552,28 @@ namespace ProtectiveWards
             if (zdo == null)
                 return;
 
+            ZDOID wardID = zdo.m_uid;
+            long owner = zdo.GetOwner();
+            DestroyWardForBuildLimitServer(zdo);
+
             ZPackage package = new ZPackage();
-            package.Write(zdo.m_uid);
+            package.Write(wardID);
             package.Write(current);
             package.Write(limit);
 
-            long owner = zdo.GetOwner();
             if (owner != 0L && ZRoutedRpc.instance != null)
                 ZRoutedRpc.instance.InvokeRoutedRPC(owner, RPC_DestroyWardForBuildLimit, package);
-            else
+            else if (Player.m_localPlayer != null)
                 RPC_DestroyWardForBuildLimitClient(0L, new ZPackage(package.GetArray()));
+        }
+
+        private static void DestroyWardForBuildLimitServer(ZDO zdo)
+        {
+            if (zdo == null || ZDOMan.instance == null)
+                return;
+
+            zdo.SetOwner(ZDOMan.instance.m_sessionID);
+            ZDOMan.instance.DestroyZDO(zdo);
         }
 
         private static void RPC_DestroyWardForBuildLimitClient(long sender, ZPackage package)

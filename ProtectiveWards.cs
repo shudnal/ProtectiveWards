@@ -1186,7 +1186,18 @@ namespace ProtectiveWards
             if (IsDisabledForeignWard(zdo, playerID))
                 return false;
 
-            return wardSettingsRequireCreator.Value && zdo.GetLong(ZDOVars.s_creator, 0L) == playerID;
+            if (wardSettingsRequireCreator.Value)
+                return zdo.IsCreator(playerID);
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            return zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings);
+        }
+
+        private static bool IsActiveWardZdoForSettings(ZDO zdo)
+        {
+            return zdo.IsWard()
+                   && zdo.GetBool(ZDOVars.s_enabled, false)
+                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
         }
 
         public static bool HasLocalWardAdminAccess()

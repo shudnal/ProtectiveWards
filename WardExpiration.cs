@@ -53,6 +53,9 @@ namespace ProtectiveWards
             if (ZNet.instance == null || !ZNet.instance.IsServer() || ZNet.IsSinglePlayer)
                 return;
 
+            if (Player.GetAllPlayers().Count == 0)
+                return;
+
             if (Time.time < s_nextCheckTime)
                 return;
 

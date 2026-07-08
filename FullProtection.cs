@@ -14,6 +14,7 @@ namespace ProtectiveWards
         private const string RPC_TeleportTargetAccessResponse = "PW_TeleportTargetAccessResponse";
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
+        private static bool s_teleportAccessRpcRegistered;
 
         private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
         {
@@ -68,39 +69,100 @@ namespace ProtectiveWards
             s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
         }
 
-        private static void RegisterTeleportAccessRPC(TeleportWorld teleport)
+        private static void RegisterTeleportAccessRPC()
         {
-            if (teleport.m_nview?.IsValid() != true)
+            if (s_teleportAccessRpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            teleport.m_nview.Register<long, Vector3>(RPC_CheckTeleportTargetAccess, (sender, playerID, targetPoint) => RPC_CheckTeleportTargetAccessServer(teleport, teleport.m_nview, sender, playerID, targetPoint));
-            teleport.m_nview.Register<bool, string>(RPC_TeleportTargetAccessResponse, (sender, granted, blockingOwnerName) => RPC_TeleportTargetAccessResponseClient(teleport, sender, granted, blockingOwnerName));
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckTeleportTargetAccess, RPC_CheckTeleportTargetAccessServer);
+
+            ZRoutedRpc.instance.Register<ZPackage>(RPC_TeleportTargetAccessResponse, RPC_TeleportTargetAccessResponseClient);
+            s_teleportAccessRpcRegistered = true;
+        }
+
+        private static void ResetRPCRegistration()
+        {
+            s_saddleRpcRegistered = false;
+            s_teleportAccessRpcRegistered = false;
         }
 
         private static bool TeleportTargetAccessCheckStarted(TeleportWorld teleport, Player player)
         {
-            if (player == null || teleport?.TargetFound() != true)
+            if (player == null || teleport?.TargetFound() != true || teleport.m_nview?.IsValid() != true)
                 return false;
 
-            ZDO zDO = ZDOMan.instance.GetZDO(teleport.m_nview.GetZDO().GetConnectionZDOID(ZDOExtraData.ConnectionType.Portal));
-            if (zDO == null)
+            ZDO sourceZdo = teleport.m_nview.GetZDO();
+            if (sourceZdo == null)
                 return false;
 
-            teleport.m_nview.InvokeRPC(RPC_CheckTeleportTargetAccess, player.GetPlayerID(), zDO.GetPosition());
+            ZPackage package = new ZPackage();
+            package.Write(sourceZdo.m_uid);
+            package.Write(player.GetPlayerID());
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_CheckTeleportTargetAccessServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckTeleportTargetAccess, package);
+            else
+                return false;
+
             return true;
         }
 
-        private static void RPC_CheckTeleportTargetAccessServer(TeleportWorld teleport, ZNetView nview, long sender, long playerID, Vector3 targetPoint)
+        private static void RPC_CheckTeleportTargetAccessServer(long sender, ZPackage package)
         {
-            bool granted = IsTeleportTargetAccessibleToPlayer(targetPoint, playerID, out string blockingOwnerName);
-            if (nview != null && nview.IsValid())
-                nview.InvokeRPC(sender, RPC_TeleportTargetAccessResponse, granted, blockingOwnerName);
+            ZDOID sourceZdoID = package.ReadZDOID();
+            long playerID = package.ReadLong();
+
+            if (ZDOMan.instance == null)
+                return;
+
+            ZDO sourceZdo = ZDOMan.instance.GetZDO(sourceZdoID);
+            if (sourceZdo == null)
+            {
+                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: true, blockingOwnerName: "");
+                return;
+            }
+
+            ZDOID targetZdoID = sourceZdo.GetConnectionZDOID(ZDOExtraData.ConnectionType.Portal);
+            ZDO targetZdo = ZDOMan.instance.GetZDO(targetZdoID);
+            if (targetZdo == null)
+            {
+                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: true, blockingOwnerName: "");
+                return;
+            }
+
+            bool granted = IsTeleportTargetAccessibleToPlayer(targetZdo.GetPosition(), playerID, out string blockingOwnerName);
+            SendTeleportTargetAccessResponse(sender, sourceZdoID, granted, blockingOwnerName);
         }
 
-        private static void RPC_TeleportTargetAccessResponseClient(TeleportWorld teleport, long sender, bool granted, string blockingOwnerName)
+        private static void SendTeleportTargetAccessResponse(long peerID, ZDOID sourceZdoID, bool granted, string blockingOwnerName)
         {
+            ZPackage response = new ZPackage();
+            response.Write(sourceZdoID);
+            response.Write(granted);
+            response.Write(blockingOwnerName ?? "");
+
+            if (ZNet.instance != null && ZNet.instance.IsServer() && ZRoutedRpc.instance != null && peerID != 0L)
+                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_TeleportTargetAccessResponse, response);
+            else
+                RPC_TeleportTargetAccessResponseClient(0L, new ZPackage(response.GetArray()));
+        }
+
+        private static void RPC_TeleportTargetAccessResponseClient(long sender, ZPackage package)
+        {
+            ZDOID sourceZdoID = package.ReadZDOID();
+            bool granted = package.ReadBool();
+            string blockingOwnerName = package.ReadString();
+
             Player player = Player.m_localPlayer;
-            if (player == null || teleport == null)
+            if (player == null || ZNetScene.instance == null)
+                return;
+
+            GameObject instance = ZNetScene.instance.FindInstance(sourceZdoID);
+            TeleportWorld teleport = instance != null ? instance.GetComponent<TeleportWorld>() : null;
+            if (teleport == null)
                 return;
 
             if (!granted)
@@ -599,7 +661,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Awake))]
         public static class TeleportWorld_Awake_PreventUnauthorizedAccess
         {
-            private static void Postfix(TeleportWorld __instance) => RegisterTeleportAccessRPC(__instance);
+            private static void Postfix() => RegisterTeleportAccessRPC();
         }
 
         [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Interact))]
@@ -1191,7 +1253,14 @@ namespace ProtectiveWards
             private static void Postfix()
             {
                 RegisterSaddleUserRPC();
+                RegisterTeleportAccessRPC();
             }
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        public static class ZoneSystem_OnDestroy_ResetFullProtectionRPCs
+        {
+            private static void Postfix() => ResetRPCRegistration();
         }
 
         [HarmonyPatch(typeof(Sadle), nameof(Sadle.RPC_RequestRespons))]
@@ -1253,19 +1322,57 @@ namespace ProtectiveWards
 
             private static IEnumerable<MethodBase> TargetMethods()
             {
-                foreach (Type type in typeof(Player).Assembly.GetTypes())
+                HashSet<MethodBase> methods = new HashSet<MethodBase>();
+                foreach (Type type in GetLoadedInteractableTypes())
                 {
-                    if (type == typeof(Interactable) || type.IsAbstract || !typeof(Interactable).IsAssignableFrom(type) || ExcludedInteractableTypes.Contains(type))
-                        continue;
-
                     MethodInfo interact = AccessTools.Method(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
-                    if (interact != null)
+                    if (ShouldPatchInteractableMethod(interact) && methods.Add(interact))
                         yield return interact;
 
                     MethodInfo useItem = AccessTools.Method(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
-                    if (useItem != null)
+                    if (ShouldPatchInteractableMethod(useItem) && methods.Add(useItem))
                         yield return useItem;
                 }
+            }
+
+            private static IEnumerable<Type> GetLoadedInteractableTypes()
+            {
+                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (assembly == null || assembly.IsDynamic)
+                        continue;
+
+                    Type[] types;
+                    try
+                    {
+                        types = assembly.GetTypes();
+                    }
+                    catch (ReflectionTypeLoadException ex)
+                    {
+                        types = ex.Types;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (Type type in types)
+                    {
+                        if (type == null || type == typeof(Interactable) || type.IsAbstract || type.ContainsGenericParameters || ExcludedInteractableTypes.Contains(type))
+                            continue;
+
+                        if (typeof(Interactable).IsAssignableFrom(type))
+                            yield return type;
+                    }
+                }
+            }
+
+            private static bool ShouldPatchInteractableMethod(MethodInfo method)
+            {
+                return method != null
+                       && method.DeclaringType != null
+                       && method.DeclaringType != typeof(Interactable)
+                       && !ExcludedInteractableTypes.Contains(method.DeclaringType);
             }
 
             private static bool Prefix(object __instance, Humanoid __0, ref bool __result)
