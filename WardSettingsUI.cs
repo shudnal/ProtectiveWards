@@ -13,6 +13,7 @@ namespace ProtectiveWards
     internal static class WardSettingsUI
     {
         private const string RPC_ApplyWardSettings = "PW_ApplyWardSettings";
+        private const string RPC_RefreshWardSettings = "PW_RefreshWardSettings";
         private const float MaxPanelWidth = 740f;
         private const float MinPanelWidth = 620f;
         private const float PanelHeight = 700f;
@@ -126,6 +127,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_ApplyWardSettings, RPC_ApplyWardSettingsServer);
 
+            ZRoutedRpc.instance.Register<ZPackage>(RPC_RefreshWardSettings, RPC_RefreshWardSettingsClient);
             s_rpcRegistered = true;
         }
 
@@ -327,44 +329,44 @@ namespace ProtectiveWards
         private static void CreateMainRows(ref float y)
         {
             AddSection("$pw_ward_settings_section_range", ref y);
-            AddBool(FieldId.CustomRange, "$pw_ward_settings_custom_range", s_customRange, setWardRange, ref y);
-            AddFloat(FieldId.Range, "$pw_ward_settings_range", s_range, wardRange, ref y);
+            AddBool(FieldId.CustomRange, "$pw_ward_settings_custom_range", ref y);
+            AddFloat(FieldId.Range, "$pw_ward_settings_range", ref y);
 
             AddSection("$pw_ward_settings_section_emission", ref y);
-            AddBool(FieldId.CustomColor, "$pw_ward_settings_emission_enabled", s_customColor, wardEmissionColorEnabled, ref y);
+            AddBool(FieldId.CustomColor, "$pw_ward_settings_emission_enabled", ref y);
             AddEmissionColor(ref y);
-            AddFloat(FieldId.EmissionColorMultiplier, "$pw_ward_settings_emission_multiplier", s_colorMultiplier, wardEmissionColorMultiplier, ref y);
+            AddFloat(FieldId.EmissionColorMultiplier, "$pw_ward_settings_emission_multiplier", ref y);
 
             AddSection("$pw_ward_settings_section_bubble", ref y);
-            AddBool(FieldId.BubbleEnabled, "$pw_ward_settings_bubble_enabled", s_bubbleEnabled, wardBubbleShow, ref y);
-            AddColor(FieldId.BubbleColor, "$pw_ward_settings_bubble_color", s_bubbleColor, s_bubbleColorAlpha, wardBubbleColor.Value, ref y);
+            AddBool(FieldId.BubbleEnabled, "$pw_ward_settings_bubble_enabled", ref y);
+            AddColor(FieldId.BubbleColor, "$pw_ward_settings_bubble_color", ref y);
             AddNavigationRow("$pw_ward_settings_bubble_visual", "$pw_ward_settings_open", SettingsPage.BubbleVisual, ref y);
 
             AddSection("$pw_ward_settings_section_circle", ref y);
-            AddBool(FieldId.CircleEnabled, "$pw_ward_settings_circle_enabled", s_circleEnabled, wardAreaMarkerPatch, ref y);
+            AddBool(FieldId.CircleEnabled, "$pw_ward_settings_circle_enabled", ref y);
             AddNavigationRow("$pw_ward_settings_circle_visual", "$pw_ward_settings_open", SettingsPage.CircleVisual, ref y);
         }
 
         private static void CreateBubbleVisualRows(ref float y)
         {
             AddSection("$pw_ward_settings_section_bubble", ref y);
-            AddFloat(FieldId.BubbleRefraction, "$pw_ward_settings_bubble_refraction", s_bubbleRefractionIntensity, wardBubbleRefractionIntensity, ref y);
-            AddFloat(FieldId.BubbleWave, "$pw_ward_settings_bubble_wave", s_bubbleWaveVel, wardBubbleWaveIntensity, ref y);
-            AddFloat(FieldId.BubbleGlossiness, "$pw_ward_settings_bubble_glossiness", s_bubbleGlossiness, wardBubbleGlossiness, ref y);
-            AddFloat(FieldId.BubbleMetallic, "$pw_ward_settings_bubble_metallic", s_bubbleMetallic, wardBubbleMetallic, ref y);
-            AddFloat(FieldId.BubbleNormalScale, "$pw_ward_settings_bubble_normal", s_bubbleNormalScale, wardBubbleNormalScale, ref y);
-            AddFloat(FieldId.BubbleDepthFade, "$pw_ward_settings_bubble_depth", s_bubbleDepthFade, wardBubbleDepthFade, ref y);
+            AddFloat(FieldId.BubbleRefraction, "$pw_ward_settings_bubble_refraction", ref y);
+            AddFloat(FieldId.BubbleWave, "$pw_ward_settings_bubble_wave", ref y);
+            AddFloat(FieldId.BubbleGlossiness, "$pw_ward_settings_bubble_glossiness", ref y);
+            AddFloat(FieldId.BubbleMetallic, "$pw_ward_settings_bubble_metallic", ref y);
+            AddFloat(FieldId.BubbleNormalScale, "$pw_ward_settings_bubble_normal", ref y);
+            AddFloat(FieldId.BubbleDepthFade, "$pw_ward_settings_bubble_depth", ref y);
         }
 
         private static void CreateCircleVisualRows(ref float y)
         {
             AddSection("$pw_ward_settings_section_circle", ref y);
-            AddStringColor(FieldId.CircleStartColor, "$pw_ward_settings_circle_start", s_circleStartColor, wardAreaMarkerStartColor.Value, ref y);
-            AddStringColor(FieldId.CircleEndColor, "$pw_ward_settings_circle_end", s_circleEndColor, wardAreaMarkerEndColor.Value, ref y);
-            AddFloat(FieldId.CircleSpeed, "$pw_ward_settings_circle_speed", s_circleSpeed, wardAreaMarkerSpeed, ref y);
-            AddFloat(FieldId.CircleLength, "$pw_ward_settings_circle_length", s_circleLength, wardAreaMarkerLength, ref y);
-            AddFloat(FieldId.CircleWidth, "$pw_ward_settings_circle_width", s_circleWidth, wardAreaMarkerWidth, ref y);
-            AddFloat(FieldId.CircleAmount, "$pw_ward_settings_circle_amount", s_circleAmount, wardAreaMarkerAmount, ref y);
+            AddStringColor(FieldId.CircleStartColor, "$pw_ward_settings_circle_start", ref y);
+            AddStringColor(FieldId.CircleEndColor, "$pw_ward_settings_circle_end", ref y);
+            AddFloat(FieldId.CircleSpeed, "$pw_ward_settings_circle_speed", ref y);
+            AddFloat(FieldId.CircleLength, "$pw_ward_settings_circle_length", ref y);
+            AddFloat(FieldId.CircleWidth, "$pw_ward_settings_circle_width", ref y);
+            AddFloat(FieldId.CircleAmount, "$pw_ward_settings_circle_amount", ref y);
         }
 
         private static void CreateColumnHeaders()
@@ -489,8 +491,39 @@ namespace ProtectiveWards
         {
             ZDOID zdoID = package.ReadZDOID();
             long playerID = package.ReadLong();
+
+            if (!TryGetRoutedPlayer(sender, playerID, out RoutedPlayerContext requester))
+                return;
+
             ZDO zdo = ZDOMan.instance.GetZDO(zdoID);
-            if (zdo == null || !CanApplyWardSettings(zdoID, zdo, playerID))
+            if (zdo == null || !CanApplyWardSettings(zdoID, zdo, requester.PlayerID))
+                return;
+
+            int count = package.ReadInt();
+            ZPackage refreshPackage = new();
+            refreshPackage.Write(zdoID);
+            refreshPackage.Write(count);
+
+            for (int i = 0; i < count; i++)
+                ApplyField(zdo, package, refreshPackage);
+
+            BroadcastWardSettingsRefresh(refreshPackage);
+            LogInfo($"Ward settings applied for {zdoID}");
+        }
+
+        private static void BroadcastWardSettingsRefresh(ZPackage package)
+        {
+            if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, RPC_RefreshWardSettings, package);
+            else
+                RPC_RefreshWardSettingsClient(0L, new ZPackage(package.GetArray()));
+        }
+
+        private static void RPC_RefreshWardSettingsClient(long _, ZPackage package)
+        {
+            ZDOID zdoID = package.ReadZDOID();
+            ZDO zdo = ZDOMan.instance?.GetZDO(zdoID);
+            if (zdo == null)
                 return;
 
             int count = package.ReadInt();
@@ -498,7 +531,6 @@ namespace ProtectiveWards
                 ApplyField(zdo, package);
 
             RefreshLoadedWard(zdoID);
-            LogInfo($"Ward settings applied for {zdoID}");
         }
 
         private static bool CanApplyWardSettings(ZDOID zdoID, ZDO zdo, long playerID)
@@ -528,88 +560,75 @@ namespace ProtectiveWards
             return null;
         }
 
-        private static void ApplyField(ZDO zdo, ZPackage package)
+        private static void ApplyField(ZDO zdo, ZPackage package, ZPackage mirror = null)
         {
             FieldId field = (FieldId)package.ReadInt();
             bool useDefault = package.ReadBool();
 
+            mirror?.Write((int)field);
+            mirror?.Write(useDefault);
+
             switch (field)
             {
                 case FieldId.BubbleEnabled:
-                    ApplyBool(zdo, s_bubbleEnabled, useDefault, package);
+                    ApplyBool(zdo, s_bubbleEnabled, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleColor:
-                    if (useDefault)
-                    {
-                        RemoveZdoVec3(zdo, s_bubbleColor);
-                        RemoveZdoFloat(zdo, s_bubbleColorAlpha);
-                    }
-                    else
-                    {
-                        Color color = ReadColor(package);
-                        zdo.Set(s_bubbleColor, new Vector3(color.r, color.g, color.b));
-                        zdo.Set(s_bubbleColorAlpha, color.a);
-                    }
+                    ApplyColor(zdo, s_bubbleColor, s_bubbleColorAlpha, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleRefraction:
-                    ApplyFloat(zdo, s_bubbleRefractionIntensity, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleRefractionIntensity, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleWave:
-                    ApplyFloat(zdo, s_bubbleWaveVel, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleWaveVel, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleGlossiness:
-                    ApplyFloat(zdo, s_bubbleGlossiness, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleGlossiness, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleMetallic:
-                    ApplyFloat(zdo, s_bubbleMetallic, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleMetallic, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleNormalScale:
-                    ApplyFloat(zdo, s_bubbleNormalScale, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleNormalScale, useDefault, package, mirror);
                     break;
                 case FieldId.BubbleDepthFade:
-                    ApplyFloat(zdo, s_bubbleDepthFade, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleDepthFade, useDefault, package, mirror);
                     break;
                 case FieldId.CustomRange:
-                    ApplyBool(zdo, s_customRange, useDefault, package);
+                    ApplyBool(zdo, s_customRange, useDefault, package, mirror);
                     break;
                 case FieldId.Range:
-                    ApplyFloat(zdo, s_range, useDefault, package);
+                    ApplyFloat(zdo, s_range, useDefault, package, mirror);
                     break;
                 case FieldId.CustomColor:
-                    ApplyBool(zdo, s_customColor, useDefault, package);
+                    ApplyBool(zdo, s_customColor, useDefault, package, mirror);
                     break;
                 case FieldId.EmissionColor:
-                    if (useDefault)
-                        RemoveZdoVec3(zdo, s_color);
-                    else
-                    {
-                        Color color = ReadColor(package);
-                        zdo.Set(s_color, new Vector3(color.r, color.g, color.b));
-                    }
+                    ApplyColor(zdo, s_color, 0, useDefault, package, mirror, writeAlpha: false);
                     break;
                 case FieldId.EmissionColorMultiplier:
-                    ApplyFloat(zdo, s_colorMultiplier, useDefault, package);
+                    ApplyFloat(zdo, s_colorMultiplier, useDefault, package, mirror);
                     break;
                 case FieldId.CircleEnabled:
-                    ApplyBool(zdo, s_circleEnabled, useDefault, package);
+                    ApplyBool(zdo, s_circleEnabled, useDefault, package, mirror);
                     break;
                 case FieldId.CircleStartColor:
-                    ApplyString(zdo, s_circleStartColor, useDefault, package);
+                    ApplyString(zdo, s_circleStartColor, useDefault, package, mirror);
                     break;
                 case FieldId.CircleEndColor:
-                    ApplyString(zdo, s_circleEndColor, useDefault, package);
+                    ApplyString(zdo, s_circleEndColor, useDefault, package, mirror);
                     break;
                 case FieldId.CircleSpeed:
-                    ApplyFloat(zdo, s_circleSpeed, useDefault, package);
+                    ApplyFloat(zdo, s_circleSpeed, useDefault, package, mirror);
                     break;
                 case FieldId.CircleLength:
-                    ApplyFloat(zdo, s_circleLength, useDefault, package);
+                    ApplyFloat(zdo, s_circleLength, useDefault, package, mirror);
                     break;
                 case FieldId.CircleWidth:
-                    ApplyFloat(zdo, s_circleWidth, useDefault, package);
+                    ApplyFloat(zdo, s_circleWidth, useDefault, package, mirror);
                     break;
                 case FieldId.CircleAmount:
-                    ApplyFloat(zdo, s_circleAmount, useDefault, package);
+                    ApplyFloat(zdo, s_circleAmount, useDefault, package, mirror);
                     break;
             }
         }
@@ -621,39 +640,69 @@ namespace ProtectiveWards
 
         private static void WriteColor(ZPackage package, Color color)
         {
+            if (package == null)
+                return;
+
             package.Write(color.r);
             package.Write(color.g);
             package.Write(color.b);
             package.Write(color.a);
         }
 
-        private static void ApplyBool(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyBool(ZDO zdo, int key, bool useDefault, ZPackage package, ZPackage mirror = null)
         {
             if (useDefault)
+            {
                 RemoveZdoBool(zdo, key);
-            else
-                zdo.Set(key, package.ReadBool());
+                return;
+            }
+
+            bool value = package.ReadBool();
+            mirror?.Write(value);
+            zdo.Set(key, value);
         }
 
-        private static void ApplyFloat(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyFloat(ZDO zdo, int key, bool useDefault, ZPackage package, ZPackage mirror = null)
         {
             if (useDefault)
+            {
                 RemoveZdoFloat(zdo, key);
-            else
-                zdo.Set(key, package.ReadSingle());
+                return;
+            }
+
+            float value = package.ReadSingle();
+            mirror?.Write(value);
+            zdo.Set(key, value);
         }
 
-        private static void ApplyString(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, bool useDefault, ZPackage package, ZPackage mirror = null, bool writeAlpha = true)
+        {
+            if (useDefault)
+            {
+                RemoveZdoVec3(zdo, colorKey);
+                if (writeAlpha)
+                    RemoveZdoFloat(zdo, alphaKey);
+                return;
+            }
+
+            Color color = ReadColor(package);
+            WriteColor(mirror, color);
+            zdo.Set(colorKey, new Vector3(color.r, color.g, color.b));
+            if (writeAlpha)
+                zdo.Set(alphaKey, color.a);
+        }
+
+        private static void ApplyString(ZDO zdo, int key, bool useDefault, ZPackage package, ZPackage mirror = null)
         {
             if (useDefault)
             {
                 RemoveZdoString(zdo, key);
+                return;
             }
-            else
-            {
-                string value = package.ReadString();
-                zdo.Set(key, string.IsNullOrEmpty(value) ? "#FFFFFFFF" : value);
-            }
+
+            string value = package.ReadString();
+            mirror?.Write(value);
+            zdo.Set(key, string.IsNullOrEmpty(value) ? "#FFFFFFFF" : value);
         }
 
         private static void RefreshLoadedWard(ZDOID zdoID)
@@ -741,8 +790,8 @@ namespace ProtectiveWards
         {
             bool hasValue = HasZdoString(s_zdo, key);
             string html = hasValue ? s_zdo.GetString(key, ColorUtility.ToHtmlStringRGBA(defaultValue)) : ColorUtility.ToHtmlStringRGBA(defaultValue);
-            Color color = defaultValue;
-            ColorUtility.TryParseHtmlString("#" + html, out color);
+            if (!ColorUtility.TryParseHtmlString("#" + html, out Color color))
+                color = defaultValue;
             s_values[field] = new WardSettingValue
             {
                 UseDefault = !hasValue,
@@ -755,7 +804,7 @@ namespace ProtectiveWards
             return s_values[field];
         }
 
-        private static void AddBool(FieldId field, string labelToken, int key, ConfigEntry<bool> defaultEntry, ref float y)
+        private static void AddBool(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
             BoolRow row = new(field, labelToken, !value.UseDefault, value.BoolValue);
@@ -764,7 +813,7 @@ namespace ProtectiveWards
             y -= RowStep;
         }
 
-        private static void AddFloat(FieldId field, string labelToken, int key, ConfigEntry<float> defaultEntry, ref float y)
+        private static void AddFloat(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
             FloatRow row = new(field, labelToken, !value.UseDefault, value.FloatValue);
@@ -773,7 +822,7 @@ namespace ProtectiveWards
             y -= RowStep;
         }
 
-        private static void AddColor(FieldId field, string labelToken, int colorKey, int alphaKey, Color defaultValue, ref float y)
+        private static void AddColor(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
             ColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
@@ -791,7 +840,7 @@ namespace ProtectiveWards
             y -= RowStep;
         }
 
-        private static void AddStringColor(FieldId field, string labelToken, int key, Color defaultValue, ref float y)
+        private static void AddStringColor(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
             StringColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
@@ -867,7 +916,7 @@ namespace ProtectiveWards
 
         private static void ConfigureText(GameObject obj, TextAnchor alignment, FontStyle fontStyle)
         {
-            Text text = obj != null ? obj.GetComponent<Text>() : null;
+            Text text = obj?.GetComponent<Text>();
             if (text == null)
                 return;
 
@@ -1110,8 +1159,7 @@ namespace ProtectiveWards
 
             private void OpenColorPicker()
             {
-                Color current;
-                if (!TryParseColor(Input != null ? Input.text : "#FFFFFFFF", InitialValue, out current))
+                if (!TryParseColor(Input != null ? Input.text : "#FFFFFFFF", InitialValue, out Color current))
                     current = InitialValue;
 
                 GUIManager.Instance.CreateColorPicker(

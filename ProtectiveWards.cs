@@ -524,11 +524,13 @@ namespace ProtectiveWards
             FillWardProtectionLists();
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, ConfigDescription description, bool synchronizedSetting = true)
         {
             return Config.Bind(group, name, defaultValue, WithJotunnSync(description, synchronizedSetting));
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         ConfigEntry<T> config<T>(string group, string name, T defaultValue, string description, bool synchronizedSetting = true) => config(group, name, defaultValue, new ConfigDescription(description), synchronizedSetting);
 
         private static ConfigDescription WithJotunnSync(ConfigDescription description, bool synchronizedSetting)
@@ -1199,6 +1201,26 @@ namespace ProtectiveWards
                    && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
         }
 
+        internal readonly struct RoutedPlayerContext
+        {
+            public readonly long PlayerID;
+            public readonly string PlayerName;
+            public readonly ZDOID CharacterID;
+            public readonly Vector3 Position;
+            public readonly bool HasPosition;
+            public readonly long Sender;
+
+            public RoutedPlayerContext(long playerID, string playerName, ZDOID characterID, Vector3 position, bool hasPosition, long sender)
+            {
+                PlayerID = playerID;
+                PlayerName = playerName ?? "";
+                CharacterID = characterID;
+                Position = position;
+                HasPosition = hasPosition;
+                Sender = sender;
+            }
+        }
+
         public static bool HasLocalWardAdminAccess()
         {
             Player localPlayer = Player.m_localPlayer;
@@ -1242,7 +1264,127 @@ namespace ProtectiveWards
             if (localPlayer != null && localPlayer.GetPlayerID() == playerID && ZNet.instance.LocalPlayerIsAdminOrHost())
                 return true;
 
-            return ZNet.instance.IsAdmin(playerID.ToString());
+            return TryFindPlayerInfo(playerID, out ZNet.PlayerInfo playerInfo)
+                   && playerInfo.m_userInfo.m_id.IsValid
+                   && ZNet.instance.PlayerIsAdmin(playerInfo.m_userInfo.m_id);
+        }
+
+        internal static bool TryGetRoutedPlayer(long sender, long claimedPlayerID, out RoutedPlayerContext player)
+        {
+            player = default;
+            if (claimedPlayerID == 0L || ZNet.instance == null)
+                return false;
+
+            if (sender != 0L && ZRoutedRpc.instance != null && sender != ZRoutedRpc.instance.m_id)
+                return TryGetPeerRoutedPlayer(sender, claimedPlayerID, out player);
+
+            Player localPlayer = Player.m_localPlayer;
+            if (localPlayer != null && localPlayer.GetPlayerID() == claimedPlayerID)
+            {
+                player = new RoutedPlayerContext(
+                    claimedPlayerID,
+                    localPlayer.GetPlayerName(),
+                    localPlayer.GetZDOID(),
+                    localPlayer.transform.position,
+                    hasPosition: true,
+                    sender);
+                return true;
+            }
+
+            Player loadedPlayer = Player.GetPlayer(claimedPlayerID);
+            if (loadedPlayer != null)
+            {
+                player = new RoutedPlayerContext(
+                    claimedPlayerID,
+                    loadedPlayer.GetPlayerName(),
+                    loadedPlayer.GetZDOID(),
+                    loadedPlayer.transform.position,
+                    hasPosition: true,
+                    sender);
+                return true;
+            }
+
+            if (TryFindPlayerCharacterZdo(claimedPlayerID, out ZDO characterZdo))
+            {
+                player = new RoutedPlayerContext(
+                    claimedPlayerID,
+                    characterZdo.GetString(ZDOVars.s_playerName),
+                    characterZdo.m_uid,
+                    characterZdo.GetPosition(),
+                    hasPosition: true,
+                    sender);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetPeerRoutedPlayer(long sender, long claimedPlayerID, out RoutedPlayerContext player)
+        {
+            player = default;
+            if (ZNet.instance == null || ZDOMan.instance == null)
+                return false;
+
+            ZNetPeer peer = ZNet.instance.GetPeer(sender);
+            if (peer == null || !peer.IsReady() || peer.m_characterID.IsNone())
+                return false;
+
+            ZDO characterZdo = ZDOMan.instance.GetZDO(peer.m_characterID);
+            if (characterZdo == null)
+                return false;
+
+            long actualPlayerID = characterZdo.GetLong(ZDOVars.s_playerID, 0L);
+            if (actualPlayerID == 0L || actualPlayerID != claimedPlayerID)
+                return false;
+
+            player = new RoutedPlayerContext(
+                actualPlayerID,
+                characterZdo.GetString(ZDOVars.s_playerName),
+                peer.m_characterID,
+                characterZdo.GetPosition(),
+                hasPosition: true,
+                sender);
+            return true;
+        }
+
+        private static bool TryFindPlayerCharacterZdo(long playerID, out ZDO characterZdo)
+        {
+            characterZdo = null;
+            if (playerID == 0L || ZNet.instance == null)
+                return false;
+
+            foreach (ZDO zdo in ZNet.instance.GetAllCharacterZDOS())
+            {
+                if (zdo == null || zdo.GetLong(ZDOVars.s_playerID, 0L) != playerID)
+                    continue;
+
+                characterZdo = zdo;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryFindPlayerInfo(long playerID, out ZNet.PlayerInfo playerInfo)
+        {
+            playerInfo = default;
+            if (playerID == 0L || ZNet.instance == null || ZDOMan.instance == null)
+                return false;
+
+            foreach (ZNet.PlayerInfo info in ZNet.instance.GetPlayerList())
+            {
+                if (info.m_characterID.IsNone())
+                    continue;
+
+                ZDO characterZdo = ZDOMan.instance.GetZDO(info.m_characterID);
+                if (characterZdo == null || characterZdo.GetLong(ZDOVars.s_playerID, 0L) != playerID)
+                    continue;
+
+                playerInfo = info;
+                return true;
+            }
+
+            return false;
         }
 
         public static bool HasZdoBool(ZDO zdo, int key)

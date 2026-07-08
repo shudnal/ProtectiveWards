@@ -12,6 +12,7 @@ namespace ProtectiveWards
         private const string RPC_SetLastSaddleUser = "PW_SetLastSaddleUser";
         private const string RPC_CheckTeleportTargetAccess = "PW_CheckTeleportTargetAccess";
         private const string RPC_TeleportTargetAccessResponse = "PW_TeleportTargetAccessResponse";
+        private const float saddleUserRecordMaxDistance = 10f;
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
@@ -136,6 +137,9 @@ namespace ProtectiveWards
             if (ZDOMan.instance == null)
                 return;
 
+            if (!TryGetRoutedPlayer(sender, playerID, out RoutedPlayerContext requester))
+                return;
+
             ZDO sourceZdo = ZDOMan.instance.GetZDO(sourceZdoID);
             if (sourceZdo == null)
             {
@@ -151,7 +155,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            bool granted = IsTeleportTargetAccessibleToPlayer(targetZdo.GetPosition(), playerID, out string blockingOwnerName);
+            bool granted = IsTeleportTargetAccessibleToPlayer(targetZdo.GetPosition(), requester.PlayerID, out string blockingOwnerName);
             SendTeleportTargetAccessResponse(sender, sourceZdoID, granted, blockingOwnerName);
         }
 
@@ -261,11 +265,19 @@ namespace ProtectiveWards
             if (playerID == 0L || ZDOMan.instance == null)
                 return;
 
+            if (!TryGetRoutedPlayer(sender, playerID, out RoutedPlayerContext requester))
+                return;
+
             ZDO zdo = ZDOMan.instance.GetZDO(zdoID);
             if (zdo == null)
                 return;
 
-            zdo.Set(s_lastSaddleUser, playerID);
+            long currentUser = zdo.GetLong(ZDOVars.s_user, 0L);
+            if (currentUser != requester.CharacterID.UserID
+                && (!requester.HasPosition || Vector3.Distance(requester.Position, zdo.GetPosition()) > saddleUserRecordMaxDistance))
+                return;
+
+            zdo.Set(s_lastSaddleUser, requester.PlayerID);
         }
 
         private static void SetLastSaddleUserLocal(Sadle sadle, long playerID)

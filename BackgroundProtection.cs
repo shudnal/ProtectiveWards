@@ -131,7 +131,7 @@ namespace ProtectiveWards
             if (wearNTear == null || hit == null)
                 return false;
 
-            Piece piece = wearNTear.m_piece != null ? wearNTear.m_piece : wearNTear.GetComponent<Piece>();
+            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
             bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
             bool isShip = wearNTear.GetComponent<Ship>() != null || wearNTear.GetComponentInParent<Ship>() != null;
             bool isCart = wearNTear.GetComponent<Vagon>() != null || wearNTear.GetComponentInParent<Vagon>() != null;
@@ -183,7 +183,7 @@ namespace ProtectiveWards
             if (wearNTear == null || hit == null || !hit.HaveAttacker())
                 return false;
 
-            Piece piece = wearNTear.m_piece != null ? wearNTear.m_piece : wearNTear.GetComponent<Piece>();
+            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
             if (piece == null || !piece.IsPlacedByPlayer())
                 return false;
 
@@ -201,7 +201,7 @@ namespace ProtectiveWards
                    && !HasEffectiveAccessPresence(ward, wearNTear.transform.position);
         }
 
-        internal static bool ShouldSuppressTameCharacterDamage(Character character, HitData hit)
+        internal static bool ShouldSuppressTameCharacterDamage(Character character)
         {
             if (!wardBackgroundProtectTames.Value)
                 return false;
@@ -328,7 +328,7 @@ namespace ProtectiveWards
         {
             private static void Prefix(Character __instance, HitData hit)
             {
-                if (ShouldSuppressTameCharacterDamage(__instance, hit))
+                if (ShouldSuppressTameCharacterDamage(__instance))
                     hit.m_damage.Modify(0f);
             }
         }

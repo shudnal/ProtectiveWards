@@ -299,15 +299,17 @@ namespace ProtectiveWards
             if (!AreWardControlCommandsEnabled())
                 return;
 
+            if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
-            if (!CanRequesterPermit(ward, requesterID))
+            if (!CanRequesterPermit(ward, requester.PlayerID))
                 return;
 
-            Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
+            if (!IsRequesterInRange(requester, ward.transform.position))
                 return;
 
             Player target = Player.GetPlayer(targetID);
@@ -330,15 +332,17 @@ namespace ProtectiveWards
             if (!AreWardControlCommandsEnabled())
                 return;
 
+            if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
-            if (!CanRequesterPermit(ward, requesterID))
+            if (!CanRequesterPermit(ward, requester.PlayerID))
                 return;
 
-            Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
+            if (!IsRequesterInRange(requester, ward.transform.position))
                 return;
 
             if (!IsPlayerInPermittedList(ward, targetID))
@@ -358,15 +362,17 @@ namespace ProtectiveWards
             if (!AreWardControlCommandsEnabled())
                 return;
 
+            if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
+                return;
+
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
-            if (!CanRequesterToggleWard(ward, requesterID))
+            if (!CanRequesterToggleWard(ward, requester.PlayerID))
                 return;
 
-            Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
+            if (!IsRequesterInRange(requester, ward.transform.position))
                 return;
 
             if (ward.IsEnabled() == enabled)
@@ -374,7 +380,7 @@ namespace ProtectiveWards
 
             ward.SetEnabled(enabled);
             if (enabled)
-                ActivateConnectedLoadedWards(ward, requesterID, requester.GetPlayerName());
+                ActivateConnectedLoadedWards(ward, requester.PlayerID, requester.PlayerName);
 
             LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
         }
@@ -383,24 +389,26 @@ namespace ProtectiveWards
         {
             ZDOID wardID = package.ReadZDOID();
             long requesterID = package.ReadLong();
-            string requesterName = package.ReadString();
+            package.ReadString();
             bool expired = package.ReadBool();
 
             if (!AreWardControlCommandsEnabled())
                 return;
 
-            if (!HasWardAdminAccess(requesterID))
+            if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
+                return;
+
+            if (!HasWardAdminAccess(requester.PlayerID))
                 return;
 
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
-            Player requester = Player.GetPlayer(requesterID);
-            if (requester == null || requester.GetPlayerName() != requesterName || Utils.DistanceXZ(requester.transform.position, ward.transform.position) > GetWardControlCommandRange())
+            if (!IsRequesterInRange(requester, ward.transform.position))
                 return;
 
-            WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired, requesterID, requesterName);
+            WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired, requester.PlayerID, requester.PlayerName);
             LogInfo($"{(expired ? "Marked" : "Cleared")} ward expired state by admin command");
         }
 
@@ -417,6 +425,11 @@ namespace ProtectiveWards
                 return true;
 
             return ward.m_piece != null && ward.m_piece.GetCreator() == requesterID;
+        }
+
+        private static bool IsRequesterInRange(RoutedPlayerContext requester, Vector3 point)
+        {
+            return requester.HasPosition && Utils.DistanceXZ(requester.Position, point) <= GetWardControlCommandRange();
         }
 
         private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID) => ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);
@@ -520,8 +533,8 @@ namespace ProtectiveWards
 
             if (ZNet.instance?.IsServer() == true)
                 RPC_CheckWardBuildLimitServer(0L, new(package.GetArray()));
-            else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckWardBuildLimit, package);
+            else
+                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_CheckWardBuildLimit, package);
         }
 
         private static void RPC_CheckWardBuildLimitServer(long sender, ZPackage package)
@@ -534,15 +547,21 @@ namespace ProtectiveWards
             if (creatorID == 0L || newWardID.Equals(ZDOID.None))
                 return;
 
+            if (!TryGetRoutedPlayer(sender, creatorID, out RoutedPlayerContext requester))
+                return;
+
             ZDO newWardZdo = ZDOMan.instance?.GetZDO(newWardID);
             if (!newWardZdo.IsWard())
                 return;
 
-            if (!newWardZdo.IsCreator(creatorID))
+            if (!newWardZdo.IsCreator(requester.PlayerID))
+                return;
+
+            if (sender != 0L && newWardZdo.GetOwner() != sender)
                 return;
 
             int limit = wardBuildLimitPerPlayer.Value;
-            int total = WardZdoUtils.CountWardsByCreator(creatorID);
+            int total = WardZdoUtils.CountWardsByCreator(requester.PlayerID);
             if (total <= limit)
                 return;
 
