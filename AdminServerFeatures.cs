@@ -38,7 +38,11 @@ namespace ProtectiveWards
             s_rpcRegistered = true;
         }
 
-        internal static void ResetRPCRegistration() => s_rpcRegistered = false;
+        internal static void ResetRPCRegistration()
+        {
+            s_rpcRegistered = false;
+            s_requestedWardLimitChecks.Clear();
+        }
 
         private static void RegisterCommands()
         {
@@ -439,6 +443,9 @@ namespace ProtectiveWards
         private static List<KeyValuePair<long, string>> FindPermittedPlayers(PrivateArea ward, string query)
         {
             string normalized = query.Trim();
+            if (normalized.Length == 0)
+                return new List<KeyValuePair<long, string>>();
+
             List<KeyValuePair<long, string>> permitted = ward.GetPermittedPlayers();
             List<KeyValuePair<long, string>> exact = permitted
                 .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
@@ -475,8 +482,11 @@ namespace ProtectiveWards
 
         private static List<Player> FindOnlinePlayers(string query)
         {
-            List<Player> players = Player.GetAllPlayers();
             string normalized = query.Trim();
+            if (normalized.Length == 0)
+                return new List<Player>();
+
+            List<Player> players = Player.GetAllPlayers();
             List<Player> exact = players.Where(player => string.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase)).ToList();
             if (exact.Count > 0)
                 return exact;
@@ -547,34 +557,42 @@ namespace ProtectiveWards
 
         private static void RPC_CheckWardBuildLimitServer(long sender, ZPackage package)
         {
-            if (wardBuildLimitPerPlayer.Value <= 0)
-                return;
-
             long creatorID = package.ReadLong();
             ZDOID newWardID = package.ReadZDOID();
-            if (creatorID == 0L || newWardID.Equals(ZDOID.None))
-                return;
 
-            if (!TryGetRoutedPlayer(sender, creatorID, out RoutedPlayerContext requester))
-                return;
+            try
+            {
+                if (wardBuildLimitPerPlayer.Value <= 0)
+                    return;
 
-            ZDO newWardZdo = ZDOMan.instance?.GetZDO(newWardID);
-            if (!newWardZdo.IsWard())
-                return;
+                if (creatorID == 0L || newWardID.Equals(ZDOID.None))
+                    return;
 
-            if (!newWardZdo.IsCreator(requester.PlayerID))
-                return;
+                if (!TryGetRoutedPlayer(sender, creatorID, out RoutedPlayerContext requester))
+                    return;
 
-            if (sender != 0L && newWardZdo.GetOwner() != sender)
-                return;
+                ZDO newWardZdo = ZDOMan.instance?.GetZDO(newWardID);
+                if (!newWardZdo.IsWard())
+                    return;
 
-            int limit = wardBuildLimitPerPlayer.Value;
-            int total = WardZdoUtils.CountWardsByCreator(requester.PlayerID);
-            if (total <= limit)
-                return;
+                if (!newWardZdo.IsCreator(requester.PlayerID))
+                    return;
 
-            int existingBeforeNewWard = Math.Max(total - 1, 0);
-            SendDestroyWardForBuildLimit(newWardZdo, existingBeforeNewWard, limit);
+                if (sender != 0L && newWardZdo.GetOwner() != sender)
+                    return;
+
+                int limit = wardBuildLimitPerPlayer.Value;
+                int total = WardZdoUtils.CountWardsByCreator(requester.PlayerID);
+                if (total <= limit)
+                    return;
+
+                int existingBeforeNewWard = Math.Max(total - 1, 0);
+                SendDestroyWardForBuildLimit(newWardZdo, existingBeforeNewWard, limit);
+            }
+            finally
+            {
+                s_requestedWardLimitChecks.Remove(newWardID);
+            }
         }
 
         private static void SendDestroyWardForBuildLimit(ZDO zdo, int current, int limit)

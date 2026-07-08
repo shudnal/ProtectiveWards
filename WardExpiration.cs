@@ -123,8 +123,6 @@ namespace ProtectiveWards
                 return null;
 
             WardConnectedAccessMode mode = wardExpirationConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
-            Vector3 wardPosition = zdo.GetPosition();
-            float activationRadius = Math.Max(zdo.GetWardRadius(), 0f);
 
             foreach (ZDO characterZdo in characterZdos)
             {
@@ -135,25 +133,48 @@ namespace ProtectiveWards
                 if (playerID == 0L)
                     continue;
 
-                if (Utils.DistanceXZ(characterZdo.GetPosition(), wardPosition) > activationRadius)
-                    continue;
-
+                Vector3 playerPosition = characterZdo.GetPosition();
                 switch (wardExpirationRefreshMode.Value)
                 {
                     case WardExpirationRefreshMode.DirectPermitted:
-                        if (zdo.HasDirectWardAccess(playerID))
+                        if (IsInsideWardArea(zdo, playerPosition) && zdo.HasDirectWardAccess(playerID))
                             return RefreshingPlayer.FromCharacterZdo(characterZdo, playerID);
                         break;
 
                     case WardExpirationRefreshMode.EffectiveAccess:
                     default:
-                        if (zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess))
+                        if (IsInsideExpirationRefreshArea(zdo, mode, playerPosition) && zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess))
                             return RefreshingPlayer.FromCharacterZdo(characterZdo, playerID);
                         break;
                 }
             }
 
             return null;
+        }
+
+        private static bool IsInsideExpirationRefreshArea(ZDO rootWard, WardConnectedAccessMode mode, Vector3 playerPosition)
+        {
+            if (IsInsideWardArea(rootWard, playerPosition))
+                return true;
+
+            if (mode == WardConnectedAccessMode.Off)
+                return false;
+
+            foreach (ZDO candidate in WardZdoUtils.ConnectedAccessWardZdos(rootWard, mode, IsActiveForExpirationConnectedAccess))
+            {
+                if (candidate == null || candidate.m_uid.Equals(rootWard.m_uid))
+                    continue;
+
+                if (IsInsideWardArea(candidate, playerPosition))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsInsideWardArea(ZDO ward, Vector3 playerPosition)
+        {
+            return ward != null && Utils.DistanceXZ(playerPosition, ward.GetPosition()) <= Math.Max(ward.GetWardRadius(), 0f);
         }
 
         private static bool IsActiveForExpirationConnectedAccess(ZDO zdo)

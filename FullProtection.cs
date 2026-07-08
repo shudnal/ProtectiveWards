@@ -180,8 +180,7 @@ namespace ProtectiveWards
                 return false;
 
             float maxDistance = portalSourceValidationDistance;
-            GameObject instance = ZNetScene.instance?.FindInstance(sourceZdo.m_uid);
-            TeleportWorld teleport = instance?.GetComponent<TeleportWorld>();
+            TeleportWorld teleport = ZNetScene.instance?.FindInstance(sourceZdo.m_uid)?.GetComponent<TeleportWorld>();
             if (teleport != null)
                 maxDistance = Math.Max(maxDistance, teleport.m_activationRange + 2f);
 

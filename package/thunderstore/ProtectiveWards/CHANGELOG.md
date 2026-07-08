@@ -4,6 +4,13 @@
 * fixed per-ward circle colors saved from the settings UI not applying because stored HTML colors were read without a leading #
 * improved cart last-controller tracking so player-attached carts use the attached player first and fall back to the nearest player only for non-player cart pullers
 * reset ward administration and ward settings RPC registration when changing worlds or switching between client and server roles in the same game session
+* fixed ward build-limit checks relying on an empty server ward cache after late initialization
+* delayed taxi payment consumption until the flight is actually ready to start
+* improved remote taxi location requests so the server uses the routed player's position and validates requested taxi target/payment type
+* fixed connected ward expiration refresh not counting players standing inside an accessible connected ward area
+* fixed plant offering scans failing on Plant instances without a valid ZNetView
+* ignored empty player-name queries in ward permit/unpermit commands
+* cleaned up stale pending ward build-limit check IDs after server validation and world unload
 
 # 2.0.0
 * migrated configuration sync to Jotunn and added Jotunn as a required dependency

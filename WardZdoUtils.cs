@@ -11,6 +11,7 @@ namespace ProtectiveWards
         internal const string WardPrefabName = "guard_stone";
         internal static readonly int s_wardPrefabHash = WardPrefabName.GetStableHashCode();
         private static readonly HashSet<ZDO> s_wardObjects = new();
+        private static bool s_wardObjectsInitialized;
         private static bool s_wardDefaultRadiusCached;
         private static float s_wardDefaultRadius = 32f;
 
@@ -23,6 +24,7 @@ namespace ProtectiveWards
             if (!ShouldTrackServerWards())
                 yield break;
 
+            EnsureWardObjectsInitialized();
             PruneWardObjects();
 
             foreach (ZDO zdo in s_wardObjects)
@@ -254,12 +256,25 @@ namespace ProtectiveWards
 
         private static void PruneWardObjects() => s_wardObjects.RemoveWhere(zdo => zdo == null || !IsWard(zdo));
 
+        private static void EnsureWardObjectsInitialized()
+        {
+            if (s_wardObjectsInitialized)
+                return;
+
+            RebuildWardObjects(ZDOMan.instance);
+        }
+
         private static void RebuildWardObjects(ZDOMan zdoMan)
         {
             s_wardObjects.Clear();
 
             if (!ShouldTrackServerWards() || zdoMan == null)
+            {
+                s_wardObjectsInitialized = false;
                 return;
+            }
+
+            s_wardObjectsInitialized = true;
 
             foreach (KeyValuePair<ZDOID, ZDO> pair in zdoMan.m_objectsByID)
                 AddIfWard(pair.Value);
@@ -269,6 +284,12 @@ namespace ProtectiveWards
         private static class ZDOMan_Load_WardListInit
         {
             private static void Postfix(ZDOMan __instance) => RebuildWardObjects(__instance);
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+        private static class ZoneSystem_Start_WardListInit
+        {
+            private static void Postfix() => EnsureWardObjectsInitialized();
         }
 
         [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.CreateNewZDO), new Type[3] { typeof(ZDOID), typeof(Vector3), typeof(int) })]
@@ -307,7 +328,11 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
         private static class ZoneSystem_OnDestroy_WardListClear
         {
-            private static void Postfix() => s_wardObjects.Clear();
+            private static void Postfix()
+            {
+                s_wardObjects.Clear();
+                s_wardObjectsInitialized = false;
+            }
         }
     }
 }
