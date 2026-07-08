@@ -3,10 +3,10 @@
 * removed the global Enabled config; use individual feature configs instead
 * added per-ward settings UI for range, emission color, sphere visuals, and ward circle visuals
 * ward range customization is now bound to the vanilla guard_stone ward prefab
-* added access protection from non-permitted players for containers, doors, plants, ships, tames, saddles, carts, portals, production stations, item stands, armor stands, map tables, turrets, crafting stations, beds, catapults, archery targets, barber stations, traps, fireplaces, and generic interactables
+* added access protection from non-permitted players for containers, doors, plants, feasts and placed consumable food, configurable non-food item pickup modes, ships, tames, saddles, carts, portals, production stations, item stands, armor stands, map tables, shield generators, incinerators, turrets, crafting stations, beds, catapults, archery targets, barber stations, traps, fireplaces, and generic interactables
 * added connected ward access modes: Off, SameCreatorOnly, MutualTrust, and AnyConnected
 * enabling or reactivating a ward can also activate connected wards the requester has access to
-* added ownership-aware exemptions so players are not trapped out of their own ships, carts, portals, tombstones, saddles, and similar owned objects under another ward
+* added ownership-aware exemptions for portals, tombstones, saddles, and similar owned objects, and last-controller exemptions for ships and carts so the same driver can leave another warded area
 * added portal access modes, including teleport-only access and full teleport blocking
 * added server-side pw_ and ward_ commands for nearby ward administration: permit, unpermit, enable, disable, set expired, and set unexpired
 * added optional per-player ward build limit

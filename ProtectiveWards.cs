@@ -126,8 +126,12 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> wardAccessProtectItemStands;
         public static ConfigEntry<bool> wardAccessProtectCarts;
         public static ConfigEntry<WardPortalAccessMode> wardAccessProtectPortals;
+        public static ConfigEntry<bool> wardAccessProtectFood;
+        public static ConfigEntry<WardItemPickupMode> wardAccessProtectItemPickupMode;
         public static ConfigEntry<bool> wardAccessProtectMapTables;
         public static ConfigEntry<bool> wardAccessProtectFireplaces;
+        public static ConfigEntry<bool> wardAccessProtectShieldGenerators;
+        public static ConfigEntry<bool> wardAccessProtectIncinerators;
         public static ConfigEntry<bool> wardAccessProtectTurrets;
         public static ConfigEntry<bool> wardAccessProtectCraftingStations;
         public static ConfigEntry<bool> wardAccessProtectBeds;
@@ -215,6 +219,7 @@ namespace ProtectiveWards
         public static readonly int s_bubbleNormalScale = "bubble_normalscale".GetStableHashCode();
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
         public static readonly int s_lastSaddleUser = "pw_last_saddle_user".GetStableHashCode();
+        public static readonly int s_lastVehicleController = "pw_last_vehicle_controller".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
@@ -253,6 +258,13 @@ namespace ProtectiveWards
         {
             AllowAll,
             AllowTeleportOnly,
+            BlockAll
+        }
+
+        public enum WardItemPickupMode
+        {
+            AllowAll,
+            AllowNonPlayerDropped,
             BlockAll
         }
 
@@ -469,8 +481,15 @@ namespace ProtectiveWards
                                                                                                                                      + "\nAllowAll: non-permitted players can use and rename portals as usual."
                                                                                                                                      + "\nAllowTeleportOnly: non-permitted players can teleport through portals but cannot rename/change portal tags."
                                                                                                                                      + "\nBlockAll: non-permitted players cannot teleport through or rename nearby portals.");
+            wardAccessProtectFood = config("Ward access from non-permitted players", "Food and feasts", true, "Set whether an active Ward blocks non-permitted players from eating nearby feasts and placed consumable item pieces.");
+            wardAccessProtectItemPickupMode = config("Ward access from non-permitted players", "Item pickup mode", WardItemPickupMode.AllowNonPlayerDropped, "Controls whether an active Ward blocks non-permitted players from picking up nearby non-consumable item drops."
+                                                                                                                                              + "\nAllowAll: non-permitted players can pick up all non-consumable item drops."
+                                                                                                                                              + "\nAllowNonPlayerDropped: non-permitted players can pick up normal loot/world drops, but not items dropped by players."
+                                                                                                                                              + "\nBlockAll: non-permitted players cannot pick up any non-consumable item drops inside protected ward areas.");
             wardAccessProtectMapTables = config("Ward access from non-permitted players", "Map tables", true, "Set whether an active Ward blocks non-permitted players from reading from or writing to nearby map tables.");
             wardAccessProtectFireplaces = config("Ward access from non-permitted players", "Fireplaces", false, "Set whether an active Ward blocks non-permitted players from interacting with nearby fireplaces. Disabled by default so visitors can add fuel to fires.");
+            wardAccessProtectShieldGenerators = config("Ward access from non-permitted players", "Shield generator fuel", true, "Set whether an active Ward blocks non-permitted players from adding fuel to nearby shield generators.");
+            wardAccessProtectIncinerators = config("Ward access from non-permitted players", "Incinerator lever", true, "Set whether an active Ward blocks non-permitted players from pulling nearby obliterator/incinerator levers.");
             wardAccessProtectTurrets = config("Ward access from non-permitted players", "Turrets", true, "Set whether an active Ward blocks non-permitted players from interacting with nearby turrets, including changing targets or adding ammo.");
             wardAccessProtectCraftingStations = config("Ward access from non-permitted players", "Crafting stations", true, "Set whether an active Ward blocks non-permitted players from using or discovering nearby crafting stations.");
             wardAccessProtectBeds = config("Ward access from non-permitted players", "Beds", true, "Set whether an active Ward blocks non-permitted players from sleeping in nearby beds, even if another mod allows it.");
@@ -898,14 +917,14 @@ namespace ProtectiveWards
 
         public static bool IsObjectOwnedByPlayerWithWardAccess(Component component, Player interactingPlayer)
         {
-            if (!IsOwnershipSensitiveObject(component))
-                return false;
-
-            if (interactingPlayer == null)
+            if (!IsOwnershipSensitiveObject(component) || interactingPlayer == null)
                 return false;
 
             if (WasPlayerLastSaddleUser(component, interactingPlayer))
                 return true;
+
+            if (IsVehicleControlObject(component))
+                return WasPlayerLastVehicleController(component, interactingPlayer);
 
             if (!TryGetObjectCreatorId(component, out long creatorId))
                 return false;
@@ -913,10 +932,24 @@ namespace ProtectiveWards
             return creatorId == interactingPlayer.GetPlayerID();
         }
 
+        private static bool IsVehicleControlObject(Component component)
+        {
+            return component != null
+                   && (component.GetComponentInParent<Ship>() != null
+                       || component.GetComponentInParent<ShipControlls>() != null
+                       || component.GetComponentInParent<Vagon>() != null);
+        }
+
         private static bool HasLastSaddleUser(ZNetView nview, long playerID)
         {
             ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             return zdo != null && zdo.GetLong(s_lastSaddleUser, 0L) == playerID;
+        }
+
+        private static bool HasLastVehicleController(ZNetView nview, long playerID)
+        {
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            return zdo != null && zdo.GetLong(s_lastVehicleController, 0L) == playerID;
         }
 
         public static bool WasPlayerLastSaddleUser(Component component, Player player)
@@ -943,6 +976,30 @@ namespace ProtectiveWards
 
             return false;
         }
+        public static bool WasPlayerLastVehicleController(Component component, Player player)
+        {
+            if (component == null || player == null)
+                return false;
+
+            long playerID = player.GetPlayerID();
+            if (playerID == 0L)
+                return false;
+
+            ShipControlls shipControlls = component.GetComponentInParent<ShipControlls>();
+            if (shipControlls != null && shipControlls.m_ship != null && HasLastVehicleController(shipControlls.m_ship.GetComponentZNetView(), playerID))
+                return true;
+
+            Ship ship = component.GetComponentInParent<Ship>();
+            if (ship != null && HasLastVehicleController(ship.GetComponentZNetView(), playerID))
+                return true;
+
+            Vagon vagon = component.GetComponentInParent<Vagon>();
+            if (vagon != null && HasLastVehicleController(vagon.GetComponentZNetView(), playerID))
+                return true;
+
+            return false;
+        }
+
 
         public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
         {

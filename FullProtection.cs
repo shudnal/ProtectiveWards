@@ -10,13 +10,16 @@ namespace ProtectiveWards
     internal class FullProtection
     {
         private const string RPC_SetLastSaddleUser = "PW_SetLastSaddleUser";
+        private const string RPC_SetLastVehicleController = "PW_SetLastVehicleController";
         private const string RPC_CheckTeleportTargetAccess = "PW_CheckTeleportTargetAccess";
         private const string RPC_TeleportTargetAccessResponse = "PW_TeleportTargetAccessResponse";
         private const float saddleUserRecordMaxDistance = 10f;
+        private const float vehicleControllerRecordMaxDistance = 10f;
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
         private static bool s_interactablePatchesApplied;
+        private static Player s_autoPickupPlayer;
 
         private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
         {
@@ -236,7 +239,10 @@ namespace ProtectiveWards
                 return;
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
+            {
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastVehicleController, RPC_SetLastVehicleControllerServer);
+            }
 
             s_saddleRpcRegistered = true;
         }
@@ -296,6 +302,66 @@ namespace ProtectiveWards
             ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
             if (zdo != null && playerID != 0L)
                 zdo.Set(s_lastSaddleUser, playerID);
+        }
+
+        private static void RequestSetLastVehicleController(ZNetView nview, long playerID)
+        {
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            if (zdo == null || playerID == 0L)
+                return;
+
+            ZPackage package = new();
+            package.Write(zdo.m_uid);
+            package.Write(playerID);
+
+            if (ZNet.instance != null && ZNet.instance.IsServer())
+                RPC_SetLastVehicleControllerServer(0L, new(package.GetArray()));
+            else
+                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastVehicleController, package);
+        }
+
+        private static void RPC_SetLastVehicleControllerServer(long sender, ZPackage package)
+        {
+            ZDOID zdoID = package.ReadZDOID();
+            long playerID = package.ReadLong();
+            if (playerID == 0L || ZDOMan.instance == null || ZNetScene.instance == null)
+                return;
+
+            if (!TryGetRoutedPlayer(sender, playerID, out RoutedPlayerContext requester))
+                return;
+
+            ZDO zdo = ZDOMan.instance.GetZDO(zdoID);
+            if (zdo == null)
+                return;
+
+            GameObject instance = ZNetScene.instance.FindInstance(zdoID);
+            if (instance == null)
+                return;
+
+            if (instance.GetComponent<Ship>() != null)
+            {
+                if (zdo.GetLong(ZDOVars.s_user, 0L) != requester.PlayerID
+                    && (!requester.HasPosition || Vector3.Distance(requester.Position, zdo.GetPosition()) > vehicleControllerRecordMaxDistance))
+                    return;
+            }
+            else if (instance.GetComponent<Vagon>() != null)
+            {
+                if (!requester.HasPosition || Vector3.Distance(requester.Position, zdo.GetPosition()) > vehicleControllerRecordMaxDistance)
+                    return;
+            }
+            else
+            {
+                return;
+            }
+
+            zdo.Set(s_lastVehicleController, requester.PlayerID);
+        }
+
+        private static void SetLastVehicleControllerLocal(ZNetView nview, long playerID)
+        {
+            ZDO zdo = nview != null && nview.IsValid() ? nview.GetZDO() : null;
+            if (zdo != null && playerID != 0L)
+                zdo.Set(s_lastVehicleController, playerID);
         }
 
         private static Component GetProtectedSwitchTarget(Switch sw)
@@ -436,7 +502,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Ship), nameof(Ship.UpdateWaterForce))]
         public static class Ship_UpdateWaterForce_PreventShipDamage
         {
-            private static void Prefix(Ship __instance, ref float ___m_waterImpactDamage, ref float __state)
+            private static void Prefix(Ship __instance, ref float __state)
             {
                 if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off)
                     return;
@@ -444,23 +510,23 @@ namespace ProtectiveWards
                 if (!InsideEnabledPlayersArea(__instance.transform.position))
                     return;
 
-                __state = ___m_waterImpactDamage;
-
-                ___m_waterImpactDamage = 0f;
+                __state = __instance.m_waterImpactDamage;
+                __instance.m_waterImpactDamage = 0f;
             }
 
-            private static void Postfix(Ship _, ref float ___m_waterImpactDamage, float __state)
+            private static void Postfix(Ship __instance, float __state)
             {
                 if (__state == 0f)
                     return;
 
-                ___m_waterImpactDamage = __state;
+                __instance.m_waterImpactDamage = __state;
             }
         }
 
         [HarmonyPatch(typeof(Container), nameof(Container.Interact))]
         public static class Container_Interact_PreventUnauthorizedAccess
         {
+            [HarmonyPriority(Priority.First)]
             private static bool Prefix(Container __instance, Humanoid character, ref bool __result, ref bool __state)
             {
                 if (!wardAccessProtectChests.Value)
@@ -686,6 +752,158 @@ namespace ProtectiveWards
 
                 return false;
             }
+        }
+
+        [HarmonyPatch(typeof(Feast), nameof(Feast.Interact))]
+        public static class Feast_Interact_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Feast __instance, Humanoid human, ref bool __result)
+            {
+                if (!wardAccessProtectFood.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, human, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(ItemDrop), nameof(ItemDrop.Interact))]
+        public static class ItemDrop_Interact_PreventUnauthorizedFoodAccess
+        {
+            private static bool Prefix(ItemDrop __instance, Humanoid character, bool alt, ref bool __result)
+            {
+                if (!wardAccessProtectFood.Value)
+                    return true;
+
+                if (alt || !IsPlacedConsumable(__instance))
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, character, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(ItemDrop), nameof(ItemDrop.Pickup))]
+        public static class ItemDrop_Pickup_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ItemDrop __instance, Humanoid character)
+            {
+                return !ShouldBlockItemPickup(__instance, character);
+            }
+        }
+
+        [HarmonyPatch(typeof(Humanoid), nameof(Humanoid.Pickup), new Type[] { typeof(GameObject), typeof(bool), typeof(bool) })]
+        public static class Humanoid_Pickup_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(GameObject go, Humanoid __instance)
+            {
+                return !ShouldBlockItemPickup(go?.GetComponent<ItemDrop>(), __instance);
+            }
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.AutoPickup))]
+        public static class Player_AutoPickup_PreventBlockedItemPull
+        {
+            private static void Prefix(Player __instance)
+            {
+                s_autoPickupPlayer = __instance;
+            }
+
+            private static void Finalizer(Player __instance)
+            {
+                if (s_autoPickupPlayer == __instance)
+                    s_autoPickupPlayer = null;
+            }
+        }
+
+        [HarmonyPatch(typeof(ItemDrop), nameof(ItemDrop.InTar))]
+        public static class ItemDrop_InTar_PreventBlockedAutoPickupPull
+        {
+            private static void Postfix(ItemDrop __instance, ref bool __result)
+            {
+                if (__result || s_autoPickupPlayer == null)
+                    return;
+
+                if (ShouldBlockItemPickup(__instance, s_autoPickupPlayer, silent: true))
+                    __result = true;
+            }
+        }
+
+        [HarmonyPatch(typeof(ShieldGenerator), nameof(ShieldGenerator.OnAddFuel))]
+        public static class ShieldGenerator_OnAddFuel_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(ShieldGenerator __instance, Humanoid user, ref bool __result)
+            {
+                if (!wardAccessProtectShieldGenerators.Value)
+                    return true;
+
+                if (!BlockProtectedInteraction(__instance, user, ref __result))
+                    return true;
+
+                return false;
+            }
+        }
+
+        [HarmonyPatch(typeof(Incinerator), nameof(Incinerator.OnIncinerate))]
+        public static class Incinerator_OnIncinerate_PreventUnauthorizedAccess
+        {
+            private static bool Prefix(Incinerator __instance, Humanoid user, ref bool __result, ref bool __state)
+            {
+                if (!wardAccessProtectIncinerators.Value)
+                    return true;
+
+                if (BlockProtectedInteraction(__instance, user, ref __result))
+                    return false;
+
+                StartPrivateAreaCheckBypass(__instance, user, ref __state);
+                return true;
+            }
+
+            private static void Finalizer(bool __state)
+            {
+                StopPrivateAreaCheckBypass(__state);
+            }
+        }
+
+        private static bool IsPlacedConsumable(ItemDrop itemDrop)
+        {
+            return IsConsumableItem(itemDrop) && itemDrop.IsPiece();
+        }
+
+        private static bool IsConsumableItem(ItemDrop itemDrop)
+        {
+            return itemDrop != null
+                   && itemDrop.m_itemData != null
+                   && itemDrop.m_itemData.m_shared != null
+                   && itemDrop.m_itemData.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Consumable;
+        }
+
+        private static bool ShouldBlockItemPickup(ItemDrop itemDrop, Humanoid character, bool silent = false)
+        {
+            if (itemDrop == null || IsConsumableItem(itemDrop))
+                return false;
+
+            switch (wardAccessProtectItemPickupMode.Value)
+            {
+                case WardItemPickupMode.AllowAll:
+                    return false;
+                case WardItemPickupMode.AllowNonPlayerDropped:
+                    if (itemDrop.m_autoPickup)
+                        return false;
+                    break;
+                case WardItemPickupMode.BlockAll:
+                    break;
+                default:
+                    return false;
+            }
+
+            return silent
+                ? ShouldSilentlyBlockProtectedInteraction(itemDrop, character)
+                : BlockUnauthorizedWardInteraction(itemDrop, character);
         }
 
 
@@ -1305,6 +1523,46 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(ShipControlls), nameof(ShipControlls.RPC_RequestRespons))]
+        public static class ShipControlls_RPC_RequestRespons_RecordLastController
+        {
+            private static void Postfix(ShipControlls __instance, bool granted)
+            {
+                if (!granted || __instance?.m_ship == null || Player.m_localPlayer == null)
+                    return;
+
+                long playerID = Player.m_localPlayer.GetPlayerID();
+                if (playerID == 0L)
+                    return;
+
+                ZNetView nview = __instance.m_ship.GetComponentZNetView();
+                SetLastVehicleControllerLocal(nview, playerID);
+                RequestSetLastVehicleController(nview, playerID);
+            }
+        }
+
+        [HarmonyPatch(typeof(Vagon), nameof(Vagon.AttachTo))]
+        public static class Vagon_AttachTo_RecordLastController
+        {
+            private static void Postfix(Vagon __instance, GameObject go)
+            {
+                if (__instance == null || go == null)
+                    return;
+
+                Player player = go.GetComponent<Player>();
+                if (player == null)
+                    return;
+
+                long playerID = player.GetPlayerID();
+                if (playerID == 0L)
+                    return;
+
+                ZNetView nview = __instance.GetComponentZNetView();
+                SetLastVehicleControllerLocal(nview, playerID);
+                RequestSetLastVehicleController(nview, playerID);
+            }
+        }
+
         public static class Interactable_PreventUnauthorizedAccess
         {
             private static readonly HashSet<Type> ExcludedInteractableTypes = new()
@@ -1321,6 +1579,8 @@ namespace ProtectiveWards
                 typeof(TombStone),
                 typeof(TeleportWorld),
                 typeof(Vagon),
+                typeof(Feast),
+                typeof(ShieldGenerator),
                 typeof(Tameable),
                 typeof(Pet),
                 typeof(Petable),

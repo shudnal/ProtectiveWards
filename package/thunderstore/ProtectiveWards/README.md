@@ -58,6 +58,8 @@ Supported vanilla access protection includes:
 - chests and containers;
 - doors;
 - plants and pickables;
+- feast eating and placed consumable item pieces;
+- configurable non-consumable item pickup modes, including allowing all pickups, blocking only player-dropped items, or blocking all non-food pickups;
 - ships and ship containers;
 - carts, wagons and battering rams;
 - tames, saddles and pet interactions;
@@ -67,6 +69,8 @@ Supported vanilla access protection includes:
 - portals, with separate modes for teleporting and renaming;
 - map tables;
 - fireplaces;
+- shield generator fuel switches;
+- obliterator/incinerator levers;
 - turrets and ballistas;
 - beds;
 - catapults;
@@ -76,7 +80,7 @@ Supported vanilla access protection includes:
 - inactive wards inside another active ward;
 - generic interactables as an optional broad compatibility layer.
 
-Ownership-sensitive objects are handled carefully. A foreign ward should not trap a player's own movable/owned objects such as ships, carts, portals, tombstones, saddles or tames. Saddle access also remembers the last player who was granted saddle control, so a rider who enters another player's ward on their own mount should still be able to interact with that mount after dismounting.
+Ownership-sensitive objects are handled carefully. A foreign ward should not trap a player's own movable/owned objects such as portals, tombstones, saddles or tames. Ships and carts use a last-controller exemption instead of creator-only access, so the same player who drove or dragged the vehicle into another ward can still regain control or detach it without granting extra access to the vehicle creator.
 
 ### Connected ward access modes
 
