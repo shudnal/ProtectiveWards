@@ -163,11 +163,11 @@ namespace ProtectiveWards
 
         internal static ProtectiveWards instance;
         internal static long startTimeCached;
-        internal static Dictionary<Vector3, PrivateArea> areaCache = new Dictionary<Vector3, PrivateArea>();
-        internal static Dictionary<PrivateArea, int> wardIsRepairing = new Dictionary<PrivateArea, int>();
-        internal static Dictionary<PrivateArea, int> wardIsHealing = new Dictionary<PrivateArea, int>();
-        internal static Dictionary<PrivateArea, int> wardIsClosing = new Dictionary<PrivateArea, int>();
-        internal static Dictionary<PrivateArea, List<Door>> doorsToClose = new Dictionary<PrivateArea, List<Door>>();
+        internal static Dictionary<Vector3, PrivateArea> areaCache = new();
+        internal static Dictionary<PrivateArea, int> wardIsRepairing = new();
+        internal static Dictionary<PrivateArea, int> wardIsHealing = new();
+        internal static Dictionary<PrivateArea, int> wardIsClosing = new();
+        internal static Dictionary<PrivateArea, List<Door>> doorsToClose = new();
 
         internal static GameObject lightningAOE;
         internal static EffectList preLightning;
@@ -216,9 +216,9 @@ namespace ProtectiveWards
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
         public static readonly int s_lastSaddleUser = "pw_last_saddle_user".GetStableHashCode();
 
-        private static readonly MaterialPropertyBlock s_matBlock = new MaterialPropertyBlock();
-        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new Dictionary<PrivateArea, float>();
-        private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new Dictionary<PrivateArea, WardEmissionDefaults>();
+        private static readonly MaterialPropertyBlock s_matBlock = new();
+        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
+        private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
 
         private sealed class WardEmissionDefaults
         {
@@ -306,6 +306,11 @@ namespace ProtectiveWards
             StartCoroutine(LocalizationManager.Localizer.Load());
         }
 
+        private void Start()
+        {
+            FullProtection.PatchLoadedInteractables(_harmony);
+        }
+
         private void FixedUpdate()
         {
             if (offeringsTimer > 0f)
@@ -318,6 +323,7 @@ namespace ProtectiveWards
         {
             Config.Save();
             _harmony?.UnpatchSelf();
+            FullProtection.ResetDynamicPatchState();
         }
         
         public static void LogInfo(object data)
@@ -656,8 +662,8 @@ namespace ProtectiveWards
             if (!IsActivePlayerWard(ward))
                 yield break;
 
-            HashSet<PrivateArea> visited = new HashSet<PrivateArea>();
-            List<PrivateArea> queue = new List<PrivateArea>();
+            HashSet<PrivateArea> visited = new();
+            List<PrivateArea> queue = new();
             int queueIndex = 0;
 
             visited.Add(ward);
@@ -819,8 +825,7 @@ namespace ProtectiveWards
 
             if (creatorId == 0L)
             {
-                ZNetView zNetView = component.GetComponentZNetView();
-                ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
+                ZDO zdo = component?.GetComponentZNetView()?.GetZDO();
                 if (zdo != null)
                     creatorId = zdo.GetLong(ZDOVars.s_creator, 0L);
             }
@@ -855,8 +860,7 @@ namespace ProtectiveWards
 
             if (string.IsNullOrWhiteSpace(creatorName))
             {
-                ZNetView zNetView = component.GetComponentZNetView();
-                ZDO zdo = zNetView != null ? zNetView.GetZDO() : null;
+                ZDO zdo = component?.GetComponentZNetView()?.GetZDO();
                 if (zdo != null)
                     creatorName = zdo.GetString(ZDOVars.s_creatorName);
             }
@@ -890,7 +894,7 @@ namespace ProtectiveWards
                    || component.GetComponentInParent<Petable>() != null;
         }
 
-        public static bool IsObjectOwnedByPlayerWithWardAccess(Component component, PrivateArea protectedWard, Player interactingPlayer)
+        public static bool IsObjectOwnedByPlayerWithWardAccess(Component component, Player interactingPlayer)
         {
             if (!IsOwnershipSensitiveObject(component))
                 return false;
@@ -925,10 +929,7 @@ namespace ProtectiveWards
             if (HasLastSaddleUser(component.GetComponentZNetView(), playerID))
                 return true;
 
-            Sadle sadle = component.GetComponentInParent<Sadle>();
-            if (sadle == null)
-                sadle = component.GetComponentInChildren<Sadle>(true);
-
+            Sadle sadle = component.GetComponentInParent<Sadle>() ?? component.GetComponentInChildren<Sadle>(true);
             if (sadle == null)
                 return false;
 
@@ -940,8 +941,6 @@ namespace ProtectiveWards
 
             return false;
         }
-
-        public static bool ShouldSkipWardBlockForOwnedObject(Component component, PrivateArea protectedWard, Player interactingPlayer) => IsObjectOwnedByPlayerWithWardAccess(component, protectedWard, interactingPlayer);
 
         public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
         {
@@ -967,7 +966,7 @@ namespace ProtectiveWards
                 if (HasAccessToWardOrConnectedWard(area, player))
                     continue;
 
-                if (ShouldSkipWardBlockForOwnedObject(component, area, player))
+                if (IsObjectOwnedByPlayerWithWardAccess(component, player))
                     continue;
 
                 return false;
@@ -1055,7 +1054,7 @@ namespace ProtectiveWards
                 if (HasAccessToWardOrConnectedWard(area, player))
                     continue;
 
-                if (component != null && ShouldSkipWardBlockForOwnedObject(component, area, player))
+                if (component != null && IsObjectOwnedByPlayerWithWardAccess(component, player))
                     continue;
 
                 if (flash)
@@ -1392,7 +1391,7 @@ namespace ProtectiveWards
                 if (Game.IsPaused())
                     yield return new WaitForSeconds(2.0f);
 
-                List<Piece> pieces = new List<Piece>();
+                List<Piece> pieces = new();
 
                 ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
@@ -1479,6 +1478,105 @@ namespace ProtectiveWards
             return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && area.m_radius + ward.m_radius >= Utils.DistanceXZ(area.transform.position, ward.transform.position)));
         }
 
+        private static bool s_activatingConnectedWards;
+
+        internal static void ActivateConnectedLoadedWards(PrivateArea rootWard, long requesterID, string requesterName = "")
+        {
+            if (s_activatingConnectedWards || rootWard == null || requesterID == 0L || !rootWard.IsEnabled())
+                return;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
+            if (mode == WardConnectedAccessMode.Off)
+                return;
+
+            s_activatingConnectedWards = true;
+            try
+            {
+                foreach (PrivateArea ward in ConnectedActivationAreas(rootWard, requesterID, mode))
+                {
+                    if (ward == rootWard)
+                        continue;
+
+                    if (WardExpiration.IsExpired(ward))
+                        WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired: false, requesterID, requesterName);
+
+                    if (!ward.IsEnabled())
+                        ward.SetEnabled(true);
+                }
+            }
+            finally
+            {
+                s_activatingConnectedWards = false;
+            }
+        }
+
+        private static IEnumerable<PrivateArea> ConnectedActivationAreas(PrivateArea rootWard, long requesterID, WardConnectedAccessMode mode)
+        {
+            HashSet<PrivateArea> visited = new();
+            List<PrivateArea> queue = new();
+            int queueIndex = 0;
+
+            visited.Add(rootWard);
+            queue.Add(rootWard);
+
+            while (queueIndex < queue.Count)
+            {
+                PrivateArea current = queue[queueIndex++];
+                yield return current;
+
+                foreach (PrivateArea candidate in PrivateArea.m_allAreas)
+                {
+                    if (candidate == null || visited.Contains(candidate))
+                        continue;
+
+                    if (!IsPlayerWard(candidate) || !AreWardsOverlapping(current, candidate))
+                        continue;
+
+                    if (!HasDirectAccessToWard(candidate, requesterID) && !HasWardAdminAccess(requesterID))
+                        continue;
+
+                    if (!CanShareConnectedActivation(rootWard, candidate, mode))
+                        continue;
+
+                    visited.Add(candidate);
+                    queue.Add(candidate);
+                }
+            }
+        }
+
+        private static bool IsPlayerWard(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players;
+
+        private static bool CanShareConnectedActivation(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
+        {
+            if (mode == WardConnectedAccessMode.Off)
+                return false;
+
+            if (!IsPlayerWard(protectedWard) || !IsPlayerWard(candidateWard))
+                return false;
+
+            if (protectedWard == candidateWard)
+                return true;
+
+            switch (mode)
+            {
+                case WardConnectedAccessMode.SameCreatorOnly:
+                    long protectedCreator = GetCreatorId(protectedWard);
+                    long candidateCreator = GetCreatorId(candidateWard);
+                    return protectedCreator != 0L && protectedCreator == candidateCreator;
+                case WardConnectedAccessMode.MutualTrust:
+                    protectedCreator = GetCreatorId(protectedWard);
+                    candidateCreator = GetCreatorId(candidateWard);
+                    return protectedCreator != 0L
+                           && candidateCreator != 0L
+                           && HasDirectAccessToWard(protectedWard, candidateCreator)
+                           && HasDirectAccessToWard(candidateWard, protectedCreator);
+                case WardConnectedAccessMode.AnyConnected:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         [HarmonyPatch(typeof(CircleProjector), nameof(CircleProjector.CreateSegments))]
         public static class CircleProjector_CreateSegments_InitState
         {
@@ -1539,7 +1637,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            Vector3 defaultColor = new Vector3(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b);
+            Vector3 defaultColor = new(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b);
             Vector3 vector = GetWardVec3Setting(zdo, s_color, defaultColor);
             float multiplier = GetWardFloatSetting(zdo, s_colorMultiplier, wardEmissionColorMultiplier.Value);
 
@@ -1601,7 +1699,7 @@ namespace ProtectiveWards
             if (ward == null || s_wardEmissionDefaults.ContainsKey(ward))
                 return;
 
-            WardEmissionDefaults defaults = new WardEmissionDefaults();
+            WardEmissionDefaults defaults = new();
             if (ward.m_enabledEffect)
             {
                 defaults.ParticleSystems = ward.m_enabledEffect.GetComponentsInChildren<ParticleSystem>();
@@ -1684,10 +1782,10 @@ namespace ProtectiveWards
             {
                 gradient.SetKeys(new GradientColorKey[4]
                                     {
-                                        new GradientColorKey(startColor, 0.0f),
-                                        new GradientColorKey(endColor, 0.45f),
-                                        new GradientColorKey(endColor, 0.55f),
-                                        new GradientColorKey(startColor, 1.0f)
+                                        new(startColor, 0.0f),
+                                        new(endColor, 0.45f),
+                                        new(endColor, 0.55f),
+                                        new(startColor, 1.0f)
                                     }, 
                                  Array.Empty<GradientAlphaKey>());
             }
@@ -1736,7 +1834,7 @@ namespace ProtectiveWards
             MeshRenderer renderer = bubble.GetComponent<MeshRenderer>();
 
             Vector3 vecColor = GetWardVec3Setting(zdo, s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
-            Color bubbleColor = new Color(vecColor.x, vecColor.y, vecColor.z, GetWardFloatSetting(zdo, s_bubbleColorAlpha, wardBubbleColor.Value.a));
+            Color bubbleColor = new(vecColor.x, vecColor.y, vecColor.z, GetWardFloatSetting(zdo, s_bubbleColorAlpha, wardBubbleColor.Value.a));
 
             renderer.GetPropertyBlock(s_matBlock);
 
@@ -1867,7 +1965,7 @@ namespace ProtectiveWards
                     return;
                 }
 
-                List<string> status = new List<string>();
+                List<string> status = new();
 
                 if (wardIsRepairing.TryGetValue(__instance, out int piecesToRepair))
                 {
@@ -1882,7 +1980,7 @@ namespace ProtectiveWards
                 }
 
                 if (wardIsHealing.TryGetValue(__instance, out int secondsLeft))
-                    status.Add($"$item_food_regen {TimeSpan.FromSeconds(secondsLeft).ToString(@"m\:ss")}");
+                    status.Add($"$item_food_regen {TimeSpan.FromSeconds(secondsLeft):m\\:ss}");
 
                 if (status.Count > 0)
                 {
@@ -1895,7 +1993,7 @@ namespace ProtectiveWards
 
                 if (showOfferingsInHover.Value && offeringsTimer > showOfferingsInHoverAfterSeconds.Value)
                 {
-                    List<string> offeringsList = new List<string>();
+                    List<string> offeringsList = new();
 
                     if (offeringActiveRepair.Value && (Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore") || Player.m_localPlayer.NoCostCheat()))
                         offeringsList.Add("$item_surtlingcore - $pw_ward_offering_surtlingcore_description");
@@ -2059,6 +2157,7 @@ namespace ProtectiveWards
 
                 CacheWardDefaultRange(__instance);
                 PatchRange(__instance);
+                WardExpiration.TryReactivateFromNearbyPlayer(__instance);
 
                 if (showAreaMarker.Value)
                     __instance.m_areaMarker.gameObject.SetActive(value: true);
@@ -2067,8 +2166,7 @@ namespace ProtectiveWards
                 InitDemisterState(__instance, EnsureWardDemister(__instance), ___m_nview);
                 InitEmissionColor(__instance);
 
-                if (instance != null)
-                    instance.StartCoroutine(DelayedRefreshWardVisuals(__instance));
+                instance?.StartCoroutine(DelayedRefreshWardVisuals(__instance));
             }
         }
 
@@ -2168,7 +2266,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
         public static class ZoneSystem_OnDestroy_DestroyWardBubble
         {
-            private static void Postfix(ZoneSystem __instance)
+            private static void Postfix()
             {
                 UnityEngine.Object.Destroy(forceField);
                 forceField = null;
@@ -2190,7 +2288,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.RPC_ToggleEnabled))]
         public static class PrivateArea_RPC_ToggleEnabled_InitWardBubble
         {
-            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, Piece ___m_piece)
+            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, long playerID)
             {
                 if (___m_nview == null || !___m_nview.IsValid())
                     return;
@@ -2205,6 +2303,9 @@ namespace ProtectiveWards
                 InitDemisterState(__instance, __instance.transform.Find(forceFieldDemisterName)?.gameObject, ___m_nview);
 
                 InitCircleProjectorState(__instance.m_areaMarker, ___m_nview);
+
+                if (__instance.IsEnabled())
+                    ActivateConnectedLoadedWards(__instance, playerID, Player.GetPlayer(playerID)?.GetPlayerName() ?? "");
             }
         }
     }

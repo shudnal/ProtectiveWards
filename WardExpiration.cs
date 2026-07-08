@@ -1,5 +1,6 @@
 using HarmonyLib;
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using static ProtectiveWards.ProtectiveWards;
@@ -50,17 +51,21 @@ namespace ProtectiveWards
             if (wardExpirationMinutes.Value <= 0)
                 return;
 
+            if (permitEveryone?.Value == true)
+                return;
+
             if (ZNet.instance == null || !ZNet.instance.IsServer() || ZNet.IsSinglePlayer)
                 return;
 
-            if (Player.GetAllPlayers().Count == 0)
+            List<ZDO> characterZdos = ZNet.instance.GetAllCharacterZDOS();
+            if (characterZdos.Count == 0)
                 return;
 
             if (Time.time < s_nextCheckTime)
                 return;
 
             s_nextCheckTime = Time.time + GetCheckIntervalSeconds();
-            CheckTrackedWards();
+            CheckTrackedWards(characterZdos);
         }
 
         private static float GetCheckIntervalSeconds()
@@ -72,7 +77,7 @@ namespace ProtectiveWards
             return Mathf.Clamp(minutes / 10f, 10f, 60f) * 60f;
         }
 
-        private static void CheckTrackedWards()
+        private static void CheckTrackedWards(List<ZDO> characterZdos)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             long expirationSeconds = Math.Max(wardExpirationMinutes.Value, 1) * 60L;
@@ -85,13 +90,18 @@ namespace ProtectiveWards
                 if (zdo.GetLong(s_expirationLastActiveUnix, 0L) == 0L)
                     zdo.Set(s_expirationLastActiveUnix, now);
 
-                Player activePlayer = FindRefreshingPlayer(zdo);
+                RefreshingPlayer activePlayer = FindRefreshingPlayer(zdo, characterZdos);
                 if (activePlayer != null)
                 {
                     RefreshActivity(zdo, activePlayer, now);
 
                     if (IsExpired(zdo) && wardExpirationReactivationMode.Value == WardExpirationReactivationMode.AutomaticOnLogin)
+                    {
                         Reactivate(zdo, activePlayer, now);
+                        PrivateArea loadedWard = WardZdoUtils.FindLoadedWard(zdo.m_uid);
+                        if (loadedWard != null)
+                            ActivateConnectedLoadedWards(loadedWard, activePlayer.PlayerID, activePlayer.PlayerName);
+                    }
 
                     continue;
                 }
@@ -107,30 +117,38 @@ namespace ProtectiveWards
             }
         }
 
-        private static Player FindRefreshingPlayer(ZDO zdo)
+        private static RefreshingPlayer FindRefreshingPlayer(ZDO zdo, List<ZDO> characterZdos)
         {
-            if (zdo == null)
+            if (zdo == null || characterZdos == null)
                 return null;
 
-            WardConnectedAccessMode mode = wardExpirationConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardExpirationConnectedAccessMode.Value;
+            WardConnectedAccessMode mode = wardExpirationConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
+            Vector3 wardPosition = zdo.GetPosition();
+            float activationRadius = Math.Max(zdo.GetWardRadius(), 0f);
 
-            foreach (Player player in Player.GetAllPlayers())
+            foreach (ZDO characterZdo in characterZdos)
             {
-                if (player == null)
+                if (characterZdo == null)
                     continue;
 
-                long playerID = player.GetPlayerID();
+                long playerID = characterZdo.GetLong(ZDOVars.s_playerID, 0L);
+                if (playerID == 0L)
+                    continue;
+
+                if (Utils.DistanceXZ(characterZdo.GetPosition(), wardPosition) > activationRadius)
+                    continue;
+
                 switch (wardExpirationRefreshMode.Value)
                 {
                     case WardExpirationRefreshMode.DirectPermitted:
                         if (zdo.HasDirectWardAccess(playerID))
-                            return player;
+                            return RefreshingPlayer.FromCharacterZdo(characterZdo, playerID);
                         break;
 
                     case WardExpirationRefreshMode.EffectiveAccess:
                     default:
                         if (zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess))
-                            return player;
+                            return RefreshingPlayer.FromCharacterZdo(characterZdo, playerID);
                         break;
                 }
             }
@@ -152,6 +170,13 @@ namespace ProtectiveWards
             zdo.Set(s_expirationLastPlayerName, player.GetPlayerName());
         }
 
+        private static void RefreshActivity(ZDO zdo, RefreshingPlayer player, long now)
+        {
+            zdo.Set(s_expirationLastActiveUnix, now);
+            zdo.Set(s_expirationLastPlayerId, player.PlayerID);
+            zdo.Set(s_expirationLastPlayerName, player.PlayerName);
+        }
+
         private static void Expire(ZDO zdo, long now)
         {
             zdo.Set(s_expirationExpired, true);
@@ -165,6 +190,12 @@ namespace ProtectiveWards
             RefreshActivity(zdo, player, now);
         }
 
+        private static void Reactivate(ZDO zdo, RefreshingPlayer player, long now)
+        {
+            zdo.Set(s_expirationExpired, false);
+            RefreshActivity(zdo, player, now);
+        }
+
         internal static bool IsExpired(PrivateArea ward)
         {
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
@@ -173,7 +204,7 @@ namespace ProtectiveWards
             return IsExpired(ward.m_nview.GetZDO());
         }
 
-        private static bool IsExpired(ZDO zdo)
+        internal static bool IsExpired(ZDO zdo)
         {
             return zdo != null && zdo.GetBool(s_expirationExpired, false);
         }
@@ -185,11 +216,51 @@ namespace ProtectiveWards
 
             ZDO zdo = ward.m_nview.GetZDO();
             long playerID = player.GetPlayerID();
-            WardConnectedAccessMode mode = wardExpirationConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardExpirationConnectedAccessMode.Value;
+            WardConnectedAccessMode mode = wardExpirationConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
 
             return wardExpirationRefreshMode.Value == WardExpirationRefreshMode.DirectPermitted
                 ? zdo.HasDirectWardAccess(playerID)
                 : zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess);
+        }
+
+        internal static void TryReactivateFromNearbyPlayer(PrivateArea ward)
+        {
+            if (wardExpirationMinutes.Value <= 0 || permitEveryone?.Value == true || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.AutomaticOnLogin)
+                return;
+
+            if (!IsExpired(ward))
+                return;
+
+            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            List<Player> players = new();
+            Player.GetPlayersInRange(ward.transform.position, Math.Max(ward.m_radius, 0f), players);
+            foreach (Player player in players)
+            {
+                if (!CanReactivate(ward, player))
+                    continue;
+
+                Reactivate(ward.m_nview.GetZDO(), player, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                ActivateConnectedLoadedWards(ward, player.GetPlayerID(), player.GetPlayerName());
+                return;
+            }
+        }
+
+        private sealed class RefreshingPlayer
+        {
+            internal long PlayerID { get; private set; }
+            internal string PlayerName { get; private set; }
+
+            internal static RefreshingPlayer FromCharacterZdo(ZDO characterZdo, long playerID)
+            {
+                Player player = Player.GetPlayer(playerID);
+                return new RefreshingPlayer
+                {
+                    PlayerID = playerID,
+                    PlayerName = player != null ? player.GetPlayerName() : characterZdo.GetString(ZDOVars.s_playerName, "")
+                };
+            }
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
@@ -209,7 +280,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, ref bool __result)
             {
-                if (wardExpirationMinutes.Value <= 0 || !IsExpired(__instance))
+                if (wardExpirationMinutes.Value <= 0 || permitEveryone?.Value == true || !IsExpired(__instance))
                     return true;
 
                 __result = false;
@@ -222,7 +293,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, Humanoid human, bool hold, ref bool __result)
             {
-                if (hold || wardExpirationMinutes.Value <= 0 || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.ManualInteraction)
+                if (hold || wardExpirationMinutes.Value <= 0 || permitEveryone?.Value == true || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.ManualInteraction)
                     return true;
 
                 if (!IsExpired(__instance))
@@ -234,6 +305,7 @@ namespace ProtectiveWards
 
                 ZDO zdo = __instance.m_nview.GetZDO();
                 Reactivate(zdo, player, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                ActivateConnectedLoadedWards(__instance, player.GetPlayerID(), player.GetPlayerName());
                 player.Message(MessageHud.MessageType.Center, "$pw_ward_expiration_reactivated");
                 __result = true;
                 return false;
@@ -245,7 +317,7 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, StringBuilder text)
             {
-                if (wardExpirationMinutes.Value <= 0 || !IsExpired(__instance))
+                if (wardExpirationMinutes.Value <= 0 || permitEveryone?.Value == true || !IsExpired(__instance))
                     return;
 
                 text.Append("\n<color=orange>$pw_ward_expiration_expired</color>");

@@ -15,6 +15,7 @@ namespace ProtectiveWards
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
+        private static bool s_interactablePatchesApplied;
 
         private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
         {
@@ -32,7 +33,7 @@ namespace ProtectiveWards
 
         private static bool ShouldSilentlyBlockProtectedInteraction(Component component, Humanoid human)
         {
-            if (component == null || !(human is Player player))
+            if (component == null || human is not Player player)
                 return false;
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
@@ -43,7 +44,7 @@ namespace ProtectiveWards
                 if (HasAccessToWardOrConnectedWard(area, player))
                     continue;
 
-                if (ShouldSkipWardBlockForOwnedObject(component, area, player))
+                if (IsObjectOwnedByPlayerWithWardAccess(component, player))
                     continue;
 
                 return true;
@@ -87,6 +88,23 @@ namespace ProtectiveWards
             s_teleportAccessRpcRegistered = false;
         }
 
+        internal static void PatchLoadedInteractables(Harmony harmony)
+        {
+            if (s_interactablePatchesApplied || harmony == null)
+                return;
+
+            MethodInfo prefix = AccessTools.Method(typeof(Interactable_PreventUnauthorizedAccess), nameof(Interactable_PreventUnauthorizedAccess.Prefix));
+            if (prefix == null)
+                return;
+
+            foreach (MethodBase method in Interactable_PreventUnauthorizedAccess.TargetMethods())
+                harmony.Patch(method, prefix: new HarmonyMethod(prefix));
+
+            s_interactablePatchesApplied = true;
+        }
+
+        internal static void ResetDynamicPatchState() => s_interactablePatchesApplied = false;
+
         private static bool TeleportTargetAccessCheckStarted(TeleportWorld teleport, Player player)
         {
             if (player == null || teleport?.TargetFound() != true || teleport.m_nview?.IsValid() != true)
@@ -96,12 +114,12 @@ namespace ProtectiveWards
             if (sourceZdo == null)
                 return false;
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(sourceZdo.m_uid);
             package.Write(player.GetPlayerID());
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_CheckTeleportTargetAccessServer(0L, new ZPackage(package.GetArray()));
+                RPC_CheckTeleportTargetAccessServer(0L, new(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckTeleportTargetAccess, package);
             else
@@ -139,7 +157,7 @@ namespace ProtectiveWards
 
         private static void SendTeleportTargetAccessResponse(long peerID, ZDOID sourceZdoID, bool granted, string blockingOwnerName)
         {
-            ZPackage response = new ZPackage();
+            ZPackage response = new();
             response.Write(sourceZdoID);
             response.Write(granted);
             response.Write(blockingOwnerName ?? "");
@@ -147,7 +165,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer() && ZRoutedRpc.instance != null && peerID != 0L)
                 ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_TeleportTargetAccessResponse, response);
             else
-                RPC_TeleportTargetAccessResponseClient(0L, new ZPackage(response.GetArray()));
+                RPC_TeleportTargetAccessResponseClient(0L, new(response.GetArray()));
         }
 
         private static void RPC_TeleportTargetAccessResponseClient(long sender, ZPackage package)
@@ -161,7 +179,7 @@ namespace ProtectiveWards
                 return;
 
             GameObject instance = ZNetScene.instance.FindInstance(sourceZdoID);
-            TeleportWorld teleport = instance != null ? instance.GetComponent<TeleportWorld>() : null;
+            TeleportWorld teleport = instance?.GetComponent<TeleportWorld>();
             if (teleport == null)
                 return;
 
@@ -181,7 +199,7 @@ namespace ProtectiveWards
             if (playerID == 0L)
                 return true;
 
-            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
 
             foreach (ZDO zdo in WardZdoUtils.GetAllWards())
             {
@@ -226,14 +244,14 @@ namespace ProtectiveWards
             if (zdo == null || playerID == 0L)
                 return;
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(zdo.m_uid);
             package.Write(playerID);
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_SetLastSaddleUserServer(0L, new ZPackage(package.GetArray()));
-            else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetLastSaddleUser, package);
+                RPC_SetLastSaddleUserServer(0L, new(package.GetArray()));
+            else
+                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastSaddleUser, package);
         }
 
         private static void RPC_SetLastSaddleUserServer(long sender, ZPackage package)
@@ -419,7 +437,7 @@ namespace ProtectiveWards
                 ___m_waterImpactDamage = 0f;
             }
 
-            private static void Postfix(Ship __instance, ref float ___m_waterImpactDamage, float __state)
+            private static void Postfix(Ship _, ref float ___m_waterImpactDamage, float __state)
             {
                 if (__state == 0f)
                     return;
@@ -658,11 +676,6 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Awake))]
-        public static class TeleportWorld_Awake_PreventUnauthorizedAccess
-        {
-            private static void Postfix() => RegisterTeleportAccessRPC();
-        }
 
         [HarmonyPatch(typeof(TeleportWorld), nameof(TeleportWorld.Interact))]
         public static class TeleportWorld_Interact_PreventUnauthorizedAccess
@@ -1280,10 +1293,9 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch]
         public static class Interactable_PreventUnauthorizedAccess
         {
-            private static readonly HashSet<Type> ExcludedInteractableTypes = new HashSet<Type>
+            private static readonly HashSet<Type> ExcludedInteractableTypes = new()
             {
                 typeof(Container),
                 typeof(Door),
@@ -1320,9 +1332,9 @@ namespace ProtectiveWards
                 typeof(Barber)
             };
 
-            private static IEnumerable<MethodBase> TargetMethods()
+            internal static IEnumerable<MethodBase> TargetMethods()
             {
-                HashSet<MethodBase> methods = new HashSet<MethodBase>();
+                HashSet<MethodBase> methods = new();
                 foreach (Type type in GetLoadedInteractableTypes())
                 {
                     MethodInfo interact = AccessTools.Method(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
@@ -1375,16 +1387,15 @@ namespace ProtectiveWards
                        && !ExcludedInteractableTypes.Contains(method.DeclaringType);
             }
 
-            private static bool Prefix(object __instance, Humanoid __0, ref bool __result)
+            public static bool Prefix(object __instance, Humanoid __0, ref bool __result)
             {
                 if (!wardAccessProtectInteractables.Value)
                     return true;
 
-                if (!(__0 is Player))
+                if (__0 is not Player)
                     return true;
 
-                Component component = __instance as Component;
-                if (component == null)
+                if (__instance is not Component component)
                     return true;
 
                 if (!BlockUnauthorizedWardInteraction(component, __0))
@@ -1422,7 +1433,7 @@ namespace ProtectiveWards
                 if (player == null)
                     return true;
 
-                if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
+                if (!InsideEnabledPlayersArea(__instance.transform.position, out _, checkCache: true))
                     return true;
 
                 if (BackgroundProtection.IsBackgroundProtectionActiveAt(__instance.transform.position, out PrivateArea backgroundWard)
@@ -1442,7 +1453,7 @@ namespace ProtectiveWards
                 hit.m_damage.Modify(Math.Max(value, 0));
             }
 
-            private static void Prefix(Destructible __instance, bool ___m_destroyed, HitData hit)
+            private static void Prefix(Destructible __instance, HitData hit)
             {
                 if (!wardPlantProtection.Value)
                     return;

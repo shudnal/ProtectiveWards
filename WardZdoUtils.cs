@@ -10,7 +10,7 @@ namespace ProtectiveWards
     {
         internal const string WardPrefabName = "guard_stone";
         internal static readonly int s_wardPrefabHash = WardPrefabName.GetStableHashCode();
-        private static readonly HashSet<ZDO> s_wardObjects = new HashSet<ZDO>();
+        private static readonly HashSet<ZDO> s_wardObjects = new();
         private static bool s_wardDefaultRadiusCached;
         private static float s_wardDefaultRadius = 32f;
 
@@ -182,8 +182,8 @@ namespace ProtectiveWards
             if (!IsWard(rootWard))
                 yield break;
 
-            HashSet<ZDOID> visited = new HashSet<ZDOID>();
-            List<ZDO> queue = new List<ZDO>();
+            HashSet<ZDOID> visited = new();
+            List<ZDO> queue = new();
             int queueIndex = 0;
 
             visited.Add(rootWard.m_uid);

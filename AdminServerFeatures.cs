@@ -15,7 +15,7 @@ namespace ProtectiveWards
         private const string RPC_SetWardExpired = "PW_SetWardExpired";
         private const string RPC_CheckWardBuildLimit = "PW_CheckWardBuildLimit";
         private const string RPC_DestroyWardForBuildLimit = "PW_DestroyWardForBuildLimit";
-        private static readonly HashSet<ZDOID> s_requestedWardLimitChecks = new HashSet<ZDOID>();
+        private static readonly HashSet<ZDOID> s_requestedWardLimitChecks = new();
         private static bool s_rpcRegistered;
         private static bool s_commandRegistered;
 
@@ -26,7 +26,7 @@ namespace ProtectiveWards
 
             ZRoutedRpc.instance.Register<ZPackage>(RPC_DestroyWardForBuildLimit, RPC_DestroyWardForBuildLimitClient);
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
+            if (ZNet.instance?.IsServer() == true)
             {
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_PermitPlayer, RPC_PermitPlayerServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
@@ -155,14 +155,14 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(ward.m_nview.GetZDO().m_uid);
             package.Write(player.GetPlayerID());
             package.Write(target.GetPlayerID());
             package.Write(target.GetPlayerName());
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_PermitPlayerServer(0L, new ZPackage(package.GetArray()));
+            if (ZNet.instance?.IsServer() == true)
+                RPC_PermitPlayerServer(0L, new(package.GetArray()));
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_PermitPlayer, package);
 
@@ -205,13 +205,13 @@ namespace ProtectiveWards
             }
 
             KeyValuePair<long, string> target = matches[0];
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(ward.m_nview.GetZDO().m_uid);
             package.Write(player.GetPlayerID());
             package.Write(target.Key);
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_UnpermitPlayerServer(0L, new ZPackage(package.GetArray()));
+            if (ZNet.instance?.IsServer() == true)
+                RPC_UnpermitPlayerServer(0L, new(package.GetArray()));
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UnpermitPlayer, package);
 
@@ -240,13 +240,13 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(ward.m_nview.GetZDO().m_uid);
             package.Write(player.GetPlayerID());
             package.Write(enabled);
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_SetWardEnabledServer(0L, new ZPackage(package.GetArray()));
+            if (ZNet.instance?.IsServer() == true)
+                RPC_SetWardEnabledServer(0L, new(package.GetArray()));
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardEnabled, package);
 
@@ -275,14 +275,14 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(ward.m_nview.GetZDO().m_uid);
             package.Write(player.GetPlayerID());
             package.Write(player.GetPlayerName());
             package.Write(expired);
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_SetWardExpiredServer(0L, new ZPackage(package.GetArray()));
+            if (ZNet.instance?.IsServer() == true)
+                RPC_SetWardExpiredServer(0L, new(package.GetArray()));
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardExpired, package);
 
@@ -373,6 +373,9 @@ namespace ProtectiveWards
                 return;
 
             ward.SetEnabled(enabled);
+            if (enabled)
+                ActivateConnectedLoadedWards(ward, requesterID, requester.GetPlayerName());
+
             LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
         }
 
@@ -511,12 +514,12 @@ namespace ProtectiveWards
 
         private static void RequestWardBuildLimitCheck(long creatorID, ZDOID newWardID)
         {
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(creatorID);
             package.Write(newWardID);
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_CheckWardBuildLimitServer(0L, new ZPackage(package.GetArray()));
+            if (ZNet.instance?.IsServer() == true)
+                RPC_CheckWardBuildLimitServer(0L, new(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckWardBuildLimit, package);
         }
@@ -531,7 +534,7 @@ namespace ProtectiveWards
             if (creatorID == 0L || newWardID.Equals(ZDOID.None))
                 return;
 
-            ZDO newWardZdo = ZDOMan.instance != null ? ZDOMan.instance.GetZDO(newWardID) : null;
+            ZDO newWardZdo = ZDOMan.instance?.GetZDO(newWardID);
             if (!newWardZdo.IsWard())
                 return;
 
@@ -556,7 +559,7 @@ namespace ProtectiveWards
             long owner = zdo.GetOwner();
             DestroyWardForBuildLimitServer(zdo);
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(wardID);
             package.Write(current);
             package.Write(limit);
@@ -564,7 +567,7 @@ namespace ProtectiveWards
             if (owner != 0L && ZRoutedRpc.instance != null)
                 ZRoutedRpc.instance.InvokeRoutedRPC(owner, RPC_DestroyWardForBuildLimit, package);
             else if (Player.m_localPlayer != null)
-                RPC_DestroyWardForBuildLimitClient(0L, new ZPackage(package.GetArray()));
+                RPC_DestroyWardForBuildLimitClient(0L, new(package.GetArray()));
         }
 
         private static void DestroyWardForBuildLimitServer(ZDO zdo)
@@ -584,9 +587,7 @@ namespace ProtectiveWards
 
             DestroyLocalWard(wardID);
 
-            Player player = Player.m_localPlayer;
-            if (player != null)
-                player.Message(MessageHud.MessageType.Center, "$pw_ward_limit_reached".Localize(current.ToString(), limit.ToString()));
+            Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_limit_reached".Localize(current.ToString(), limit.ToString()));
         }
 
         private static void DestroyLocalWard(ZDOID wardID)

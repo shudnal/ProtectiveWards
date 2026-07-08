@@ -13,7 +13,7 @@ namespace ProtectiveWards
     {
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
-        private static readonly WaitForSeconds wait1sec = new WaitForSeconds(1);
+        private static readonly WaitForSeconds wait1sec = new(1);
 
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
@@ -37,7 +37,7 @@ namespace ProtectiveWards
 
                 wardIsHealing[ward] -= seconds;
 
-                List<Character> characters = new List<Character>();
+                List<Character> characters = new();
                 ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
                 
                 characters.ToHashSet().DoIf(character => character.IsTamed() || character.IsPlayer(), character => character.Heal(amount * seconds));
@@ -51,7 +51,7 @@ namespace ProtectiveWards
             if (ward == null)
                 yield break;
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
             players.ToHashSet().Do(player => preLightning.Create(player.transform.position, player.transform.rotation));
@@ -63,7 +63,7 @@ namespace ProtectiveWards
             if (Game.IsPaused())
                 yield return wait1sec;
 
-            List<Character> characters = new List<Character>();
+            List<Character> characters = new();
             ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
             
             characters.ToHashSet().DoIf(character => character.IsMonsterFaction(Time.time), character => UnityEngine.Object.Instantiate(lightningAOE, character.transform.position, character.transform.rotation));
@@ -118,7 +118,7 @@ namespace ProtectiveWards
             int repaired = 0;
             int augmented = 0;
 
-            List<Piece> pieces = new List<Piece>();
+            List<Piece> pieces = new();
 
             ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
@@ -271,7 +271,7 @@ namespace ProtectiveWards
 
             foreach (Turret.TrophyTarget configTarget in trophyTargets.Where(configTarget => (item.m_shared.m_name == configTarget.m_item.m_itemData.m_shared.m_name)))
             {
-                List<Character> characters = new List<Character>();
+                List<Character> characters = new();
                 ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
                 foreach (Character character in characters.ToHashSet().Where(character => character.IsMonsterFaction(Time.time)))
@@ -340,7 +340,7 @@ namespace ProtectiveWards
 
             LogInfo("Consumable effect offered");
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
 
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
@@ -364,7 +364,7 @@ namespace ProtectiveWards
 
         private static void ApplyInstantGrowthEffectOnNearbyPlants(PrivateArea ward, ItemDrop.ItemData item, Player initiator, bool growableOnly = true)
         {
-            List<Plant> plants = new List<Plant>();
+            List<Plant> plants = new();
             ConnectedAreas(ward).Do(area => GetPlantsInRange(area.transform.position, area.m_radius, plants, growableOnly));
 
             if (plants.Count == 0)
@@ -400,7 +400,7 @@ namespace ProtectiveWards
         {
             LogInfo("Dragon egg offered");
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
 
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
@@ -486,7 +486,7 @@ namespace ProtectiveWards
         {
             LogInfo($"{name} closest location request");
 
-            ZPackage zPackage = new ZPackage();
+            ZPackage zPackage = new();
             zPackage.Write(name);
             zPackage.Write(position);
             zPackage.Write(itemName);
@@ -511,7 +511,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage zPackage = new ZPackage();
+            ZPackage zPackage = new();
             zPackage.Write(target);
             zPackage.Write(itemName);
             zPackage.Write(stack);
@@ -807,10 +807,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.OnDestroy))]
         public static class Valkyrie_OnDestroy_Taxi
         {
-            private static void Prefix(Valkyrie __instance)
-            {
-                canTravel = true;
-            }
+            private static void Prefix() => canTravel = true;
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]

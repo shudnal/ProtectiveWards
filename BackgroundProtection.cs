@@ -8,7 +8,7 @@ namespace ProtectiveWards
 {
     internal static class BackgroundProtection
     {
-        private static readonly Dictionary<PrivateArea, CachedBool> s_qualifiedBaseCache = new Dictionary<PrivateArea, CachedBool>();
+        private static readonly Dictionary<PrivateArea, CachedBool> s_qualifiedBaseCache = new();
         private const float QualifiedBaseCacheSeconds = 10f;
 
         private struct CachedBool
@@ -105,8 +105,8 @@ namespace ProtectiveWards
         private static int CountPlayerBuiltPiecesInNetwork(PrivateArea ward, int stopAt)
         {
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
-            HashSet<Piece> pieces = new HashSet<Piece>();
-            List<Piece> buffer = new List<Piece>();
+            HashSet<Piece> pieces = new();
+            List<Piece> buffer = new();
 
             foreach (PrivateArea area in ConnectedAccessAreas(ward, mode))
             {
@@ -278,7 +278,7 @@ namespace ProtectiveWards
             [HarmonyPriority(Priority.First)]
             private static bool Prefix(Player __instance, Piece piece, ref bool __result)
             {
-                if (__instance == null || piece == null)
+                if (__instance == null || piece == null || __instance.m_placementGhost == null)
                     return true;
 
                 if (!IsBuildingRestricted(__instance, __instance.m_placementGhost.transform.position))

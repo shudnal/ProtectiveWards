@@ -152,15 +152,15 @@ Trap protection still lets permitted players move through their own traps safely
 
 Inactive ward expiration is disabled by default.
 
-This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without activity from players who can refresh them.
+This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without nearby activity from players who can refresh them.
 
 Important details:
 
 - expired wards are disabled, not deleted;
 - permitted lists are preserved;
 - old wards are initialized with the current server time and do not expire immediately after enabling the feature;
-- expiration can be refreshed by direct permitted players or by effective connected access, depending on configuration;
-- reactivation can be manual by interacting with the ward, or automatic when an access player is online;
+- expiration can be refreshed by nearby direct permitted players or by nearby effective connected access, depending on configuration;
+- reactivation can be manual by interacting with the ward, or automatic when an access player is nearby or an expired ward wakes up near an access player;
 - optional expiration hover debug details are shown only to players allowed by `Ward admin / Ward admin access`.
 
 ### Full protection

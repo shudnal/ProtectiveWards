@@ -48,8 +48,8 @@ namespace ProtectiveWards
 
         private static GameObject s_panel;
         private static ZDO s_zdo;
-        private static readonly List<WardSettingRow> s_rows = new List<WardSettingRow>();
-        private static readonly Dictionary<FieldId, WardSettingValue> s_values = new Dictionary<FieldId, WardSettingValue>();
+        private static readonly List<WardSettingRow> s_rows = new();
+        private static readonly Dictionary<FieldId, WardSettingValue> s_values = new();
         private static bool s_rpcRegistered;
         private static bool s_inputBlocked;
 
@@ -251,7 +251,7 @@ namespace ProtectiveWards
 
         private static string BuildLayoutLanguageKey()
         {
-            List<string> values = new List<string>(s_labelLayoutTokens.Length + s_sectionLayoutTokens.Length);
+            List<string> values = new(s_labelLayoutTokens.Length + s_sectionLayoutTokens.Length);
             foreach (string token in s_labelLayoutTokens)
                 values.Add(token.Localize());
             foreach (string token in s_sectionLayoutTokens)
@@ -434,7 +434,7 @@ namespace ProtectiveWards
         {
             CaptureCurrentRows();
 
-            ZPackage package = new ZPackage();
+            ZPackage package = new();
             package.Write(s_zdo.m_uid);
             package.Write(Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerID() : 0L);
             package.Write(s_values.Count);
@@ -758,7 +758,7 @@ namespace ProtectiveWards
         private static void AddBool(FieldId field, string labelToken, int key, ConfigEntry<bool> defaultEntry, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            BoolRow row = new BoolRow(field, labelToken, !value.UseDefault, value.BoolValue);
+            BoolRow row = new(field, labelToken, !value.UseDefault, value.BoolValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -767,7 +767,7 @@ namespace ProtectiveWards
         private static void AddFloat(FieldId field, string labelToken, int key, ConfigEntry<float> defaultEntry, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            FloatRow row = new FloatRow(field, labelToken, !value.UseDefault, value.FloatValue);
+            FloatRow row = new(field, labelToken, !value.UseDefault, value.FloatValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -776,7 +776,7 @@ namespace ProtectiveWards
         private static void AddColor(FieldId field, string labelToken, int colorKey, int alphaKey, Color defaultValue, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            ColorRow row = new ColorRow(field, labelToken, !value.UseDefault, value.ColorValue);
+            ColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -785,7 +785,7 @@ namespace ProtectiveWards
         private static void AddEmissionColor(ref float y)
         {
             WardSettingValue value = GetValue(FieldId.EmissionColor);
-            ColorRow row = new ColorRow(FieldId.EmissionColor, "$pw_ward_settings_emission_color", !value.UseDefault, value.ColorValue);
+            ColorRow row = new(FieldId.EmissionColor, "$pw_ward_settings_emission_color", !value.UseDefault, value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -794,7 +794,7 @@ namespace ProtectiveWards
         private static void AddStringColor(FieldId field, string labelToken, int key, Color defaultValue, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            StringColorRow row = new StringColorRow(field, labelToken, !value.UseDefault, value.ColorValue);
+            StringColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -877,7 +877,7 @@ namespace ProtectiveWards
 
         private static void CreateDivider(Vector2 position, float width)
         {
-            GameObject line = new GameObject("Divider", typeof(RectTransform), typeof(Image));
+            GameObject line = new("Divider", typeof(RectTransform), typeof(Image));
             line.transform.SetParent(s_panel.transform, false);
             Image image = line.GetComponent<Image>();
             image.color = new Color(1f, 0.62f, 0.18f, 0.55f);
@@ -938,7 +938,7 @@ namespace ProtectiveWards
 
             public WardSettingValue Capture()
             {
-                WardSettingValue value = new WardSettingValue { UseDefault = UseDefault };
+                WardSettingValue value = new() { UseDefault = UseDefault };
                 CaptureValue(value);
                 return value;
             }
