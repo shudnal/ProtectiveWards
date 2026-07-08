@@ -18,6 +18,18 @@ The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-
 
 Most features work inside an active player ward area. Some background protections can be configured to use connected/overlapping ward networks.
 
+### How access is evaluated
+
+Protective Wards separates several kinds of access instead of using only the vanilla permitted list everywhere.
+
+- **Direct access** means the player is the ward creator, is directly permitted on the ward, or is allowed by the configured admin bypass.
+- **Connected/effective access** can extend access through overlapping wards according to the selected connected access mode. This is useful for shared bases made from multiple wards.
+- **Object ownership exemptions** are used only for specific objects where trapping a player would be worse than allowing a limited action. Tombstones, saddles, vehicles and similar cases are handled separately from normal base access.
+- **Admin access** is controlled by `Ward admin / Ward admin access`. By default it requires admin plus god mode, so admins can still play normally without bypassing protections accidentally.
+- **Permit everyone** is a global bypass. When enabled, access restrictions are not enforced and all players are treated as ward admins.
+
+For client-server games, sensitive operations are validated on the server. Client UI and console commands are only requests; the server re-checks access, distance and the target object before changing ward data.
+
 ### Per-ward visual settings
 
 Each ward can have its own visual settings stored in the ward ZDO.
@@ -51,7 +63,16 @@ The default is `AdminsInGodMode`, so admins can play normally without accidental
 
 ### Access protection from non-permitted players
 
-The `Ward access from non-permitted players` config group controls what non-permitted players are blocked from using inside another player's active ward.
+The `Ward access from non-permitted players` config group controls what non-permitted players are blocked from using inside another player's active ward. These protections run on interaction points such as container opening, portal use, switch callbacks, pickup paths, saddle use, vehicle controls and station interactions.
+
+The goal is to block unwanted use of another player's base without turning every object into an unconditional hard lock. Several categories have their own rules:
+
+- **Food and feasts** are separate from item pickup. The food setting covers feast interaction and placed consumable item pieces.
+- **Item pickup mode** controls non-consumable item drops. It can allow all pickups, block only player-dropped items, or block every non-food item pickup in protected areas.
+- **Vehicles** use last-controller tracking. A player who drove a ship or dragged a cart into a protected area can still regain control or detach it, but the vehicle creator does not get automatic access inside someone else's ward.
+- **Saddles and tames** use separate saddle-user tracking, so legitimate riding/mounting edge cases can be handled without broadly allowing tame access.
+- **Portals** can allow teleporting while still blocking renaming, or block teleporting completely. Full portal blocking checks both the source and the destination side server-side.
+- **Generic interactables** are an optional compatibility layer for interactables not covered by a dedicated patch. Dedicated protections are preferred when the object has special game logic.
 
 Supported vanilla access protection includes:
 
@@ -84,7 +105,9 @@ Ownership-sensitive objects are handled carefully. A foreign ward should not tra
 
 ### Connected ward access modes
 
-Several systems can share access across overlapping ward networks.
+Several systems can share access across overlapping ward networks. Connected access is used only by systems whose own config points to a connected access mode; it does not automatically make every ward permission global.
+
+Connected access is evaluated from the ward that protects the object being used. The selected mode decides whether other overlapping active player wards can grant access to that protected/root ward. Expired wards are not treated as active connected access sources for expiration refresh checks.
 
 Available modes:
 
@@ -93,7 +116,7 @@ Available modes:
 - `MutualTrust` - access is shared only between overlapping wards whose creators mutually permit/trust each other.
 - `AnyConnected` - access to any ward in the overlapping network can grant access to the whole network. Intended for single-party/shared-base servers.
 
-Access protection, background protection and expiration can use separate connected access settings.
+Access protection, background protection and expiration can use separate connected access settings. This allows strict interaction protection but looser background protection, or direct-only expiration with connected access for normal base use.
 
 ### Admin/server tools
 
@@ -137,7 +160,9 @@ Existing wards are never removed. If a player already exceeds the configured lim
 
 ### Background/passive protection
 
-The `Ward without permitted players nearby` config group controls background protection for inactive public PvE bases when no permitted/effective-access player is nearby.
+The `Ward without permitted players nearby` config group controls background protection for inactive public PvE bases when no permitted/effective-access player is nearby. This is separate from ordinary interaction blocking: it is meant to reduce offline grief and environmental/base damage while still allowing normal gameplay when an access player is present.
+
+The background system can require a qualified base before broad protection is applied. Qualification can include a minimum number of player-built pieces inside the connected ward network. Presence detection is configurable: a permitted/effective player can be required near the protected object, anywhere inside the connected area, or simply online.
 
 Configurable behavior includes:
 
@@ -156,16 +181,30 @@ Trap protection still lets permitted players move through their own traps safely
 
 Inactive ward expiration is disabled by default.
 
-This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without nearby activity from players who can refresh them.
+This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks its tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without nearby activity from players who are allowed to refresh them. The check is skipped when `Ward admin / Permit everyone` is enabled. The check is also skipped while the server has no active character ZDOs, so an empty dedicated server does not age wards just because no one is online.
 
-Important details:
+An expired ward is not deleted and its permitted list is preserved. The mod makes it behave like a disabled ward, which means another player can claim or reuse an abandoned area through normal disabled-ward behavior. This is intentional: expiration is an abandonment/takeover mechanic, not a hidden deletion system.
 
-- expired wards are disabled, not deleted;
-- permitted lists are preserved;
+Activity and refresh rules:
+
+- activity must come from a player character near the ward, using the ward's current radius as the horizontal activation range;
+- `DirectPermitted` refresh mode accepts only the ward creator, directly permitted players and admin bypass;
+- `EffectiveAccess` refresh mode can also accept access through connected/overlapping wards according to `Expiration connected access mode`;
 - old wards are initialized with the current server time and do not expire immediately after enabling the feature;
-- expiration can be refreshed by nearby direct permitted players or by nearby effective connected access, depending on configuration;
-- reactivation can be manual by interacting with the ward, or automatic when an access player is nearby or an expired ward wakes up near an access player;
-- optional expiration hover debug details are shown only to players allowed by `Ward admin / Ward admin access`.
+- `Permit everyone` disables expiration enforcement because every player is treated as having access;
+- singleplayer worlds ignore this system entirely.
+
+Reactivation rules:
+
+- `ManualInteraction` keeps expired wards inactive until an access player interacts with the ward;
+- `AutomaticOnLogin` reactivates an expired ward when an access player is nearby during a periodic server check, or when an expired loaded ward wakes up near an access player;
+- when a ward is reactivated, connected loaded wards that the same player can directly/admin access can also be activated so a linked base can recover together.
+
+Admin tools:
+
+- `pw_set_expired` / `ward_set_expired` marks the nearest ward as expired;
+- `pw_set_unexpired` / `ward_set_unexpired` clears the expired state;
+- optional expiration hover details show raw Unix timestamps and the last refreshing player only to players allowed by `Ward admin / Ward admin access`.
 
 ### Full protection
 
