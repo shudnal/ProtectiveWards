@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using SoftReferenceableAssets;
 using System;
 using System.Collections;
@@ -13,7 +13,7 @@ namespace ProtectiveWards
     {
         internal static int slowFallHash = "SlowFall".GetStableHashCode();
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
-        private static readonly WaitForSeconds wait1sec = new WaitForSeconds(1);
+        private static readonly WaitForSeconds wait1sec = new(1);
 
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
@@ -37,7 +37,7 @@ namespace ProtectiveWards
 
                 wardIsHealing[ward] -= seconds;
 
-                List<Character> characters = new List<Character>();
+                List<Character> characters = new();
                 ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
                 
                 characters.ToHashSet().DoIf(character => character.IsTamed() || character.IsPlayer(), character => character.Heal(amount * seconds));
@@ -51,7 +51,7 @@ namespace ProtectiveWards
             if (ward == null)
                 yield break;
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
             players.ToHashSet().Do(player => preLightning.Create(player.transform.position, player.transform.rotation));
@@ -63,7 +63,7 @@ namespace ProtectiveWards
             if (Game.IsPaused())
                 yield return wait1sec;
 
-            List<Character> characters = new List<Character>();
+            List<Character> characters = new();
             ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
             
             characters.ToHashSet().DoIf(character => character.IsMonsterFaction(Time.time), character => UnityEngine.Object.Instantiate(lightningAOE, character.transform.position, character.transform.rotation));
@@ -104,7 +104,7 @@ namespace ProtectiveWards
 
             for (int i = seconds; i >= 0; i--)
             {
-                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_back", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
+                player.Message((i > 15) ? MessageHud.MessageType.TopLeft : MessageHud.MessageType.Center, "$pw_msg_travel_back".Localize(TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                 yield return wait1sec;
             }
 
@@ -118,7 +118,7 @@ namespace ProtectiveWards
             int repaired = 0;
             int augmented = 0;
 
-            List<Piece> pieces = new List<Piece>();
+            List<Piece> pieces = new();
 
             ConnectedAreas(ward).Do(area => Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, pieces));
 
@@ -149,21 +149,21 @@ namespace ProtectiveWards
 
             if (augmented > 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
                 if (repaired > 0)
-                    initiator.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
+                    initiator.Message(MessageHud.MessageType.TopLeft, "$msg_repaired".Localize(repaired.ToString()));
             }
             else if (repaired > 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_repaired", repaired.ToString()));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_repaired".Localize(repaired.ToString()));
             }
             else if (augment)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
             }
             else
             {
-                string str = Localization.instance.Localize("$msg_doesnotneedrepair");
+                string str = "$msg_doesnotneedrepair".Localize();
                 initiator.Message(MessageHud.MessageType.Center, char.ToUpper(str[0]) + str.Substring(1));
             }
         }
@@ -194,17 +194,17 @@ namespace ProtectiveWards
                     return true;
                 }
 
-                if (!__instance.HaveLocalAccess())
-                {
-                    LogInfo("No access");
-                    return true;
-                }
-
                 Player player = user as Player;
 
                 if (!player || player != Player.m_localPlayer)
                 {
                     LogInfo("UseItem user not a player");
+                    return true;
+                }
+
+                if (offeringProtectFromNonPermitted.Value && !HasAccessToWardOrConnectedWard(__instance, player))
+                {
+                    LogInfo("No access");
                     return true;
                 }
 
@@ -271,7 +271,7 @@ namespace ProtectiveWards
 
             foreach (Turret.TrophyTarget configTarget in trophyTargets.Where(configTarget => (item.m_shared.m_name == configTarget.m_item.m_itemData.m_shared.m_name)))
             {
-                List<Character> characters = new List<Character>();
+                List<Character> characters = new();
                 ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
 
                 foreach (Character character in characters.ToHashSet().Where(character => character.IsMonsterFaction(Time.time)))
@@ -290,11 +290,11 @@ namespace ProtectiveWards
             if (killed)
             {
                 initiator.GetInventory().RemoveOneItem(item);
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
             }
             else
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerwrong"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_offerwrong".Localize());
             }
         }
 
@@ -311,7 +311,7 @@ namespace ProtectiveWards
             instance.StartCoroutine(LightningStrikeEffect(ward));
 
             initiator.GetInventory().RemoveOneItem(item);
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$piece_incinerator_conversion"));
+            initiator.Message(MessageHud.MessageType.Center, "$piece_incinerator_conversion".Localize());
         }
 
         private static void ApplyConsumableEffectToNearestPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
@@ -320,7 +320,7 @@ namespace ProtectiveWards
             {
                 if (wardIsHealing.ContainsKey(ward))
                 {
-                    initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerwrong"));
+                    initiator.Message(MessageHud.MessageType.Center, "$msg_offerwrong".Localize());
                     return;
                 }
 
@@ -329,7 +329,7 @@ namespace ProtectiveWards
                 instance.StartCoroutine(PassiveHealingEffect(ward, amount: item.m_shared.m_foodRegen / 2, seconds: 1));
                 LogInfo("Passive healing begins");
 
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize($"$msg_consumed: {item.m_shared.m_name}"));
+                initiator.Message(MessageHud.MessageType.Center, $"{"$msg_consumed".Localize()}: {item.m_shared.m_name}");
                 initiator.GetInventory().RemoveOneItem(item);
 
                 return;
@@ -340,7 +340,7 @@ namespace ProtectiveWards
 
             LogInfo("Consumable effect offered");
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
 
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
@@ -354,29 +354,29 @@ namespace ProtectiveWards
 
             if (!applied)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
                 return;
             }
 
             initiator.GetInventory().RemoveOneItem(item);
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+            initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
         }
 
         private static void ApplyInstantGrowthEffectOnNearbyPlants(PrivateArea ward, ItemDrop.ItemData item, Player initiator, bool growableOnly = true)
         {
-            List<Plant> plants = new List<Plant>();
+            List<Plant> plants = new();
             ConnectedAreas(ward).Do(area => GetPlantsInRange(area.transform.position, area.m_radius, plants, growableOnly));
 
             if (plants.Count == 0)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_cantoffer"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
                 return;
             }
 
             Inventory inventory = initiator.GetInventory();
             if (item.m_shared.m_name == "$item_eitr" && inventory.CountItems("$item_eitr") < 5)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                initiator.Message(MessageHud.MessageType.Center, "$msg_incompleteoffering".Localize());
                 return;
             }
 
@@ -393,14 +393,14 @@ namespace ProtectiveWards
                 LogInfo($"Offered {item.m_shared.m_name}");
             }
 
-            initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_offerdone"));
+            initiator.Message(MessageHud.MessageType.Center, "$msg_offerdone".Localize());
         }
 
         private static void ApplyModerPowerEffectToNearbyPlayers(PrivateArea ward, ItemDrop.ItemData item, Player initiator)
         {
             LogInfo("Dragon egg offered");
 
-            List<Player> players = new List<Player>();
+            List<Player> players = new();
 
             ConnectedAreas(ward).Do(area => Player.GetPlayersInRange(area.transform.position, area.m_radius, players));
 
@@ -417,19 +417,19 @@ namespace ProtectiveWards
         {
             if (initiator.IsEncumbered())
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$se_encumbered_start"));
+                initiator.Message(MessageHud.MessageType.Center, "$se_encumbered_start".Localize());
                 return;
             }
 
             if (!IsTeleportable(initiator))
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_notravel"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_notravel".Localize());
                 return;
             }
 
             if (!canTravel)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_canttravel"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_canttravel".Localize());
                 return;
             }
 
@@ -486,7 +486,7 @@ namespace ProtectiveWards
         {
             LogInfo($"{name} closest location request");
 
-            ZPackage zPackage = new ZPackage();
+            ZPackage zPackage = new();
             zPackage.Write(name);
             zPackage.Write(position);
             zPackage.Write(itemName);
@@ -511,7 +511,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage zPackage = new ZPackage();
+            ZPackage zPackage = new();
             zPackage.Write(target);
             zPackage.Write(itemName);
             zPackage.Write(stack);
@@ -533,7 +533,7 @@ namespace ProtectiveWards
         {
             if (Utils.DistanceXZ(initiator.transform.position, position) < 300f)
             {
-                initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_tooclose"));
+                initiator.Message(MessageHud.MessageType.Center, "$pw_msg_tooclose".Localize());
                 return;
             }
 
@@ -541,7 +541,7 @@ namespace ProtectiveWards
             {
                 if (initiator.GetInventory().CountItems(itemName) < stack)
                 {
-                    initiator.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$msg_incompleteoffering"));
+                    initiator.Message(MessageHud.MessageType.Center, "$msg_incompleteoffering".Localize());
                     return;
                 }
                 initiator.GetInventory().RemoveItem(itemName, stack);
@@ -619,14 +619,14 @@ namespace ProtectiveWards
             {
                 for (int i = waitSeconds; i > 0; i--)
                 {
-                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_starting", TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
+                    player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_starting".Localize(TimeSpan.FromSeconds(i).ToString(@"m\:ss")));
                     yield return wait1sec;
                 }
             }
 
             while (Valkyrie.m_instance != null)
             {
-                player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$menu_pleasewait"));
+                player.Message(MessageHud.MessageType.Center, "$menu_pleasewait".Localize());
                 yield return wait1sec;
             }
 
@@ -639,9 +639,9 @@ namespace ProtectiveWards
             {
                 string timeSpent = (DateTime.Now - flightInitiated).ToString(@"m\:ss");
                 if (playerShouldExit)
-                    player.Message(MessageHud.MessageType.TopLeft, Localization.instance.Localize("$pw_msg_travel_inside", timeSpent));
+                    player.Message(MessageHud.MessageType.TopLeft, "$pw_msg_travel_inside".Localize(timeSpent));
                 else
-                    player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_blocked", timeSpent) + Localization.instance.Localize(player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport"));
+                    player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_blocked".Localize(timeSpent) + (player.IsEncumbered() ? " $se_encumbered_start" : " $msg_noteleport").Localize());
 
                 yield return wait1sec;
 
@@ -649,7 +649,7 @@ namespace ProtectiveWards
                                             || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
             }
 
-            player.Message(MessageHud.MessageType.Center, Localization.instance.Localize("$pw_msg_travel_start"));
+            player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_start".Localize());
 
             taxiTargetPosition = position;
             taxiReturnBack = returnBack;
@@ -669,9 +669,6 @@ namespace ProtectiveWards
         {
             static void Postfix(Player __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (__instance.InIntro())
                     return;
 
@@ -692,7 +689,6 @@ namespace ProtectiveWards
         {
             private static bool Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value) return true;
 
                 if (!offeringTaxi.Value) return true;
 
@@ -758,9 +754,6 @@ namespace ProtectiveWards
         {
             private static void Prefix(Valkyrie __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -774,9 +767,6 @@ namespace ProtectiveWards
         {
             private static void Postfix()
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -795,9 +785,6 @@ namespace ProtectiveWards
         {
             private static void Postfix(Player __instance)
             {
-                if (!modEnabled.Value)
-                    return;
-
                 if (!offeringTaxi.Value)
                     return;
 
@@ -820,13 +807,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Valkyrie), nameof(Valkyrie.OnDestroy))]
         public static class Valkyrie_OnDestroy_Taxi
         {
-            private static void Prefix(Valkyrie __instance)
-            {
-                if (!modEnabled.Value)
-                    return;
-
-                canTravel = true;
-            }
+            private static void Prefix() => canTravel = true;
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
@@ -834,9 +815,6 @@ namespace ProtectiveWards
         {
             private static void Postfix()
             {
-                if (!modEnabled.Value)
-                    return;
-
                 RegisterRPCs();
             }
         }

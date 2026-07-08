@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
@@ -10,7 +10,7 @@ namespace ProtectiveWards
         {
             public static void Postfix(Player __instance, float ___m_baseValueUpdateTimer, ref int ___m_baseValue, ZNetView ___m_nview)
             {
-                if (!modEnabled.Value || !sittingRaidProtection.Value)
+                if (!sittingRaidProtection.Value)
                     return;
 
                 if ((___m_baseValueUpdateTimer == 0f) && (___m_baseValue >= 3))
@@ -31,7 +31,7 @@ namespace ProtectiveWards
         {
             public static void Postfix(RandEventSystem.PlayerEventData player, ref bool __result)
             {
-                if (!modEnabled.Value || !sittingRaidProtection.Value || __result == false)
+                if (!sittingRaidProtection.Value || __result == false)
                     return;
 
                 if (player.baseValue != baseValueProtected)

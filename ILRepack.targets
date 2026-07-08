@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-	<Target Name="RepackThunderstore" AfterTargets="Build">
-		<ItemGroup>
-			<InputAssemblies Include="$(TargetPath)" />
-			<InputAssemblies Include="$(OutputPath)ServerSync.dll" />
-		</ItemGroup>
-		<ILRepack Parallel="true" DebugInfo="true" Internalize="true" InputAssemblies="@(InputAssemblies)" OutputFile="$(TargetDir)thunderstore\$(TargetFileName)" TargetKind="SameAsPrimaryAssembly" LibraryPath="$(OutputPath)" />
-	</Target>
-	<Target Name="CopyDLLThunderstore" AfterTargets="RepackThunderstore">
-		<Copy SourceFiles="$(TargetDir)\thunderstore\$(TargetFileName)" DestinationFolder="$(ProjectDir)package\thunderstore\$(SolutionName)\" />
+
+	<Target Name="CopyDLLThunderstore" AfterTargets="Build">
+		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)package\thunderstore\$(SolutionName)\" />
 		<Message Text="Copied to thunderstore package folder." Importance="High" />
 	</Target>
 	<Target Name="UpdateTranslations" AfterTargets="CopyDLLThunderstore">
@@ -18,26 +12,6 @@
 	<Target Name="CopyLanguageFileThunderstore" AfterTargets="UpdateTranslations">
 		<Copy SourceFiles="$(ProjectDir)translations\English.json" DestinationFiles="$(ProjectDir)package\thunderstore\$(SolutionName)\Protective Wards.English.json" />
 		<Message Text="Copied English.json to thunderstore package folder." Importance="High" />
-	</Target>
-	<Target Name="RepackNexus" AfterTargets="CopyLanguageFileThunderstore">
-		<ItemGroup>
-			<InputAssemblies Include="$(OutputPath)YamlDotNet.dll" />
-		</ItemGroup>
-		<ILRepack Parallel="true" DebugInfo="true" Internalize="true" InputAssemblies="@(InputAssemblies)" OutputFile="$(TargetPath)" TargetKind="SameAsPrimaryAssembly" LibraryPath="$(OutputPath)" />
-	</Target>
-	<Target Name="CopyDLLNexus" AfterTargets="RepackNexus">
-		<Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)package\nexus\$(SolutionName)\" />
-		<Message Text="Copied to nexus package folder." Importance="High" />
-	</Target>
-	<Target Name="CopyLanguageFileNexus" AfterTargets="CopyDLLNexus">
-		<Copy SourceFiles="$(ProjectDir)translations\English.json" DestinationFiles="$(ProjectDir)package\nexus\$(SolutionName)\Protective Wards.English.json" />
-		<Message Text="Copied English.json to nexus package folder." Importance="High" />
-	</Target>
-	<Target Name="ZipNexus" AfterTargets="CopyLanguageFileNexus">
-		<ZipDirectory
-				SourceDirectory="$(ProjectDir)package\nexus\$(SolutionName)\"
-				DestinationFile="$(ProjectDir)package\nexus\$(SolutionName).zip"
-				Overwrite="true"/>
 	</Target>
 	<Target Name="ZipThunderstore" AfterTargets="CopyDLLThunderstore">
 		<ZipDirectory

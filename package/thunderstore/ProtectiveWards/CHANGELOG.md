@@ -1,3 +1,21 @@
+# 2.0.0
+* migrated configuration sync to Jotunn and added Jotunn as a required dependency
+* removed the global Enabled config; use individual feature configs instead
+* added per-ward settings UI for range, emission color, sphere visuals, and ward circle visuals
+* ward range customization is now bound to the vanilla guard_stone ward prefab
+* added access protection from non-permitted players for containers, doors, plants, feasts and placed consumable food, configurable non-food item pickup modes, ships, tames, saddles, carts, portals, production stations, item stands, armor stands, map tables, shield generators, incinerators, turrets, crafting stations, beds, catapults, archery targets, barber stations, traps, fireplaces, and generic interactables
+* added connected ward access modes: Off, SameCreatorOnly, MutualTrust, and AnyConnected
+* enabling or reactivating a ward can also activate connected wards the requester has access to
+* added ownership-aware exemptions for portals, tombstones, saddles, and similar owned objects, and last-controller exemptions for ships and carts so the same driver can leave another warded area
+* added portal access modes, including teleport-only access and full teleport blocking
+* added server-side pw_ and ward_ commands for nearby ward administration: permit, unpermit, enable, disable, set expired, and set unexpired
+* added optional per-player ward build limit
+* added background protection for qualified warded bases when no permitted/effective-access player is nearby
+* added background protection options for player-built structures, tames, ships, carts, fire damage, tame pacify, building, and demolishing
+* added multiplayer/server-side inactive ward expiration with manual and automatic reactivation modes, refreshed by nearby access players
+* added Ward admin access mode, including an option that requires admin god mode
+* moved Permit everyone to the Ward admin group; when enabled, ward access checks are bypassed and every player is treated as having ward admin access
+
 # 1.2.11
 * fixed localization not initializing in certain cases
 
