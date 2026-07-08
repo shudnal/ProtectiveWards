@@ -38,6 +38,8 @@ namespace ProtectiveWards
             s_rpcRegistered = true;
         }
 
+        internal static void ResetRPCRegistration() => s_rpcRegistered = false;
+
         private static void RegisterCommands()
         {
             if (s_commandRegistered)
@@ -492,6 +494,12 @@ namespace ProtectiveWards
         private static class ZoneSystem_Start_RegisterAdminRPCs
         {
             private static void Postfix() => RegisterRPCs();
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        private static class ZoneSystem_OnDestroy_ResetAdminRPCs
+        {
+            private static void Postfix() => ResetRPCRegistration();
         }
 
         [HarmonyPatch(typeof(Piece), nameof(Piece.SetCreator))]

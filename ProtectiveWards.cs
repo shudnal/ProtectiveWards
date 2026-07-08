@@ -19,7 +19,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.0";
+        public const string pluginVersion = "2.0.1";
 
         private static Harmony _harmony;
 
@@ -1197,9 +1197,6 @@ namespace ProtectiveWards
             if (wardSettingsAllowAdminEdit.Value && HasLocalWardAdminAccess())
                 return true;
 
-            if (IsDisabledForeignWard(ward, player.GetPlayerID()))
-                return false;
-
             if (ShouldBlockInactiveWardAccess(ward, player))
                 return false;
 
@@ -1207,7 +1204,7 @@ namespace ProtectiveWards
                 return false;
 
             if (wardSettingsRequireCreator.Value)
-                return ward.m_piece.IsCreator();
+                return !IsDisabledForeignWard(ward, player.GetPlayerID()) && ward.m_piece.IsCreator();
 
             return ward.HaveLocalAccess();
         }
@@ -1220,14 +1217,11 @@ namespace ProtectiveWards
             if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
 
-            if (IsDisabledForeignWard(ward, playerID))
-                return false;
-
             if (ShouldBlockInactiveWardAccess(ward, playerID))
                 return false;
 
             if (wardSettingsRequireCreator.Value)
-                return ward.m_piece != null && ward.m_piece.GetCreator() == playerID;
+                return !IsDisabledForeignWard(ward, playerID) && ward.m_piece != null && ward.m_piece.GetCreator() == playerID;
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
             return HasAccessToWardOrConnectedWard(ward, playerID, mode);
@@ -1241,11 +1235,8 @@ namespace ProtectiveWards
             if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
                 return true;
 
-            if (IsDisabledForeignWard(zdo, playerID))
-                return false;
-
             if (wardSettingsRequireCreator.Value)
-                return zdo.IsCreator(playerID);
+                return !IsDisabledForeignWard(zdo, playerID) && zdo.IsCreator(playerID);
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
             return zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings);
@@ -1957,6 +1948,14 @@ namespace ProtectiveWards
             }
         }
 
+        private static string NormalizeHtmlColor(string value)
+        {
+            if (value.IsNullOrWhiteSpace())
+                return value;
+
+            return value.StartsWith("#") ? value : "#" + value;
+        }
+
         public static void InitCircleProjectorState(CircleProjector marker, ZNetView nview)
         {
             if (marker == null || nview == null || !nview.IsValid())
@@ -1968,12 +1967,12 @@ namespace ProtectiveWards
 
             string start = GetWardStringSetting(zdo, s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value));
             Color startColor = wardAreaMarkerStartColor.Value;
-            if (!start.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(start, out Color color))
+            if (!start.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(NormalizeHtmlColor(start), out Color color))
                 startColor = color;
 
             string end = GetWardStringSetting(zdo, s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value));
             Color endColor = wardAreaMarkerEndColor.Value;
-            if (!end.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(end, out Color color1))
+            if (!end.IsNullOrWhiteSpace() && ColorUtility.TryParseHtmlString(NormalizeHtmlColor(end), out Color color1))
                 endColor = color1;
 
             var gradient = new Gradient();

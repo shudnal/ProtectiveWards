@@ -15,6 +15,7 @@ namespace ProtectiveWards
         private const string RPC_TeleportTargetAccessResponse = "PW_TeleportTargetAccessResponse";
         private const float saddleUserRecordMaxDistance = 10f;
         private const float vehicleControllerRecordMaxDistance = 10f;
+        private const float portalSourceValidationDistance = 8f;
         private static int s_privateAreaCheckBypassDepth;
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
@@ -146,7 +147,13 @@ namespace ProtectiveWards
             ZDO sourceZdo = ZDOMan.instance.GetZDO(sourceZdoID);
             if (sourceZdo == null)
             {
-                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: true, blockingOwnerName: "");
+                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: false, blockingOwnerName: "");
+                return;
+            }
+
+            if (!IsSourcePortalUsableByRequester(sourceZdo, requester, out string blockingOwnerName))
+            {
+                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: false, blockingOwnerName);
                 return;
             }
 
@@ -154,12 +161,37 @@ namespace ProtectiveWards
             ZDO targetZdo = ZDOMan.instance.GetZDO(targetZdoID);
             if (targetZdo == null)
             {
-                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: true, blockingOwnerName: "");
+                SendTeleportTargetAccessResponse(sender, sourceZdoID, granted: false, blockingOwnerName: "");
                 return;
             }
 
-            bool granted = IsTeleportTargetAccessibleToPlayer(targetZdo.GetPosition(), requester.PlayerID, out string blockingOwnerName);
+            bool granted = IsTeleportTargetAccessibleToPlayer(targetZdo.GetPosition(), requester.PlayerID, out blockingOwnerName);
             SendTeleportTargetAccessResponse(sender, sourceZdoID, granted, blockingOwnerName);
+        }
+
+        private static bool IsSourcePortalUsableByRequester(ZDO sourceZdo, RoutedPlayerContext requester, out string blockingOwnerName)
+        {
+            blockingOwnerName = "";
+
+            if (sourceZdo == null || sourceZdo.GetConnectionZDOID(ZDOExtraData.ConnectionType.Portal) == ZDOID.None)
+                return false;
+
+            if (!requester.HasPosition)
+                return false;
+
+            float maxDistance = portalSourceValidationDistance;
+            GameObject instance = ZNetScene.instance?.FindInstance(sourceZdo.m_uid);
+            TeleportWorld teleport = instance?.GetComponent<TeleportWorld>();
+            if (teleport != null)
+                maxDistance = Math.Max(maxDistance, teleport.m_activationRange + 2f);
+
+            if (Vector3.Distance(requester.Position, sourceZdo.GetPosition()) > maxDistance)
+                return false;
+
+            if (IsTeleportTargetAccessibleToPlayer(sourceZdo.GetPosition(), requester.PlayerID, out blockingOwnerName))
+                return true;
+
+            return sourceZdo.IsCreator(requester.PlayerID);
         }
 
         private static void SendTeleportTargetAccessResponse(long peerID, ZDOID sourceZdoID, bool granted, string blockingOwnerName)
@@ -1544,12 +1576,14 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Vagon), nameof(Vagon.AttachTo))]
         public static class Vagon_AttachTo_RecordLastController
         {
-            private static void Postfix(Vagon __instance, GameObject go)
+            private static void Postfix(Vagon __instance)
             {
-                if (__instance == null || go == null)
+                if (__instance == null)
                     return;
 
-                Player player = go.GetComponent<Player>();
+                Player player = __instance.m_attachedObject?.GetComponent<Player>();
+
+                player ??= Player.GetClosestPlayer(__instance.transform.position, vehicleControllerRecordMaxDistance);
                 if (player == null)
                     return;
 

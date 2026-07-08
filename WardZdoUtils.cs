@@ -99,7 +99,7 @@ namespace ProtectiveWards
             if (zdo == null)
                 return false;
 
-            bool fallback = wardSettingsUseDefaultsForAllWards.Value ? setWardRange.Value : false;
+            bool fallback = wardSettingsUseDefaultsForAllWards.Value && setWardRange.Value;
             if (HasZdoFloat(zdo, s_range))
                 fallback = true;
 
@@ -115,8 +115,7 @@ namespace ProtectiveWards
 
             if (ZNetScene.instance != null)
             {
-                GameObject prefab = ZNetScene.instance.GetPrefab(WardPrefabName);
-                PrivateArea prefabWard = prefab != null ? prefab.GetComponent<PrivateArea>() : null;
+                PrivateArea prefabWard = ZNetScene.instance?.GetPrefab(WardPrefabName)?.GetComponent<PrivateArea>();
                 if (prefabWard != null)
                     s_wardDefaultRadius = prefabWard.m_radius;
             }

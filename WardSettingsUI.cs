@@ -131,6 +131,8 @@ namespace ProtectiveWards
             s_rpcRegistered = true;
         }
 
+        internal static void ResetRPCRegistration() => s_rpcRegistered = false;
+
         internal static void Open(PrivateArea ward)
         {
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
@@ -1244,6 +1246,12 @@ namespace ProtectiveWards
             {
                 RegisterRPCs();
             }
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        private static class ZoneSystem_OnDestroy_ResetWardSettingsRPC
+        {
+            private static void Postfix() => ResetRPCRegistration();
         }
     }
 }

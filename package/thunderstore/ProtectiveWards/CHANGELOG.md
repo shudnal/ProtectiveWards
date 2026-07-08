@@ -1,3 +1,10 @@
+# 2.0.1
+* tightened full portal blocking by validating the source portal on the server before approving destination teleport access
+* fixed permitted non-creator players being unable to open or apply ward settings on disabled wards when creator-only editing is disabled
+* fixed per-ward circle colors saved from the settings UI not applying because stored HTML colors were read without a leading #
+* improved cart last-controller tracking so player-attached carts use the attached player first and fall back to the nearest player only for non-player cart pullers
+* reset ward administration and ward settings RPC registration when changing worlds or switching between client and server roles in the same game session
+
 # 2.0.0
 * migrated configuration sync to Jotunn and added Jotunn as a required dependency
 * removed the global Enabled config; use individual feature configs instead
