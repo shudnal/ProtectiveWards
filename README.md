@@ -216,27 +216,27 @@ Offer specific items to a ward to trigger useful effects:
 - Ymir flesh: grow healthy plants;
 - Eitr x5: grow plants regardless of normal requirements;
 - dragon egg: activate Moder power for players;
-- selected travel items: call a taxi to distant locations.
+- selected travel items: open a Valkyrie passage to distant locations.
 
 By default, offerings are still available to non-permitted players. A separate opt-in config can restrict offerings to permitted/effective-access players.
 
-When the player knows the vanilla guard stone text, the Valheim Compendium also shows a `Ward sacrifices` topic under the raven icon. It lists the currently recognizable sacrifices and their effects. The ward hover only keeps a short reminder instead of showing the full offering list.
+When the player knows the vanilla guard stone text, the Valheim Compendium also shows a `Ward and offerings` topic under the raven icon. It lists the currently recognizable offerings and their effects. The ward hover only keeps a short reminder instead of showing the full offering list.
 
-### Taxi
+### Valkyrie passage
 
-The taxi offering can move the player to selected distant locations and optionally bring them back.
+A Valkyrie passage offering can carry the player to selected distant locations and optionally bring them back.
 
 Supported destinations include:
 
 - Sacrificial Stones with a boss trophy;
-- Haldor with the configured Haldor taxi item, coins by default. The amount depends on whether Haldor is already discovered;
+- Haldor with the configured Haldor passage item, coins by default. The amount depends on whether Haldor is already discovered;
 - Hildir with Hildir chests or the configured Hildir travel item. Hildir chests are never consumed; the configured Hildir item defaults to Linen thread x50;
 - Bog Witch with the configured Bog Witch travel item and amount;
 - optional boss altar destinations for Eikthyr, Elder, Bonemass, Moder, Yagluth, Queen, and Fader. These routes are disabled by default and can be configured with their own offering item, item amount, and consume setting.
 
-Each main destination can be enabled or disabled separately. Most taxi offerings also have a separate setting controlling whether the offered item is consumed. Hildir chest taxi is always free and does not consume the chest. Boss altar locations are fixed to vanilla world locations; if the target location is missing in the world, no item is consumed.
+Each main destination can be enabled or disabled separately. Most Valkyrie passage offerings also have a separate setting controlling whether the offered item is consumed. Hildir chest passage is always free and does not consume the chest. Boss altar locations are fixed to vanilla world locations; if the target location is missing in the world, no item is consumed.
 
-Taxi item configs accept several item name forms:
+Valkyrie passage item configs accept several item name forms:
 
 - item prefab name, for example `Coins`;
 - localization token, for example `$item_coins`;
@@ -244,14 +244,14 @@ Taxi item configs accept several item name forms:
 
 The mod resolves configured item names to the internal localization token before comparing them with inventory items.
 
-The taxi waits if the player is sleeping, in a dungeon, sitting, attached to a ship, riding, teleporting, or using a hammer. During the flight, `AltPlace + Use` (`Left Shift + E` by default) makes the Valkyrie drop you immediately. No Valkyrie will return to pick you up after that. Set `Offerings - Taxi / Seconds to fly back` to `0` to disable the return flight.
+The passage starts through the `Valkyrie passage` status effect with the Celestial feather icon. If return flight is enabled, the same status effect shows the return timer. During the flight, `AltPlace + Use` (`Left Shift + E` by default) makes the Valkyrie drop you immediately. No Valkyrie will return to pick you up after that. Set `Offerings - Taxi / Seconds to fly back` to `0` to disable the return flight.
 
 Restrictions:
 
 - the player cannot be encumbered;
 - the player must be teleportable, except Hildir chests are ignored for this check;
 - the target point must be at least 300 meters away;
-- another taxi trip cannot start while a return trip is pending.
+- another passage cannot start while a return trip is pending unless the active-passage handling config is set to stop the current passage first.
 
 ## Localization
 

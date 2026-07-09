@@ -1678,18 +1678,44 @@ namespace ProtectiveWards
                         if (type == null || type == typeof(Interactable) || type.IsAbstract || type.ContainsGenericParameters || ExcludedInteractableTypes.Contains(type))
                             continue;
 
-                        if (typeof(Interactable).IsAssignableFrom(type))
+                        if (SafeIsInteractableType(type))
                             yield return type;
                     }
                 }
             }
 
+            private static bool SafeIsInteractableType(Type type)
+            {
+                try
+                {
+                    return typeof(Interactable).IsAssignableFrom(type);
+                }
+                catch (Exception ex)
+                {
+                    LogInfo($"Skipping interactable type scan for {type?.FullName ?? "unknown"}: {ex.GetType().Name}");
+                    return false;
+                }
+            }
+
             private static bool ShouldPatchInteractableMethod(MethodInfo method)
             {
-                return method != null
-                       && method.DeclaringType != null
-                       && method.DeclaringType != typeof(Interactable)
-                       && !ExcludedInteractableTypes.Contains(method.DeclaringType);
+                if (method == null
+                    || method.DeclaringType == null
+                    || method.DeclaringType == typeof(Interactable)
+                    || method.IsAbstract
+                    || method.IsVirtual
+                    || ExcludedInteractableTypes.Contains(method.DeclaringType))
+                    return false;
+
+                try
+                {
+                    return method.GetMethodBody() != null;
+                }
+                catch (Exception ex)
+                {
+                    LogInfo($"Skipping interactable method patch for {method.DeclaringType.FullName}.{method.Name}: {ex.GetType().Name}");
+                    return false;
+                }
             }
 
             public static bool Prefix(object __instance, Humanoid __0, ref bool __result)
@@ -1782,9 +1808,11 @@ namespace ProtectiveWards
                 }
                 else if (__instance.TryGetComponent(out Pickable pickable))
                 {
-                    ItemDrop.ItemData.SharedData m_shared = pickable.m_itemPrefab?.GetComponent<ItemDrop>()?.m_itemData.m_shared;
+                    GameObject itemPrefab = pickable.m_itemPrefab;
+                    ItemDrop.ItemData.SharedData m_shared = itemPrefab?.GetComponent<ItemDrop>()?.m_itemData.m_shared;
+                    string prefabName = itemPrefab?.name?.ToLower();
 
-                    if (m_shared != null && _wardPlantProtectionList.Contains(m_shared.m_name.ToLower()))
+                    if (m_shared != null && (_wardPlantProtectionList.Contains(m_shared.m_name.ToLower()) || _wardPlantProtectionList.Contains(prefabName)))
                     {
                         ModifyHitDamage(hit, 0f);
                         ward.FlashShield(false);

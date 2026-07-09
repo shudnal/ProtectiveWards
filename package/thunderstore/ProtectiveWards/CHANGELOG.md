@@ -1,16 +1,29 @@
+# 2.0.2
+* added a `Valkyrie passage` status effect with the Celestial feather icon for active Valkyrie flights and return timers
+* hardened Valkyrie passage state handling so active passages are tracked consistently and stuck flights drop the player
+* hardened Valkyrie passage route setup for short distances by clamping the descent path and preserving the existing minimum distance check
+* added separate Valkyrie passage destination enable configs and consume-item configs for Sacrificial Stones, Haldor, Hildir, Bog Witch, and optional boss altar routes
+* added disabled-by-default Valkyrie passage routes to vanilla boss altars using boss offering items
+* changed the default configured Hildir passage tribute to Linen thread x50 to avoid overlapping with Yagluth totems and thunder stone offerings
+* changed the optional Moder altar passage tribute to Freeze gland x30 while keeping dragon eggs for the Moder power offering
+* Valkyrie passage item configs can now use item prefab names, localization tokens, or localized item names
+* Hildir chests remain free non-consumed Valkyrie passage tickets to Hildir and no longer conflict with the configured Hildir passage tribute
+* Valkyrie return flight can now be disabled by setting Seconds to fly back to 0
+* moved the detailed offerings list from the guard stone hover into the Valheim Compendium and replaced the hover list with an immediate raven-icon hint
+* expanded the guard stone Compendium text with Protective Wards behavior notes and added a dedicated Ward and offerings topic
+* changed the default custom ward range value to 32 meters
+* limited ward sphere, demister, visual refresh, and range changes to vanilla player wards so Dvergr guardstones are not modified
+* fixed connected ward expiration refresh not counting players standing inside an accessible connected ward area
+* fixed plant growth offerings failing on some plant instances
+* ward permit and unpermit commands no longer match players from an empty name query
+* fixed consumable offering items being eaten when used on a ward without matching an enabled offering
+
 # 2.0.1
 * tightened full portal blocking by validating the source portal on the server before approving destination teleport access
 * fixed permitted non-creator players being unable to open or apply ward settings on disabled wards when creator-only editing is disabled
 * fixed per-ward circle colors saved from the settings UI not applying because stored HTML colors were read without a leading #
 * improved cart last-controller tracking so player-attached carts use the attached player first and fall back to the nearest player only for non-player cart pullers
 * reset ward administration and ward settings RPC registration when changing worlds or switching between client and server roles in the same game session
-* fixed ward build-limit checks relying on an empty server ward cache after late initialization
-* delayed taxi payment consumption until the flight is actually ready to start
-* improved remote taxi location requests so the server uses the routed player's position and validates requested taxi target/payment type
-* fixed connected ward expiration refresh not counting players standing inside an accessible connected ward area
-* fixed plant offering scans failing on Plant instances without a valid ZNetView
-* ignored empty player-name queries in ward permit/unpermit commands
-* cleaned up stale pending ward build-limit check IDs after server validation and world unload
 
 # 2.0.0
 * migrated configuration sync to Jotunn and added Jotunn as a required dependency
