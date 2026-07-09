@@ -1,3 +1,4 @@
+using BepInEx.Configuration;
 using HarmonyLib;
 using SoftReferenceableAssets;
 using System;
@@ -110,7 +111,7 @@ namespace ProtectiveWards
 
             LogInfo("Timer of player returnal ended");
 
-            player.StartCoroutine(TaxiToPosition(player, position, itemName: "", stack: 0));
+            player.StartCoroutine(TaxiToPosition(player, position));
         }
 
         private static void RepairNearestStructures(bool augment, PrivateArea ward, Player initiator, ItemDrop.ItemData item)
@@ -191,6 +192,12 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
             {
+                if (__instance == null || __instance.m_nview == null || !__instance.m_nview.IsValid() || item == null || item.m_shared == null)
+                    return true;
+
+                if (__instance.m_ownerFaction != Character.Faction.Players || !WardZdoUtils.IsWardPrefab(__instance.gameObject))
+                    return true;
+
                 if (!__instance.IsEnabled())
                 {
                     LogInfo("Ward disabled");
@@ -227,13 +234,7 @@ namespace ProtectiveWards
 
                 bool moderPower = item.m_shared.m_name == "$item_dragonegg" && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon);
 
-                bool taxi = offeringTaxi.Value && (item.m_shared.m_name == "$item_coins" ||
-                                                   IsBossTrophy(item.m_shared.m_name) ||
-                                                   IsItemForHildirTravel(item.m_shared.m_name) ||
-                                                   IsItemForBogWitchTravel(item.m_shared.m_name) ||
-                                                   item.m_shared.m_name == "$item_chest_hildir1" ||
-                                                   item.m_shared.m_name == "$item_chest_hildir2" ||
-                                                   item.m_shared.m_name == "$item_chest_hildir3");
+                bool taxi = offeringTaxi.Value && IsTaxiOfferingItem(item.m_shared.m_name);
 
                 if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower && !taxi)
                 {
@@ -424,6 +425,22 @@ namespace ProtectiveWards
             initiator.GetInventory().RemoveOneItem(item);
         }
 
+        private struct TaxiOffer
+        {
+            public string LocationName;
+            public string ItemName;
+            public int Stack;
+            public bool ConsumeItem;
+        }
+
+        private const string EikthyrAltarLocation = "Eikthyrnir";
+        private const string ElderAltarLocation = "GDKing";
+        private const string BonemassAltarLocation = "Bonemass";
+        private const string ModerAltarLocation = "Dragonqueen";
+        private const string YagluthAltarLocation = "GoblinKing";
+        private const string QueenAltarLocation = "Mistlands_DvergrBossEntrance1";
+        private const string FaderAltarLocation = "FaderLocation";
+
         private static void TaxiToLocation(ItemDrop.ItemData item, Player initiator)
         {
             if (initiator.IsEncumbered())
@@ -444,42 +461,22 @@ namespace ProtectiveWards
                 return;
             }
 
-            Vector3 location = Vector3.zero;
-            int stack = 0;
-
-            bool locationFound; string locationName;
-            if (IsBossTrophy(item.m_shared.m_name))
-            {
-                locationName = "StartTemple";
-                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
-            }
-            else if (item.m_shared.m_name == "$item_coins")
-            {
-                locationName = "Vendor_BlackForest";
-                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
-                stack = locationFound ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value;
-            }
-            else if (IsItemForHildirTravel(item.m_shared.m_name) || IsHildirChestItem(item.m_shared.m_name))
-            {
-                locationName = "Hildir_camp";
-                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
-                stack = 1;
-            }
-            else if (IsItemForBogWitchTravel(item.m_shared.m_name))
-            {
-                locationName = "BogWitch_Camp";
-                locationFound = TryGetFoundLocation(locationName, initiator.transform.position, ref location);
-                stack = offeringTaxiPriceBogWitchAmount.Value;
-            }
-            else
+            if (!TryGetTaxiOffer(item.m_shared.m_name, out TaxiOffer offer))
                 return;
 
-            if (locationFound)
-                StartTaxi(initiator, location, item.m_shared.m_name, stack);
+            Vector3 location = Vector3.zero;
+            if (TryGetFoundLocation(offer.LocationName, initiator.transform.position, ref location))
+            {
+                StartTaxi(initiator, location, offer);
+            }
             else if (!ZNet.instance.IsServer())
-                ClosestLocationRequest(locationName, item.m_shared.m_name, stack);
+            {
+                ClosestLocationRequest(offer);
+            }
             else
-                LogInfo($"Location {locationName} is not found");
+            {
+                LogInfo($"Location {offer.LocationName} is not found");
+            }
         }
 
         internal static void RegisterRPCs()
@@ -490,14 +487,14 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.Register<ZPackage>("StartTaxi", RPC_StartTaxi);
         }
 
-        public static void ClosestLocationRequest(string name, string itemName, int stack)
+        private static void ClosestLocationRequest(TaxiOffer offer)
         {
-            LogInfo($"{name} closest location request");
+            LogInfo($"{offer.LocationName} closest location request");
 
             ZPackage zPackage = new();
-            zPackage.Write(name);
-            zPackage.Write(itemName);
-            zPackage.Write(stack);
+            zPackage.Write(offer.LocationName);
+            zPackage.Write(offer.ItemName);
+            zPackage.Write(offer.Stack);
 
             ZRoutedRpc.instance.InvokeRoutedRPC("ClosestLocationRequest", zPackage);
         }
@@ -507,7 +504,7 @@ namespace ProtectiveWards
             // Server
 
             string name = pkg.ReadString();
-            string itemName = pkg.ReadString();
+            string itemName = pkg.ReadString().GetItemName();
             int stack = pkg.ReadInt();
 
             if (!TryGetTaxiRequester(sender, out RoutedPlayerContext requester))
@@ -525,8 +522,10 @@ namespace ProtectiveWards
 
             ZPackage zPackage = new();
             zPackage.Write(target);
+            zPackage.Write(name);
             zPackage.Write(itemName);
             zPackage.Write(stack);
+            zPackage.Write(ShouldConsumeTaxiItem(name, itemName));
 
             ZRoutedRpc.instance.InvokeRoutedRPC(sender, "StartTaxi", zPackage);
         }
@@ -534,11 +533,13 @@ namespace ProtectiveWards
         public static void RPC_StartTaxi(long sender, ZPackage pkg)
         {
             Vector3 location = pkg.ReadVector3();
-            string itemName = pkg.ReadString();
+            string locationName = pkg.ReadString();
+            string itemName = pkg.ReadString().GetItemName();
             int stack = pkg.ReadInt();
+            bool consumeItem = pkg.ReadBool();
 
-            LogInfo($"Server responded with closest location");
-            StartTaxi(Player.m_localPlayer, location, itemName, stack);
+            LogInfo("Server responded with closest location");
+            StartTaxi(Player.m_localPlayer, location, new TaxiOffer { LocationName = locationName, ItemName = itemName, Stack = stack, ConsumeItem = consumeItem });
         }
 
         private static bool TryGetTaxiRequester(long sender, out RoutedPlayerContext requester)
@@ -549,13 +550,14 @@ namespace ProtectiveWards
 
         private static bool IsValidServerTaxiRequest(string name, string itemName, int stack)
         {
+            itemName = itemName.GetItemName();
             return name switch
             {
-                "StartTemple" => IsBossTrophy(itemName) && stack == 0,
-                "Vendor_BlackForest" => itemName == "$item_coins" && stack == GetExpectedHaldorTaxiPrice(),
-                "Hildir_camp" => (IsItemForHildirTravel(itemName) || IsHildirChestItem(itemName)) && stack == 1,
-                "BogWitch_Camp" => IsItemForBogWitchTravel(itemName) && stack == offeringTaxiPriceBogWitchAmount.Value,
-                _ => false,
+                "StartTemple" => offeringTaxiStartTempleEnabled.Value && IsBossTrophy(itemName) && stack == GetSacrificialStonesTaxiStack(),
+                "Vendor_BlackForest" => offeringTaxiHaldorEnabled.Value && IsItemForHaldorTravel(itemName) && stack == GetExpectedHaldorTaxiPrice(),
+                "Hildir_camp" => offeringTaxiHildirEnabled.Value && ((offeringTaxiHildirChestsEnabled.Value && IsHildirChestItem(itemName) && stack == 1) || (IsItemForHildirTravel(itemName) && stack == GetHildirTaxiPrice())),
+                "BogWitch_Camp" => offeringTaxiBogWitchEnabled.Value && IsItemForBogWitchTravel(itemName) && stack == offeringTaxiPriceBogWitchAmount.Value,
+                _ => IsValidBossAltarTaxiRequest(name, itemName, stack),
             };
         }
 
@@ -566,6 +568,10 @@ namespace ProtectiveWards
                 : offeringTaxiPriceHaldorUndiscovered.Value;
         }
 
+        private static int GetHildirTaxiPrice() => Math.Max(offeringTaxiPriceHildirAmount.Value, 0);
+
+        private static int GetSacrificialStonesTaxiStack() => offeringTaxiStartTempleConsumeItem.Value ? 1 : 0;
+
         private static bool HasLocationIcon(string name)
         {
             ZoneSystem.instance.tempIconList.Clear();
@@ -573,7 +579,7 @@ namespace ProtectiveWards
             return ZoneSystem.instance.tempIconList.Any(icon => icon.Value == name);
         }
 
-        internal static void StartTaxi(Player initiator, Vector3 position, string itemName, int stack)
+        private static void StartTaxi(Player initiator, Vector3 position, TaxiOffer offer)
         {
             if (Utils.DistanceXZ(initiator.transform.position, position) < 300f)
             {
@@ -581,13 +587,18 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!HasTaxiPayment(initiator, itemName, stack))
+            if (!HasTaxiPayment(initiator, offer))
             {
                 initiator.Message(MessageHud.MessageType.Center, "$msg_incompleteoffering".Localize());
                 return;
             }
 
-            initiator.StartCoroutine(TaxiToPosition(initiator, position, returnBack: true, waitSeconds: 10, itemName: itemName, stack: stack));
+            initiator.StartCoroutine(TaxiToPosition(initiator, position, returnBack: offeringTaxiSecondsToFlyBack.Value > 0, waitSeconds: 10, offer: offer));
+        }
+
+        private static void StartTaxi(Player initiator, Vector3 position, string itemName, int stack)
+        {
+            StartTaxi(initiator, position, new TaxiOffer { LocationName = "", ItemName = itemName.GetItemName(), Stack = stack, ConsumeItem = true });
         }
 
         internal static bool TryGetFoundLocation(string name, Vector3 position, ref Vector3 target)
@@ -612,29 +623,145 @@ namespace ProtectiveWards
             return false;
         }
 
-        internal static bool IsItemForHildirTravel(string itemName) => offeringTaxiPriceHildirItem.Value != "" && itemName == offeringTaxiPriceHildirItem.Value;
-
-        internal static bool IsItemForBogWitchTravel(string itemName) => offeringTaxiPriceBogWitchItem.Value != "" && itemName == offeringTaxiPriceBogWitchItem.Value;
-
-        private static bool RequiresTaxiPayment(string itemName, int stack)
+        private static bool IsTaxiOfferingItem(string itemName)
         {
-            return stack > 0 && (IsItemForHildirTravel(itemName) || IsItemForBogWitchTravel(itemName) || itemName == "$item_coins");
+            return TryGetTaxiOffer(itemName, out _);
         }
 
-        private static bool HasTaxiPayment(Player player, string itemName, int stack)
+        private static bool TryGetTaxiOffer(string itemName, out TaxiOffer offer)
         {
-            return !RequiresTaxiPayment(itemName, stack) || player.GetInventory().CountItems(itemName) >= stack;
-        }
+            offer = default;
+            itemName = itemName.GetItemName();
 
-        private static bool TryConsumeTaxiPayment(Player player, string itemName, int stack)
-        {
-            if (!RequiresTaxiPayment(itemName, stack))
+            if (offeringTaxiStartTempleEnabled.Value && IsBossTrophy(itemName))
+            {
+                offer = new TaxiOffer { LocationName = "StartTemple", ItemName = itemName, Stack = GetSacrificialStonesTaxiStack(), ConsumeItem = offeringTaxiStartTempleConsumeItem.Value };
                 return true;
+            }
 
-            if (!HasTaxiPayment(player, itemName, stack))
+            if (offeringTaxiHaldorEnabled.Value && IsItemForHaldorTravel(itemName))
+            {
+                offer = new TaxiOffer { LocationName = "Vendor_BlackForest", ItemName = itemName, Stack = GetExpectedHaldorTaxiPrice(), ConsumeItem = offeringTaxiHaldorConsumeItem.Value };
+                return true;
+            }
+
+            if (offeringTaxiHildirEnabled.Value && offeringTaxiHildirChestsEnabled.Value && IsHildirChestItem(itemName))
+            {
+                offer = new TaxiOffer { LocationName = "Hildir_camp", ItemName = itemName, Stack = 1, ConsumeItem = false };
+                return true;
+            }
+
+            if (offeringTaxiHildirEnabled.Value && IsItemForHildirTravel(itemName))
+            {
+                offer = new TaxiOffer { LocationName = "Hildir_camp", ItemName = itemName, Stack = GetHildirTaxiPrice(), ConsumeItem = offeringTaxiHildirConsumeItem.Value };
+                return true;
+            }
+
+            if (offeringTaxiBogWitchEnabled.Value && IsItemForBogWitchTravel(itemName))
+            {
+                offer = new TaxiOffer { LocationName = "BogWitch_Camp", ItemName = itemName, Stack = offeringTaxiPriceBogWitchAmount.Value, ConsumeItem = offeringTaxiBogWitchConsumeItem.Value };
+                return true;
+            }
+
+            return TryGetBossAltarTaxiOffer(itemName, out offer);
+        }
+
+        internal static bool IsItemForHaldorTravel(string itemName) => ConfiguredItemName(offeringTaxiPriceHaldorItem) != "" && itemName.GetItemName() == ConfiguredItemName(offeringTaxiPriceHaldorItem);
+
+        internal static bool IsItemForHildirTravel(string itemName) => ConfiguredItemName(offeringTaxiPriceHildirItem) != "" && itemName.GetItemName() == ConfiguredItemName(offeringTaxiPriceHildirItem);
+
+        internal static bool IsItemForBogWitchTravel(string itemName) => ConfiguredItemName(offeringTaxiPriceBogWitchItem) != "" && itemName.GetItemName() == ConfiguredItemName(offeringTaxiPriceBogWitchItem);
+
+        private static string ConfiguredItemName(ConfigEntry<string> entry) => entry.Value.GetItemName();
+
+        private static bool HasTaxiPayment(Player player, TaxiOffer offer)
+        {
+            return offer.Stack <= 0 || player.GetInventory().CountItems(offer.ItemName) >= offer.Stack;
+        }
+
+        private static bool TryConsumeTaxiPayment(Player player, TaxiOffer offer)
+        {
+            if (!HasTaxiPayment(player, offer))
                 return false;
 
-            player.GetInventory().RemoveItem(itemName, stack);
+            if (offer.ConsumeItem && offer.Stack > 0)
+                player.GetInventory().RemoveItem(offer.ItemName, offer.Stack);
+
+            return true;
+        }
+
+        private static bool ShouldConsumeTaxiItem(string locationName, string itemName)
+        {
+            itemName = itemName.GetItemName();
+            return locationName switch
+            {
+                "StartTemple" => offeringTaxiStartTempleConsumeItem.Value,
+                "Vendor_BlackForest" => offeringTaxiHaldorConsumeItem.Value,
+                "Hildir_camp" => !IsHildirChestItem(itemName) && offeringTaxiHildirConsumeItem.Value,
+                "BogWitch_Camp" => offeringTaxiBogWitchConsumeItem.Value,
+                _ => TryGetBossAltarConsumeItem(locationName, itemName, out bool consumeItem) && consumeItem,
+            };
+        }
+
+        private static bool TryGetBossAltarTaxiOffer(string itemName, out TaxiOffer offer)
+        {
+            itemName = itemName.GetItemName();
+            return TryGetBossAltarTaxiOffer(offeringTaxiEikthyrAltarEnabled, EikthyrAltarLocation, offeringTaxiEikthyrAltarItem, offeringTaxiEikthyrAltarAmount, offeringTaxiEikthyrAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiElderAltarEnabled, ElderAltarLocation, offeringTaxiElderAltarItem, offeringTaxiElderAltarAmount, offeringTaxiElderAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiBonemassAltarEnabled, BonemassAltarLocation, offeringTaxiBonemassAltarItem, offeringTaxiBonemassAltarAmount, offeringTaxiBonemassAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiModerAltarEnabled, ModerAltarLocation, offeringTaxiModerAltarItem, offeringTaxiModerAltarAmount, offeringTaxiModerAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiYagluthAltarEnabled, YagluthAltarLocation, offeringTaxiYagluthAltarItem, offeringTaxiYagluthAltarAmount, offeringTaxiYagluthAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiQueenAltarEnabled, QueenAltarLocation, offeringTaxiQueenAltarItem, offeringTaxiQueenAltarAmount, offeringTaxiQueenAltarConsumeItem, itemName, out offer) ||
+                   TryGetBossAltarTaxiOffer(offeringTaxiFaderAltarEnabled, FaderAltarLocation, offeringTaxiFaderAltarItem, offeringTaxiFaderAltarAmount, offeringTaxiFaderAltarConsumeItem, itemName, out offer);
+        }
+
+        private static bool TryGetBossAltarTaxiOffer(ConfigEntry<bool> enabled, string locationName, ConfigEntry<string> item, ConfigEntry<int> amount, ConfigEntry<bool> consume, string itemName, out TaxiOffer offer)
+        {
+            offer = default;
+            string configuredItem = ConfiguredItemName(item);
+            if (!enabled.Value || configuredItem == "" || itemName != configuredItem)
+                return false;
+
+            offer = new TaxiOffer { LocationName = locationName, ItemName = configuredItem, Stack = Math.Max(amount.Value, 0), ConsumeItem = consume.Value };
+            return true;
+        }
+
+        private static bool IsValidBossAltarTaxiRequest(string locationName, string itemName, int stack)
+        {
+            itemName = itemName.GetItemName();
+            return IsValidBossAltarTaxiRequest(offeringTaxiEikthyrAltarEnabled, EikthyrAltarLocation, offeringTaxiEikthyrAltarItem, offeringTaxiEikthyrAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiElderAltarEnabled, ElderAltarLocation, offeringTaxiElderAltarItem, offeringTaxiElderAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiBonemassAltarEnabled, BonemassAltarLocation, offeringTaxiBonemassAltarItem, offeringTaxiBonemassAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiModerAltarEnabled, ModerAltarLocation, offeringTaxiModerAltarItem, offeringTaxiModerAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiYagluthAltarEnabled, YagluthAltarLocation, offeringTaxiYagluthAltarItem, offeringTaxiYagluthAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiQueenAltarEnabled, QueenAltarLocation, offeringTaxiQueenAltarItem, offeringTaxiQueenAltarAmount, locationName, itemName, stack) ||
+                   IsValidBossAltarTaxiRequest(offeringTaxiFaderAltarEnabled, FaderAltarLocation, offeringTaxiFaderAltarItem, offeringTaxiFaderAltarAmount, locationName, itemName, stack);
+        }
+
+        private static bool IsValidBossAltarTaxiRequest(ConfigEntry<bool> enabled, string expectedLocationName, ConfigEntry<string> item, ConfigEntry<int> amount, string locationName, string itemName, int stack)
+        {
+            return enabled.Value && locationName == expectedLocationName && itemName == ConfiguredItemName(item) && stack == Math.Max(amount.Value, 0);
+        }
+
+        private static bool TryGetBossAltarConsumeItem(string locationName, string itemName, out bool consumeItem)
+        {
+            itemName = itemName.GetItemName();
+            return TryGetBossAltarConsumeItem(EikthyrAltarLocation, offeringTaxiEikthyrAltarItem, offeringTaxiEikthyrAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(ElderAltarLocation, offeringTaxiElderAltarItem, offeringTaxiElderAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(BonemassAltarLocation, offeringTaxiBonemassAltarItem, offeringTaxiBonemassAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(ModerAltarLocation, offeringTaxiModerAltarItem, offeringTaxiModerAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(YagluthAltarLocation, offeringTaxiYagluthAltarItem, offeringTaxiYagluthAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(QueenAltarLocation, offeringTaxiQueenAltarItem, offeringTaxiQueenAltarConsumeItem, locationName, itemName, out consumeItem) ||
+                   TryGetBossAltarConsumeItem(FaderAltarLocation, offeringTaxiFaderAltarItem, offeringTaxiFaderAltarConsumeItem, locationName, itemName, out consumeItem);
+        }
+
+        private static bool TryGetBossAltarConsumeItem(string expectedLocationName, ConfigEntry<string> item, ConfigEntry<bool> consume, string locationName, string itemName, out bool consumeItem)
+        {
+            consumeItem = false;
+            if (locationName != expectedLocationName || itemName != ConfiguredItemName(item))
+                return false;
+
+            consumeItem = consume.Value;
             return true;
         }
 
@@ -648,6 +775,7 @@ namespace ProtectiveWards
 
         internal static bool IsBossTrophy(string itemName)
         {
+            itemName = itemName.GetItemName();
             return itemName == "$item_trophy_eikthyr" ||
                    itemName == "$item_trophy_elder" ||
                    itemName == "$item_trophy_bonemass" ||
@@ -659,6 +787,7 @@ namespace ProtectiveWards
 
         internal static bool IsHildirChestItem(string itemName)
         {
+            itemName = itemName.GetItemName();
             return itemName == "$item_chest_hildir1" ||
                    itemName == "$item_chest_hildir2" ||
                    itemName == "$item_chest_hildir3";
@@ -685,7 +814,7 @@ namespace ProtectiveWards
             return true;
         }
 
-        private static IEnumerator TaxiToPosition(Player player, Vector3 position, bool returnBack = false, int waitSeconds = 0, string itemName = "", int stack = 0)
+        private static IEnumerator TaxiToPosition(Player player, Vector3 position, bool returnBack = false, int waitSeconds = 0, TaxiOffer offer = default)
         {
             canTravel = false;
             isTravelingPlayer = player;
@@ -724,21 +853,30 @@ namespace ProtectiveWards
                                             || player.InPlaceMode() || player.InBed() || player.InCutscene() || player.InInterior();
             }
 
-            player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_start".Localize());
-
-            taxiTargetPosition = position;
-            taxiReturnBack = returnBack;
-            taxiPlayerPositionToReturn = player.transform.position;
-            playerDropped = false;
-
-            GameObject valkyrie = null;
             bool assetLoaded = false;
             try
             {
                 Player.m_localPlayer.m_valkyrie.Load();
                 assetLoaded = true;
 
-                valkyrie = UnityEngine.Object.Instantiate(Player.m_localPlayer.m_valkyrie.Asset, player.transform.position, Quaternion.identity);
+                GameObject valkyriePrefab = Player.m_localPlayer.m_valkyrie.Asset;
+                if (valkyriePrefab == null || !valkyriePrefab.GetComponent<ZNetView>())
+                    throw new InvalidOperationException("Failed to load taxi Valkyrie prefab.");
+
+                if (!TryConsumeTaxiPayment(player, offer))
+                {
+                    CancelTaxi(player, "$msg_incompleteoffering");
+                    yield break;
+                }
+
+                player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_start".Localize());
+
+                taxiTargetPosition = position;
+                taxiReturnBack = returnBack;
+                taxiPlayerPositionToReturn = player.transform.position;
+                playerDropped = false;
+
+                GameObject valkyrie = UnityEngine.Object.Instantiate(valkyriePrefab, player.transform.position, Quaternion.identity);
                 if (valkyrie == null || !valkyrie.TryGetComponent(out ZNetView zNetView))
                     throw new InvalidOperationException("Failed to create taxi Valkyrie instance.");
 
@@ -746,9 +884,6 @@ namespace ProtectiveWards
             }
             catch (Exception e)
             {
-                if (valkyrie != null)
-                    UnityEngine.Object.Destroy(valkyrie);
-
                 LogInfo($"Taxi start failed: {e}");
                 CancelTaxi(player, "$pw_msg_canttravel");
                 yield break;
@@ -757,12 +892,6 @@ namespace ProtectiveWards
             {
                 if (assetLoaded)
                     Player.m_localPlayer.m_valkyrie.Release();
-            }
-
-            if (!TryConsumeTaxiPayment(player, itemName, stack))
-            {
-                UnityEngine.Object.Destroy(valkyrie);
-                CancelTaxi(player, "$msg_incompleteoffering");
             }
         }
 
@@ -776,7 +905,7 @@ namespace ProtectiveWards
 
                 canTravel = true;
 
-                if (taxiReturnBack)
+                if (taxiReturnBack && offeringTaxiSecondsToFlyBack.Value > 0)
                 {
                     isTravelingPlayer = __instance;
                     __instance.StartCoroutine(ReturnPlayerToPosition(__instance, taxiPlayerPositionToReturn, offeringTaxiSecondsToFlyBack.Value));

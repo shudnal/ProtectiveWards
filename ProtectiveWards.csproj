@@ -98,6 +98,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AdminServerFeatures.cs" />
+    <Compile Include="ItemNameTokens.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="WardZdoUtils.cs" />
     <Compile Include="BackgroundProtection.cs" />

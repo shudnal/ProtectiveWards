@@ -28,7 +28,6 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> loggingEnabled;
         public static ConfigEntry<int> refreshingTime;
         public static ConfigEntry<bool> showOfferingsInHover;
-        public static ConfigEntry<float> showOfferingsInHoverAfterSeconds;
         public static ConfigEntry<float> maxTaxiSpeed;
         public static ConfigEntry<bool> addLightMovement;
 
@@ -48,12 +47,52 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> offeringTaxi;
         public static ConfigEntry<bool> offeringProtectFromNonPermitted;
 
+        public static ConfigEntry<bool> offeringTaxiStartTempleEnabled;
+        public static ConfigEntry<bool> offeringTaxiStartTempleConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiHaldorEnabled;
+        public static ConfigEntry<string> offeringTaxiPriceHaldorItem;
         public static ConfigEntry<int> offeringTaxiPriceHaldorUndiscovered;
         public static ConfigEntry<int> offeringTaxiPriceHaldorDiscovered;
+        public static ConfigEntry<bool> offeringTaxiHaldorConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiHildirEnabled;
+        public static ConfigEntry<bool> offeringTaxiHildirChestsEnabled;
         public static ConfigEntry<string> offeringTaxiPriceHildirItem;
+        public static ConfigEntry<int> offeringTaxiPriceHildirAmount;
+        public static ConfigEntry<bool> offeringTaxiHildirConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiBogWitchEnabled;
         public static ConfigEntry<string> offeringTaxiPriceBogWitchItem;
         public static ConfigEntry<int> offeringTaxiPriceBogWitchAmount;
+        public static ConfigEntry<bool> offeringTaxiBogWitchConsumeItem;
         public static ConfigEntry<int> offeringTaxiSecondsToFlyBack;
+
+        public static ConfigEntry<bool> offeringTaxiEikthyrAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiEikthyrAltarItem;
+        public static ConfigEntry<int> offeringTaxiEikthyrAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiEikthyrAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiElderAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiElderAltarItem;
+        public static ConfigEntry<int> offeringTaxiElderAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiElderAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiBonemassAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiBonemassAltarItem;
+        public static ConfigEntry<int> offeringTaxiBonemassAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiBonemassAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiModerAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiModerAltarItem;
+        public static ConfigEntry<int> offeringTaxiModerAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiModerAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiYagluthAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiYagluthAltarItem;
+        public static ConfigEntry<int> offeringTaxiYagluthAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiYagluthAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiQueenAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiQueenAltarItem;
+        public static ConfigEntry<int> offeringTaxiQueenAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiQueenAltarConsumeItem;
+        public static ConfigEntry<bool> offeringTaxiFaderAltarEnabled;
+        public static ConfigEntry<string> offeringTaxiFaderAltarItem;
+        public static ConfigEntry<int> offeringTaxiFaderAltarAmount;
+        public static ConfigEntry<bool> offeringTaxiFaderAltarConsumeItem;
 
         public static ConfigEntry<bool> wardPassiveRepair;
         public static ConfigEntry<bool> wardPassiveRepairNonPlayer;
@@ -359,8 +398,7 @@ namespace ProtectiveWards
                                                                                                     "\nSetting more seconds can be helpful for fps for base with many objects and static untoggled wards. " +
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
-            showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show offerings list in hover text. [Not Synced with Server]", false);
-            showOfferingsInHoverAfterSeconds = config("Misc", "Show offerings in hover after seconds", defaultValue: 10f, "Show offerings list after set amount of seconds. [Not Synced with Server]", false);
+            showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show a short ward hover hint pointing to the Valheim Compendium sacrifice entry and add the Ward sacrifices topic to known texts. [Not Synced with Server]", false);
             maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
             addLightMovement = config("Misc", "Add movement to light emitted by ward", defaultValue: true, "Adds little lavalamp effect on light emitted by ward. Applied only if ward emission color was changed. Reactivate ward after config change. [Not Synced with Server]", false);
 
@@ -402,19 +440,57 @@ namespace ProtectiveWards
                                                                                                                                    "\nEitr will NOT be wasted if there is no plant to grow");
             offeringDragonEgg = config("Offerings", "9 - Activate Moder power by dragon egg offering", defaultValue: true, "Offer dragon egg to activate Moder power on all players in all connected areas.");
 
-            offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Offer boss trophy to travel to Sacrificial Stones (initial spawn point). Boss trophy will NOT be consumed." +
-                                                                                                                                   "\nOffer coins to travel to Haldor (x2000 if you didn't find him yet. x500 otherwise). Coins will be consumed." +
-                                                                                                                                   "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed." +
-                                                                                                                                   "\nOffer the configured Hildir item to travel to Hildir. Item WILL be consumed." +
-                                                                                                                                   "\nOffer the configured Bog Witch item to travel to Bog Witch. Item WILL be consumed.");
+            offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Enables all taxi offering logic. Individual taxi destinations can be enabled, disabled, priced, and configured in the Offerings - Taxi groups." +
+                                                                                                                                   "\nSupported default destinations include Sacrificial Stones, Haldor, Hildir, and Bog Witch." +
+                                                                                                                                   "\nOptional boss altar destinations are available in the Offerings - Taxi - Boss altars group and are disabled by default.");
             offeringProtectFromNonPermitted = config("Offerings", "Protect from non-permitted players", defaultValue: false, "Set whether active Ward offerings are allowed only for players with direct or connected ward access. Disabled by default so visitors can make offerings to active wards.");
 
-            offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Coins amount that must be paid to discover and travel to nearest Haldor.");
-            offeringTaxiPriceHaldorDiscovered = config("Offerings - Taxi", "Price to discovered Haldor", defaultValue: 500, "Coins amount that must be paid to travel to already discovered Haldor.");
-            offeringTaxiPriceHildirItem = config("Offerings - Taxi", "Item to travel to Hildir", defaultValue: "$item_goblintotem", "An item that must be paid to travel to Hildir.");
-            offeringTaxiPriceBogWitchItem = config("Offerings - Taxi", "Item to travel to Bog Witch", defaultValue: "$item_pukeberries", "An item that must be paid to travel to Bog Witch.");
-            offeringTaxiPriceBogWitchAmount = config("Offerings - Taxi", "Item to travel to Bog Witch amount", defaultValue: 20, "An amount of items that must be paid to travel to Bog Witch.");
-            offeringTaxiSecondsToFlyBack = config("Offerings - Taxi", "Seconds to fly back", defaultValue: 120, "An amount of seconds you have to make business with trader before Valkyrie will bring you back.");
+            offeringTaxiStartTempleEnabled = config("Offerings - Taxi", "Sacrificial Stones taxi", defaultValue: true, "Allow boss trophy offerings to call a free taxi to the Sacrificial Stones.");
+            offeringTaxiStartTempleConsumeItem = config("Offerings - Taxi", "Sacrificial Stones taxi consumes boss trophy", defaultValue: false, "Whether boss trophy taxi to the Sacrificial Stones consumes the offered boss trophy.");
+            offeringTaxiHaldorEnabled = config("Offerings - Taxi", "Haldor taxi", defaultValue: true, "Allow configured item offerings to call a taxi to Haldor.");
+            offeringTaxiPriceHaldorItem = config("Offerings - Taxi", "Item to travel to Haldor", defaultValue: "$item_coins", "An item required to travel to Haldor. Item names can be a prefab name such as Coins, a localization token such as $item_coins, or the localized item name from the current game language.");
+            offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Configured Haldor taxi item amount required to discover and travel to nearest Haldor.");
+            offeringTaxiPriceHaldorDiscovered = config("Offerings - Taxi", "Price to discovered Haldor", defaultValue: 500, "Configured Haldor taxi item amount required to travel to already discovered Haldor.");
+            offeringTaxiHaldorConsumeItem = config("Offerings - Taxi", "Haldor taxi consumes item", defaultValue: true, "Whether Haldor taxi consumes the configured item amount.");
+            offeringTaxiHildirEnabled = config("Offerings - Taxi", "Hildir taxi", defaultValue: true, "Allow Hildir chest or configured item offerings to call a taxi to Hildir.");
+            offeringTaxiHildirChestsEnabled = config("Offerings - Taxi", "Hildir chest taxi", defaultValue: true, "Allow Hildir chest offerings to call a free taxi to Hildir. Hildir chests are never consumed.");
+            offeringTaxiPriceHildirItem = config("Offerings - Taxi", "Item to travel to Hildir", defaultValue: "LinenThread", "An item required to travel to Hildir when not using a Hildir chest. Item names can be a prefab name such as LinenThread, a localization token such as $item_linen_thread, or the localized item name from the current game language.");
+            offeringTaxiPriceHildirAmount = config("Offerings - Taxi", "Item to travel to Hildir amount", defaultValue: 50, "An amount of configured items required to travel to Hildir when not using a Hildir chest.");
+            offeringTaxiHildirConsumeItem = config("Offerings - Taxi", "Hildir taxi consumes item", defaultValue: true, "Whether Hildir taxi consumes the configured non-chest item amount.");
+            offeringTaxiBogWitchEnabled = config("Offerings - Taxi", "Bog Witch taxi", defaultValue: true, "Allow configured item offerings to call a taxi to Bog Witch.");
+            offeringTaxiPriceBogWitchItem = config("Offerings - Taxi", "Item to travel to Bog Witch", defaultValue: "$item_pukeberries", "An item required to travel to Bog Witch. Item names can be a prefab name such as Pukeberries, a localization token such as $item_pukeberries, or the localized item name from the current game language.");
+            offeringTaxiPriceBogWitchAmount = config("Offerings - Taxi", "Item to travel to Bog Witch amount", defaultValue: 20, "An amount of configured items required to travel to Bog Witch.");
+            offeringTaxiBogWitchConsumeItem = config("Offerings - Taxi", "Bog Witch taxi consumes item", defaultValue: true, "Whether Bog Witch taxi consumes the configured item amount.");
+            offeringTaxiSecondsToFlyBack = config("Offerings - Taxi", "Seconds to fly back", defaultValue: 120, "An amount of seconds you have to make business with trader before Valkyrie will bring you back. 0 disables the return flight.");
+
+            offeringTaxiEikthyrAltarEnabled = config("Offerings - Taxi - Boss altars", "Eikthyr altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Eikthyr altar.");
+            offeringTaxiEikthyrAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Eikthyr altar", defaultValue: "$item_trophy_deer", "An item required to travel to the Eikthyr altar. Item names can be a prefab name such as TrophyDeer, a localization token such as $item_trophy_deer, or the localized item name from the current game language.");
+            offeringTaxiEikthyrAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Eikthyr altar amount", defaultValue: 2, "An amount of configured items required to travel to the Eikthyr altar.");
+            offeringTaxiEikthyrAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Eikthyr altar taxi consumes item", defaultValue: true, "Whether Eikthyr altar taxi consumes the configured item amount.");
+            offeringTaxiElderAltarEnabled = config("Offerings - Taxi - Boss altars", "Elder altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Elder altar.");
+            offeringTaxiElderAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Elder altar", defaultValue: "$item_ancientseed", "An item required to travel to the Elder altar. Item names can be a prefab name such as AncientSeed, a localization token such as $item_ancientseed, or the localized item name from the current game language.");
+            offeringTaxiElderAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Elder altar amount", defaultValue: 3, "An amount of configured items required to travel to the Elder altar.");
+            offeringTaxiElderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Elder altar taxi consumes item", defaultValue: true, "Whether Elder altar taxi consumes the configured item amount.");
+            offeringTaxiBonemassAltarEnabled = config("Offerings - Taxi - Boss altars", "Bonemass altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Bonemass altar.");
+            offeringTaxiBonemassAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Bonemass altar", defaultValue: "$item_witheredbone", "An item required to travel to the Bonemass altar. Item names can be a prefab name such as WitheredBone, a localization token such as $item_witheredbone, or the localized item name from the current game language.");
+            offeringTaxiBonemassAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Bonemass altar amount", defaultValue: 10, "An amount of configured items required to travel to the Bonemass altar.");
+            offeringTaxiBonemassAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Bonemass altar taxi consumes item", defaultValue: true, "Whether Bonemass altar taxi consumes the configured item amount.");
+            offeringTaxiModerAltarEnabled = config("Offerings - Taxi - Boss altars", "Moder altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Moder altar.");
+            offeringTaxiModerAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Moder altar", defaultValue: "FreezeGland", "An item required to travel to the Moder altar. Item names can be a prefab name such as FreezeGland, a localization token such as $item_freezegland, or the localized item name from the current game language.");
+            offeringTaxiModerAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Moder altar amount", defaultValue: 30, "An amount of configured items required to travel to the Moder altar.");
+            offeringTaxiModerAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Moder altar taxi consumes item", defaultValue: true, "Whether Moder altar taxi consumes the configured item amount.");
+            offeringTaxiYagluthAltarEnabled = config("Offerings - Taxi - Boss altars", "Yagluth altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Yagluth altar.");
+            offeringTaxiYagluthAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Yagluth altar", defaultValue: "$item_goblintotem", "An item required to travel to the Yagluth altar. Item names can be a prefab name such as GoblinTotem, a localization token such as $item_goblintotem, or the localized item name from the current game language.");
+            offeringTaxiYagluthAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Yagluth altar amount", defaultValue: 5, "An amount of configured items required to travel to the Yagluth altar.");
+            offeringTaxiYagluthAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Yagluth altar taxi consumes item", defaultValue: true, "Whether Yagluth altar taxi consumes the configured item amount.");
+            offeringTaxiQueenAltarEnabled = config("Offerings - Taxi - Boss altars", "Queen altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Queen altar.");
+            offeringTaxiQueenAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Queen altar", defaultValue: "$item_sealbreaker", "An item required to travel to the Queen altar. Item names can be a prefab name such as SealBreaker, a localization token such as $item_sealbreaker, or the localized item name from the current game language.");
+            offeringTaxiQueenAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Queen altar amount", defaultValue: 1, "An amount of configured items required to travel to the Queen altar.");
+            offeringTaxiQueenAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Queen altar taxi consumes item", defaultValue: true, "Whether Queen altar taxi consumes the configured item amount.");
+            offeringTaxiFaderAltarEnabled = config("Offerings - Taxi - Boss altars", "Fader altar taxi", defaultValue: false, "Allow configured item offerings to call a taxi to the Fader altar.");
+            offeringTaxiFaderAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Fader altar", defaultValue: "$item_bellfragment", "An item required to travel to the Fader altar. Item names can be a prefab name such as BellFragment, a localization token such as $item_bellfragment, or the localized item name from the current game language.");
+            offeringTaxiFaderAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Fader altar amount", defaultValue: 3, "An amount of configured items required to travel to the Fader altar.");
+            offeringTaxiFaderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Fader altar taxi consumes item", defaultValue: true, "Whether Fader altar taxi consumes the configured item amount.");
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
@@ -425,7 +501,7 @@ namespace ProtectiveWards
             autoCloseDoorsIgnorePrefabs = config("Passive", "Auto close doors ignore prefabs", defaultValue: "", "Comma-separated list of prefab names which should not be auto closed.");
 
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
-            wardRange = config("Range", "Ward range", defaultValue: 10f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
+            wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
             permitEveryone = config("Ward admin", "Permit everyone", defaultValue: false, "Bypasses ward access checks completely. When enabled, every player is treated as having ward admin access, regardless of the Ward admin access mode. Permitted lists are still stored on wards but do not restrict access.");
 
@@ -614,6 +690,8 @@ namespace ProtectiveWards
         }
 
         public static bool IsActivePlayerWard(PrivateArea ward) => ward != null && ward.IsEnabled() && ward.m_ownerFaction == Character.Faction.Players;
+
+        private static bool IsPlayerWardPrefab(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players && WardZdoUtils.IsWardPrefab(ward.gameObject);
 
         private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate) => ward != null && candidate != null && ward.m_radius + candidate.m_radius >= Utils.DistanceXZ(ward.transform.position, candidate.transform.position);
 
@@ -1807,7 +1885,7 @@ namespace ProtectiveWards
             public static void Prefix(CircleProjector __instance, ref bool __state)
             {
                 PrivateArea ward = __instance.transform.root.GetComponent<PrivateArea>();
-                if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                if (!IsPlayerWardPrefab(ward) || ward.m_nview == null || !ward.m_nview.IsValid())
                     return;
 
                 ZDO zdo = ward.m_nview.GetZDO();
@@ -1825,6 +1903,10 @@ namespace ProtectiveWards
                 if (__state)
                     return;
 
+                PrivateArea ward = __instance.transform.root.GetComponent<PrivateArea>();
+                if (!IsPlayerWardPrefab(ward))
+                    return;
+
                 ZNetView m_nview = __instance.GetComponentZNetView();
                 if (!m_nview || !m_nview.IsValid())
                     return;
@@ -1839,7 +1921,7 @@ namespace ProtectiveWards
 
         private static void InitEmissionColor(PrivateArea ward)
         {
-            if (ward == null || !ward.m_model)
+            if (!IsPlayerWardPrefab(ward) || !ward.m_model)
                 return;
 
             if (ward.m_nview == null || !ward.m_nview.IsValid())
@@ -1995,6 +2077,10 @@ namespace ProtectiveWards
             if (marker == null || nview == null || !nview.IsValid())
                 return;
 
+            PrivateArea ward = marker.transform.root.GetComponent<PrivateArea>();
+            if (!IsPlayerWardPrefab(ward))
+                return;
+
             ZDO zdo = nview.GetZDO();
             if (!GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value))
                 return;
@@ -2039,7 +2125,7 @@ namespace ProtectiveWards
 
         public static void InitBubbleState(PrivateArea ward, GameObject bubble, ZNetView m_nview)
         {
-            if (bubble == null)
+            if (!IsPlayerWardPrefab(ward) || bubble == null)
                 return;
 
             if (m_nview == null || !m_nview.IsValid())
@@ -2083,7 +2169,7 @@ namespace ProtectiveWards
 
         public static void InitDemisterState(PrivateArea ward, GameObject demister, ZNetView m_nview)
         {
-            if (demister == null)
+            if (!IsPlayerWardPrefab(ward) || demister == null)
                 return;
 
             if (m_nview == null || !m_nview.IsValid())
@@ -2148,6 +2234,132 @@ namespace ProtectiveWards
                     ward.StartCoroutine(AutoClosingDoors(ward));
                     LogInfo($"Doors closing started");
                 }
+            }
+        }
+
+        private static void AddBossAltarTaxiOffering(List<string> offeringsList, bool enabled, string itemName, int amount, string destinationName)
+        {
+            if (!enabled || itemName.IsNullOrWhiteSpace() || Player.m_localPlayer == null)
+                return;
+
+            if (!Player.m_localPlayer.IsMaterialKnown(itemName) && !Player.m_localPlayer.NoCostCheat())
+                return;
+
+            offeringsList.Add($"{itemName} {(amount > 1 ? $"x{amount}" : "")} - $pw_ward_offering_bossaltar_description {destinationName}");
+        }
+
+        private static List<string> BuildAvailableOfferingList(out bool hasTaxiOffering)
+        {
+            List<string> offeringsList = new();
+            hasTaxiOffering = false;
+
+            if (Player.m_localPlayer == null)
+                return offeringsList;
+
+            if (offeringActiveRepair.Value && (Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_surtlingcore - $pw_ward_offering_surtlingcore_description");
+            if (offeringAugmenting.Value && (Player.m_localPlayer.IsMaterialKnown("$item_blackcore") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_blackcore - $pw_ward_offering_blackcore_description");
+            if (offeringFood.Value)
+                offeringsList.Add("$item_food - $pw_ward_offering_food_description");
+            if (offeringMead.Value)
+                offeringsList.Add("$se_mead_name - $pw_ward_offering_mead_description");
+            if (offeringThundertone.Value && (Player.m_localPlayer.IsMaterialKnown("$item_thunderstone") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_thunderstone - $pw_ward_offering_thunderstone_description");
+            if (offeringTrophy.Value)
+            {
+                offeringsList.Add("$inventory_trophies - $pw_ward_offering_trophies_description");
+                offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
+            }
+            if (offeringYmirRemains.Value && (Player.m_localPlayer.IsMaterialKnown("$item_ymirremains") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_ymirremains - $pw_ward_offering_ymirremains_description");
+            if (offeringEitr.Value && (Player.m_localPlayer.IsMaterialKnown("$item_eitr") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_eitr - $pw_ward_offering_eitr_description");
+            if (offeringDragonEgg.Value && (Player.m_localPlayer.IsMaterialKnown("$item_dragonegg") && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon) || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$item_dragonegg - $pw_ward_offering_dragonegg_description");
+
+            if (!offeringTaxi.Value)
+                return offeringsList;
+
+            int taxiStartCount = offeringsList.Count;
+            if (offeringTaxiStartTempleEnabled.Value)
+                offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
+
+            string haldorItem = offeringTaxiPriceHaldorItem.Value.GetItemName();
+            if (offeringTaxiHaldorEnabled.Value && !haldorItem.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(haldorItem) || Player.m_localPlayer.NoCostCheat()))
+            {
+                ZoneSystem.instance.tempIconList.Clear();
+                ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
+                int price = ZoneSystem.instance.tempIconList.Any(icon => icon.Value == "Vendor_BlackForest") ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value;
+                offeringsList.Add($"{haldorItem}: {price} - $pw_ward_offering_coins_description");
+            }
+
+            string hildirItem = offeringTaxiPriceHildirItem.Value.GetItemName();
+            if (offeringTaxiHildirEnabled.Value && !hildirItem.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(hildirItem) || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add($"{hildirItem} {(offeringTaxiPriceHildirAmount.Value > 1 ? $"x{offeringTaxiPriceHildirAmount.Value}" : "")} - $pw_ward_offering_hildiritem_description");
+            if (offeringTaxiHildirEnabled.Value && offeringTaxiHildirChestsEnabled.Value && (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3") || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add("$pw_ward_offering_hildirchest - $pw_ward_offering_hildirchest_description");
+
+            string bogWitchItem = offeringTaxiPriceBogWitchItem.Value.GetItemName();
+            if (offeringTaxiBogWitchEnabled.Value && !bogWitchItem.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(bogWitchItem) || Player.m_localPlayer.NoCostCheat()))
+                offeringsList.Add($"{bogWitchItem} {(offeringTaxiPriceBogWitchAmount.Value > 0 ? $"x{offeringTaxiPriceBogWitchAmount.Value}" : "")} - $pw_ward_offering_bogwitchitem_description");
+
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiEikthyrAltarEnabled.Value, offeringTaxiEikthyrAltarItem.Value.GetItemName(), offeringTaxiEikthyrAltarAmount.Value, "Eikthyr altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiElderAltarEnabled.Value, offeringTaxiElderAltarItem.Value.GetItemName(), offeringTaxiElderAltarAmount.Value, "Elder altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiBonemassAltarEnabled.Value, offeringTaxiBonemassAltarItem.Value.GetItemName(), offeringTaxiBonemassAltarAmount.Value, "Bonemass altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiModerAltarEnabled.Value, offeringTaxiModerAltarItem.Value.GetItemName(), offeringTaxiModerAltarAmount.Value, "Moder altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiYagluthAltarEnabled.Value, offeringTaxiYagluthAltarItem.Value.GetItemName(), offeringTaxiYagluthAltarAmount.Value, "Yagluth altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiQueenAltarEnabled.Value, offeringTaxiQueenAltarItem.Value.GetItemName(), offeringTaxiQueenAltarAmount.Value, "Queen altar");
+            AddBossAltarTaxiOffering(offeringsList, offeringTaxiFaderAltarEnabled.Value, offeringTaxiFaderAltarItem.Value.GetItemName(), offeringTaxiFaderAltarAmount.Value, "Fader altar");
+
+            hasTaxiOffering = offeringsList.Count > taxiStartCount;
+            return offeringsList;
+        }
+
+        private static string BuildWardSacrificesCompendiumText(List<string> offeringsList, bool hasTaxiOffering)
+        {
+            StringBuilder text = new();
+            text.Append("$pw_ward_offerings_compendium_intro");
+
+            foreach (string offering in offeringsList)
+            {
+                text.Append("\n\n• ");
+                text.Append(offering);
+            }
+
+            if (hasTaxiOffering)
+            {
+                text.Append("\n\n");
+                text.Append(offeringTaxiSecondsToFlyBack.Value > 0 ? "$pw_ward_offerings_taxi_return" : "$pw_ward_offerings_taxi_oneway");
+            }
+
+            return text.ToString();
+        }
+
+        [HarmonyPatch(typeof(TextsDialog), nameof(TextsDialog.UpdateTextsList))]
+        public static class TextsDialog_UpdateTextsList_AddWardSacrifices
+        {
+            private static void Postfix(TextsDialog __instance)
+            {
+                if (__instance == null || __instance.m_texts == null)
+                    return;
+
+                string guardstoneTopic = Localization.instance.Localize("$tutorial_guardstone_label");
+                int index = __instance.m_texts.FindIndex(text => text.m_topic == guardstoneTopic);
+                if (index < 0)
+                    return;
+
+                if (!__instance.m_texts[index].m_text.Contains("$pw_tutorial_guardstone_extra"))
+                    __instance.m_texts[index].m_text += "\n\n$pw_tutorial_guardstone_extra";
+
+                if (!showOfferingsInHover.Value)
+                    return;
+
+                List<string> offeringsList = BuildAvailableOfferingList(out bool hasTaxiOffering);
+                if (offeringsList.Count == 0)
+                    return;
+
+                __instance.m_texts.Insert(index + 1, new TextsDialog.TextInfo("$pw_ward_offerings_compendium_topic", BuildWardSacrificesCompendiumText(offeringsList, hasTaxiOffering)));
             }
         }
 
@@ -2220,60 +2432,8 @@ namespace ProtectiveWards
                     text.Append(string.Join(", ", status.ToArray()));
                 }
 
-                if (offeringsTimer < showOfferingsInHoverAfterSeconds.Value + 0.5f)
-                    offeringsTimer += Time.fixedDeltaTime * 2f;
-
-                if (showOfferingsInHover.Value && offeringsTimer > showOfferingsInHoverAfterSeconds.Value)
-                {
-                    List<string> offeringsList = new();
-
-                    if (offeringActiveRepair.Value && (Player.m_localPlayer.IsMaterialKnown("$item_surtlingcore") || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_surtlingcore - $pw_ward_offering_surtlingcore_description");
-                    if (offeringAugmenting.Value && (Player.m_localPlayer.IsMaterialKnown("$item_blackcore") || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_blackcore - $pw_ward_offering_blackcore_description");
-                    if (offeringFood.Value)
-                        offeringsList.Add("$item_food - $pw_ward_offering_food_description");
-                    if (offeringMead.Value)
-                        offeringsList.Add("$se_mead_name - $pw_ward_offering_mead_description");
-                    if (offeringThundertone.Value && (Player.m_localPlayer.IsMaterialKnown("$item_thunderstone") || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_thunderstone - $pw_ward_offering_thunderstone_description");
-                    if (offeringTrophy.Value)
-                    {
-                        offeringsList.Add("$inventory_trophies - $pw_ward_offering_trophies_description");
-                        offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
-                    }
-                    if (offeringYmirRemains.Value && (Player.m_localPlayer.IsMaterialKnown("$item_ymirremains") || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_ymirremains - $pw_ward_offering_ymirremains_description");
-                    if (offeringEitr.Value && (Player.m_localPlayer.IsMaterialKnown("$item_eitr") || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_eitr - $pw_ward_offering_eitr_description");
-                    if (offeringDragonEgg.Value && (Player.m_localPlayer.IsMaterialKnown("$item_dragonegg") && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon) || Player.m_localPlayer.NoCostCheat()))
-                        offeringsList.Add("$item_dragonegg - $pw_ward_offering_dragonegg_description");
-                    if (offeringTaxi.Value)
-                    {
-                        if (Player.m_localPlayer.IsMaterialKnown("$item_coins") || Player.m_localPlayer.NoCostCheat())
-                        {
-                            ZoneSystem.instance.tempIconList.Clear();
-                            ZoneSystem.instance.GetLocationIcons(ZoneSystem.instance.tempIconList);
-                            int price = ZoneSystem.instance.tempIconList.Any(icon => icon.Value == "Vendor_BlackForest") ? offeringTaxiPriceHaldorDiscovered.Value : offeringTaxiPriceHaldorUndiscovered.Value;
-                            offeringsList.Add($"$item_coins: {price} - $pw_ward_offering_coins_description");
-                        }
-
-                        if (!offeringTaxiPriceHildirItem.Value.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceHildirItem.Value) || Player.m_localPlayer.NoCostCheat()))
-                            offeringsList.Add($"{offeringTaxiPriceHildirItem.Value} - $pw_ward_offering_hildiritem_description");
-                        if (Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir1") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir2") || Player.m_localPlayer.IsMaterialKnown("$item_chest_hildir3") || Player.m_localPlayer.NoCostCheat())
-                            offeringsList.Add("$pw_ward_offering_hildirchest - $pw_ward_offering_hildirchest_description");
-
-                        if (!offeringTaxiPriceBogWitchItem.Value.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(offeringTaxiPriceBogWitchItem.Value) || Player.m_localPlayer.NoCostCheat()))
-                            offeringsList.Add($"{offeringTaxiPriceBogWitchItem.Value} {(offeringTaxiPriceBogWitchAmount.Value > 0 ? $"x{offeringTaxiPriceBogWitchAmount.Value}" : "")} - $pw_ward_offering_bogwitchitem_description");
-                    }
-
-                    if (offeringsList.Count > 0)
-                    {
-                        text.Append("\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem:\n");
-                        text.Append(string.Join("\n", offeringsList));
-                        text.Append('\n');
-                    }
-                }
+                if (showOfferingsInHover.Value && BuildAvailableOfferingList(out _).Count > 0)
+                    text.Append("\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem\n$pw_ward_offerings_compendium_hint");
             }
         }
 
@@ -2331,7 +2491,7 @@ namespace ProtectiveWards
             }
         }
 
-        private static bool IsWardToSetRange(PrivateArea ward) => WardZdoUtils.IsWardPrefab(ward?.gameObject);
+        private static bool IsWardToSetRange(PrivateArea ward) => IsPlayerWardPrefab(ward);
 
         private static void CacheWardDefaultRange(PrivateArea ward)
         {
@@ -2385,6 +2545,9 @@ namespace ProtectiveWards
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview)
             {
                 if (___m_nview == null || !___m_nview.IsValid())
+                    return;
+
+                if (!IsPlayerWardPrefab(__instance))
                     return;
 
                 CacheWardDefaultRange(__instance);
@@ -2450,7 +2613,7 @@ namespace ProtectiveWards
 
         public static void RefreshWardVisuals(PrivateArea ward)
         {
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (!IsPlayerWardPrefab(ward) || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
             PatchRange(ward);
@@ -2523,6 +2686,9 @@ namespace ProtectiveWards
             private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, long playerID)
             {
                 if (___m_nview == null || !___m_nview.IsValid())
+                    return;
+
+                if (!IsPlayerWardPrefab(__instance))
                     return;
 
                 CacheWardDefaultRange(__instance);
