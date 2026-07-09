@@ -19,7 +19,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.1";
+        public const string pluginVersion = "2.0.2";
 
         private static Harmony _harmony;
 
@@ -404,8 +404,9 @@ namespace ProtectiveWards
 
             offeringTaxi = config("Offerings", "10 - Fly back and forth to distant point by different items offering", defaultValue: true, "Offer boss trophy to travel to Sacrificial Stones (initial spawn point). Boss trophy will NOT be consumed." +
                                                                                                                                    "\nOffer coins to travel to Haldor (x2000 if you didn't find him yet. x500 otherwise). Coins will be consumed." +
-                                                                                                                                   "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed. Totem WILL be consumed." +
-                                                                                                                                   "\nOffer Fuling totem to travel to Hildir. Totem WILL be consumed.");
+                                                                                                                                   "\nOffer Hildir's chest to travel to Hildir for free. Chest will NOT be consumed." +
+                                                                                                                                   "\nOffer the configured Hildir item to travel to Hildir. Item WILL be consumed." +
+                                                                                                                                   "\nOffer the configured Bog Witch item to travel to Bog Witch. Item WILL be consumed.");
             offeringProtectFromNonPermitted = config("Offerings", "Protect from non-permitted players", defaultValue: false, "Set whether active Ward offerings are allowed only for players with direct or connected ward access. Disabled by default so visitors can make offerings to active wards.");
 
             offeringTaxiPriceHaldorUndiscovered = config("Offerings - Taxi", "Price to undiscovered Haldor", defaultValue: 2000, "Coins amount that must be paid to discover and travel to nearest Haldor.");
@@ -1367,7 +1368,40 @@ namespace ProtectiveWards
             return false;
         }
 
+        internal static bool TryGetRoutedPlayer(long sender, out RoutedPlayerContext player)
+        {
+            player = default;
+            if (ZNet.instance == null)
+                return false;
+
+            if (sender != 0L && ZRoutedRpc.instance != null && sender != ZRoutedRpc.instance.m_id)
+                return TryGetPeerRoutedPlayer(sender, out player);
+
+            Player localPlayer = Player.m_localPlayer;
+            if (localPlayer != null)
+            {
+                player = new RoutedPlayerContext(
+                    localPlayer.GetPlayerID(),
+                    localPlayer.GetPlayerName(),
+                    localPlayer.GetZDOID(),
+                    localPlayer.transform.position,
+                    hasPosition: true,
+                    sender);
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool TryGetPeerRoutedPlayer(long sender, long claimedPlayerID, out RoutedPlayerContext player)
+        {
+            if (!TryGetPeerRoutedPlayer(sender, out player))
+                return false;
+
+            return player.PlayerID == claimedPlayerID;
+        }
+
+        private static bool TryGetPeerRoutedPlayer(long sender, out RoutedPlayerContext player)
         {
             player = default;
             if (ZNet.instance == null || ZDOMan.instance == null)
@@ -1382,7 +1416,7 @@ namespace ProtectiveWards
                 return false;
 
             long actualPlayerID = characterZdo.GetLong(ZDOVars.s_playerID, 0L);
-            if (actualPlayerID == 0L || actualPlayerID != claimedPlayerID)
+            if (actualPlayerID == 0L)
                 return false;
 
             player = new RoutedPlayerContext(

@@ -258,10 +258,21 @@ namespace ProtectiveWards
 
         private static void EnsureWardObjectsInitialized()
         {
-            if (s_wardObjectsInitialized)
+            if (!ShouldTrackServerWards())
                 return;
 
-            RebuildWardObjects(ZDOMan.instance);
+            ZDOMan zdoMan = ZDOMan.instance;
+            if (zdoMan == null)
+                return;
+
+            if (!s_wardObjectsInitialized)
+            {
+                RebuildWardObjects(zdoMan);
+                return;
+            }
+
+            if (s_wardObjects.Count == 0 && zdoMan.m_objectsByID.Count > 0)
+                RebuildWardObjects(zdoMan);
         }
 
         private static void RebuildWardObjects(ZDOMan zdoMan)
