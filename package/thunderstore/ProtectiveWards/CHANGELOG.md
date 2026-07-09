@@ -1,18 +1,14 @@
 # 2.0.2
+* major taxi system rework
 * added a `Valkyrie passage` status effect with the Celestial feather icon for active Valkyrie flights and return timers
-* hardened Valkyrie passage state handling so active passages are tracked consistently and stuck flights drop the player
-* hardened Valkyrie passage route setup for short distances by clamping the descent path and preserving the existing minimum distance check
 * added separate Valkyrie passage destination enable configs and consume-item configs for Sacrificial Stones, Haldor, Hildir, Bog Witch, and optional boss altar routes
 * added disabled-by-default Valkyrie passage routes to vanilla boss altars using boss offering items
-* changed the default configured Hildir passage tribute to Linen thread x50 to avoid overlapping with Yagluth totems and thunder stone offerings
-* changed the optional Moder altar passage tribute to Freeze gland x30 while keeping dragon eggs for the Moder power offering
+* changed the default configured Hildir passage tribute to Linen thread x50
+* changed the optional Moder altar passage tribute to Freeze gland x30
 * Valkyrie passage item configs can now use item prefab names, localization tokens, or localized item names
-* Hildir chests remain free non-consumed Valkyrie passage tickets to Hildir and no longer conflict with the configured Hildir passage tribute
 * Valkyrie return flight can now be disabled by setting Seconds to fly back to 0
 * moved the detailed offerings list from the ward hover into the Valheim Compendium and replaced the hover list with an immediate raven-icon hint
 * expanded the ward Compendium text with Protective Wards behavior notes and added a dedicated Ward and offerings topic
-* changed the default custom ward range value to 32 meters
-* limited ward sphere, demister, visual refresh, and range changes to vanilla player wards so Dvergr wards are not modified
 * fixed connected ward expiration refresh not counting players standing inside an accessible connected ward area
 * fixed plant growth offerings failing on some plant instances
 * ward permit and unpermit commands no longer match players from an empty name query
