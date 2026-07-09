@@ -14,7 +14,7 @@ namespace ProtectiveWards
         internal static readonly int wardTaxiStatusHash = WardTaxiStatusEffectName.GetStableHashCode();
         private static readonly int slowFallHash = "SlowFall".GetStableHashCode();
 
-        private const float MinTaxiDistance = 300f;
+        private const float MinTaxiDistance = 200f;
         private const float MaxTaxiOfferingSourceDistance = 50f;
         private const float TaxiStartAltitude = 30f;
         private const float TaxiDescentAltitude = 150f;
@@ -54,11 +54,15 @@ namespace ProtectiveWards
         private static Player s_player;
         private static Vector3 s_targetPosition;
         private static Vector3 s_returnPosition;
+        private static Vector3 s_currentFlightTargetPosition;
+        private static Quaternion s_currentFlightSpawnRotation = Quaternion.identity;
+        private static float s_currentFlightSpawnYawOffset;
         private static TaxiOffer s_offer;
         private static bool s_returnBack;
         private static bool s_waitingForValkyrieSpawn;
         private static bool s_statusExpected;
         private static bool s_controlledStatusRemoval;
+        private static bool s_deferredStatusRemoval;
         private static ZDOID s_activeValkyrieId = ZDOID.None;
         private static Vector3 s_lastProgressPosition;
         private static float s_lastProgressTime;
@@ -211,9 +215,10 @@ namespace ProtectiveWards
             if (initiator == null)
                 return;
 
-            if (IsTaxiDestinationTooClose(offeringPosition, position))
+            Vector3 startPosition = initiator.transform.position;
+            if (IsTaxiDestinationTooClose(startPosition, position))
             {
-                LogInfo($"Valkyrie passage destination is too close. Source: {offeringPosition}, destination: {position}, distance: {Vector3.Distance(offeringPosition, position):0.0}");
+                LogInfo($"Valkyrie passage destination is too close. Source: {startPosition}, destination: {position}, distance: {GetTaxiDistance(startPosition, position):0.0}");
                 initiator.Message(MessageHud.MessageType.Center, "$pw_msg_tooclose".Localize());
                 return;
             }
@@ -237,8 +242,11 @@ namespace ProtectiveWards
             }
 
             s_player = initiator;
+            float initialDistance = GetTaxiDistance(startPosition, position);
+            LogInfo($"Valkyrie passage destination accepted. Source: {startPosition}, destination: {position}, distance: {initialDistance:0.0}");
+
             s_targetPosition = position;
-            s_returnPosition = initiator.transform.position;
+            s_returnPosition = startPosition;
             s_offer = offer;
             s_returnBack = offeringTaxiSecondsToFlyBack.Value > 0;
             s_activeValkyrieId = ZDOID.None;
@@ -289,7 +297,17 @@ namespace ProtectiveWards
 
                 case TaxiState.WaitingRetry:
                     if (CanStartValkyrieFlight(player, silent: true))
+                    {
                         TryStartFlight(isReturnFlight: true);
+                        break;
+                    }
+
+                    int waitLimit = Math.Max(offeringTaxiReturnWaitLimitSeconds.Value, 0);
+                    if (waitLimit > 0 && status.m_time >= waitLimit)
+                    {
+                        player.Message(MessageHud.MessageType.Center, "$pw_msg_taxi_return_wait_expired".Localize());
+                        FinishTaxiStatus(player);
+                    }
                     break;
 
                 case TaxiState.Falling:
@@ -313,7 +331,7 @@ namespace ProtectiveWards
             {
                 if (isReturnFlight)
                 {
-                    SetState(TaxiState.WaitingRetry, 0);
+                    SetState(TaxiState.WaitingRetry, Math.Max(offeringTaxiReturnWaitLimitSeconds.Value, 0));
                     player.Message(MessageHud.MessageType.Center, "$pw_msg_taxi_waiting".Localize());
                     return;
                 }
@@ -361,7 +379,12 @@ namespace ProtectiveWards
 
         private static bool IsTaxiDestinationTooClose(Vector3 sourcePosition, Vector3 destinationPosition)
         {
-            return Vector3.Distance(sourcePosition, destinationPosition) < MinTaxiDistance;
+            return GetTaxiDistance(sourcePosition, destinationPosition) < MinTaxiDistance;
+        }
+
+        private static float GetTaxiDistance(Vector3 sourcePosition, Vector3 destinationPosition)
+        {
+            return Utils.DistanceXZ(sourcePosition, destinationPosition);
         }
 
         private static bool CanStartValkyrieFlight(Player player, bool silent)
@@ -414,7 +437,9 @@ namespace ProtectiveWards
                 if (valkyriePrefab == null || !valkyriePrefab.GetComponent<ZNetView>())
                     throw new InvalidOperationException("Failed to load Valkyrie passage prefab.");
 
-                s_targetPosition = targetPosition;
+                s_currentFlightTargetPosition = targetPosition;
+                s_currentFlightSpawnRotation = GetValkyrieSpawnRotation(player.transform.position, targetPosition, player.transform, out float yawOffset);
+                s_currentFlightSpawnYawOffset = yawOffset;
                 s_activeValkyrieId = ZDOID.None;
                 s_waitingForValkyrieSpawn = true;
                 SetState(isReturnFlight ? TaxiState.ReturnFlight : TaxiState.OutboundFlight, 0);
@@ -422,7 +447,7 @@ namespace ProtectiveWards
 
                 player.Message(MessageHud.MessageType.Center, "$pw_msg_travel_start".Localize());
 
-                GameObject valkyrie = UnityEngine.Object.Instantiate(valkyriePrefab, player.transform.position, Quaternion.identity);
+                GameObject valkyrie = UnityEngine.Object.Instantiate(valkyriePrefab, player.transform.position, s_currentFlightSpawnRotation);
                 s_waitingForValkyrieSpawn = false;
                 if (valkyrie == null || !valkyrie.TryGetComponent(out ZNetView zNetView))
                     throw new InvalidOperationException("Failed to create Valkyrie passage instance.");
@@ -441,6 +466,25 @@ namespace ProtectiveWards
                 if (assetLoaded)
                     Player.m_localPlayer.m_valkyrie.Release();
             }
+        }
+
+        private static Quaternion GetValkyrieSpawnRotation(Vector3 sourcePosition, Vector3 targetPosition, Transform fallbackTransform, out float yawOffset)
+        {
+            Vector3 direction = targetPosition - sourcePosition;
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude < 0.01f)
+            {
+                direction = fallbackTransform != null ? fallbackTransform.forward : Vector3.forward;
+                direction.y = 0f;
+            }
+
+            if (direction.sqrMagnitude < 0.01f)
+                direction = Vector3.forward;
+
+            direction.Normalize();
+            yawOffset = UnityEngine.Random.Range(-60f, 60f);
+            return Quaternion.LookRotation(direction, Vector3.up) * Quaternion.Euler(0f, yawOffset, 0f);
         }
 
         private static void UpdateActiveFlight()
@@ -547,8 +591,8 @@ namespace ProtectiveWards
 
         private static void FinishTaxiStatus(Player player)
         {
-            RemoveTaxiStatusEffect(player, controlled: true);
             ResetState();
+            s_deferredStatusRemoval = true;
         }
 
         private static void OnStatusStopped(SE_WardTaxi status)
@@ -635,6 +679,9 @@ namespace ProtectiveWards
             s_offer = default;
             s_returnBack = false;
             s_waitingForValkyrieSpawn = false;
+            s_currentFlightTargetPosition = Vector3.zero;
+            s_currentFlightSpawnRotation = Quaternion.identity;
+            s_currentFlightSpawnYawOffset = 0f;
             s_statusExpected = false;
             s_controlledStatusRemoval = false;
             s_activeValkyrieId = ZDOID.None;
@@ -775,7 +822,7 @@ namespace ProtectiveWards
                 if (loc.Value != name)
                     continue;
 
-                float distance = Vector3.Distance(position, loc.Key);
+                float distance = Utils.DistanceXZ(position, loc.Key);
                 if (distance >= closestIconDistance)
                     continue;
 
@@ -992,15 +1039,15 @@ namespace ProtectiveWards
                 __instance.m_descentAltitude = TaxiDescentAltitude;
                 __instance.m_attachOffset = new Vector3(-0.1f, 1.5f, 0.1f);
 
-                __instance.m_targetPoint = s_targetPosition + new Vector3(0f, __instance.m_dropHeight, 0f);
+                __instance.m_targetPoint = s_currentFlightTargetPosition + new Vector3(0f, __instance.m_dropHeight, 0f);
 
                 Vector3 position = s_player.transform.position;
                 position.y += __instance.m_startAltitude;
 
-                float flyDistance = Vector3.Distance(__instance.m_targetPoint, position);
+                float flyDistance = Utils.DistanceXZ(__instance.m_targetPoint, position);
                 __instance.m_startDistance = flyDistance;
                 __instance.m_startDescentDistance = Math.Min(200f, flyDistance / 5);
-                __instance.m_speed = Math.Max(Math.Min(flyDistance / 90f, Math.Min(30f, maxTaxiSpeed.Value)), 10f);
+                __instance.m_speed = Math.Max(Math.Min(flyDistance / 90f, maxTaxiSpeed.Value), 10f);
 
                 if (__instance.m_speed <= 15)
                     EnvMan.instance.m_introEnvironment = EnvMan.instance.m_currentEnv.m_name;
@@ -1009,8 +1056,9 @@ namespace ProtectiveWards
 
                 s_player.m_intro = true;
                 __instance.transform.position = position;
+                __instance.transform.rotation = s_currentFlightSpawnRotation;
 
-                float landDistance = Vector3.Distance(__instance.m_targetPoint, __instance.transform.position);
+                float landDistance = Utils.DistanceXZ(__instance.m_targetPoint, __instance.transform.position);
                 float descentPathPart = Mathf.Clamp(__instance.m_descentAltitude / Math.Max(landDistance, 1f), 0.2f, 0.8f);
                 __instance.m_descentStart = Vector3.Lerp(__instance.m_targetPoint, __instance.transform.position, descentPathPart);
                 __instance.m_descentStart.y = __instance.m_descentAltitude;
@@ -1025,7 +1073,7 @@ namespace ProtectiveWards
                 __instance.SyncPlayer(doNetworkSync: true);
                 ResetTaxiProgressWatch(s_player);
 
-                LogInfo("Setting up Valkyrie passage from " + __instance.transform.position + " to " + __instance.m_targetPoint + "   " + ZNet.instance.GetReferencePosition());
+                LogInfo($"Setting up Valkyrie passage from {__instance.transform.position} to {__instance.m_targetPoint} distance {flyDistance:0.0} speed {__instance.m_speed:0.0} yaw {__instance.transform.eulerAngles.y:0.0} yawOffset {s_currentFlightSpawnYawOffset:0.0} reference {ZNet.instance.GetReferencePosition()}");
                 return false;
             }
         }
@@ -1082,6 +1130,14 @@ namespace ProtectiveWards
                     return;
 
                 bool hasStatus = HasTaxiStatusEffect(player);
+                if (s_deferredStatusRemoval)
+                {
+                    s_deferredStatusRemoval = false;
+                    if (hasStatus)
+                        RemoveTaxiStatusEffect(player, controlled: true);
+                    return;
+                }
+
                 if (s_statusExpected && !hasStatus)
                 {
                     LogInfo("Valkyrie passage status effect disappeared. Cleaning up taxi state.");

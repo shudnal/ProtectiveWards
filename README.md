@@ -220,7 +220,7 @@ Offer specific items to a ward to trigger useful effects:
 
 By default, offerings are still available to non-permitted players. A separate opt-in config can restrict offerings to permitted/effective-access players.
 
-When the player knows the vanilla guard stone text, the Valheim Compendium also shows a `Ward and offerings` topic under the raven icon. It lists the currently recognizable offerings and their effects. The ward hover only keeps a short reminder instead of showing the full offering list.
+When the player knows the vanilla ward text, the Valheim Compendium also shows a `Ward and offerings` topic under the raven icon. It lists the currently recognizable offerings and their effects. The ward hover only keeps a short reminder instead of showing the full offering list.
 
 ### Valkyrie passage
 

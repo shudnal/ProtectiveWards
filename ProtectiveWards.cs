@@ -64,6 +64,7 @@ namespace ProtectiveWards
         public static ConfigEntry<int> offeringTaxiPriceBogWitchAmount;
         public static ConfigEntry<bool> offeringTaxiBogWitchConsumeItem;
         public static ConfigEntry<int> offeringTaxiSecondsToFlyBack;
+        public static ConfigEntry<int> offeringTaxiReturnWaitLimitSeconds;
         public static ConfigEntry<WardTaxiExistingFlightMode> offeringTaxiExistingFlightMode;
 
         public static ConfigEntry<bool> offeringTaxiEikthyrAltarEnabled;
@@ -398,8 +399,8 @@ namespace ProtectiveWards
                                                                                                     "\nSetting more seconds can be helpful for fps for base with many objects and static untoggled wards. " +
                                                                                                     "\nDoesn't affect moving objects.", false);
             loggingEnabled = config("Misc", "Enable logging", defaultValue: false, "Enable logging for ward events. [Not Synced with Server]", false);
-            showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show a short guard stone hover hint pointing to the Valheim Compendium offerings entry and add the guard stone offerings topic to known texts. [Not Synced with Server]", false);
-            maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 30f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
+            showOfferingsInHover = config("Misc", "Show offerings in hover", defaultValue: true, "Show a short ward hover hint pointing to the Valheim Compendium offerings entry and add the ward offerings topic to known texts. [Not Synced with Server]", false);
+            maxTaxiSpeed = config("Misc", "Maximum taxi speed", defaultValue: 60f, "Reduce maximum taxi speed if it is laggy. [Not Synced with Server]", false);
             addLightMovement = config("Misc", "Add movement to light emitted by ward", defaultValue: true, "Adds little lavalamp effect on light emitted by ward. Applied only if ward emission color was changed. Reactivate ward after config change. [Not Synced with Server]", false);
 
 
@@ -461,37 +462,38 @@ namespace ProtectiveWards
             offeringTaxiPriceBogWitchItem = config("Offerings - Taxi", "Item to travel to Bog Witch", defaultValue: "Pukeberries", "A prefab name of the item required to travel to Bog Witch. Example: Pukeberries.");
             offeringTaxiPriceBogWitchAmount = config("Offerings - Taxi", "Item to travel to Bog Witch amount", defaultValue: 20, "An amount of configured items required to travel to Bog Witch.");
             offeringTaxiBogWitchConsumeItem = config("Offerings - Taxi", "Bog Witch taxi consumes item", defaultValue: true, "Whether Bog Witch taxi consumes the configured item amount.");
-            offeringTaxiSecondsToFlyBack = config("Offerings - Taxi", "Seconds to fly back", defaultValue: 120, "An amount of seconds you have to make business with trader before Valkyrie will bring you back. The remaining time is shown by the Valkyrie passage status effect. 0 disables the return flight.");
+            offeringTaxiSecondsToFlyBack = config("Offerings - Taxi", "Seconds to fly back", defaultValue: 120, "Seconds before the Valkyrie carries the player back after reaching the destination. 0 disables the return flight.");
+            offeringTaxiReturnWaitLimitSeconds = config("Offerings - Taxi", "Seconds to wait for return flight", defaultValue: 600, "Maximum seconds the Valkyrie waits for the player to become ready for the return flight. 0 disables this timeout.");
             offeringTaxiExistingFlightMode = config("Offerings - Taxi", "Active passage handling", WardTaxiExistingFlightMode.RejectNewPassage, "Controls what happens when a player makes a taxi offering while a Valkyrie passage is already active. RejectNewPassage shows an error and keeps the current passage. StopActivePassage stops the current passage without starting a new one; make the offering again to start a new passage.");
 
             offeringTaxiEikthyrAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Eikthyr altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Eikthyr altar.");
-            offeringTaxiEikthyrAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Eikthyr altar", defaultValue: "TrophyDeer", "A prefab name of the item required to travel to the Eikthyr altar. Example: TrophyDeer.");
-            offeringTaxiEikthyrAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Eikthyr altar amount", defaultValue: 2, "An amount of configured items required to travel to the Eikthyr altar.");
-            offeringTaxiEikthyrAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Eikthyr altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Eikthyr altar is consumed.");
+            offeringTaxiEikthyrAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Eikthyr altar item", defaultValue: "TrophyDeer", "A prefab name of the item required to travel to the Eikthyr altar. Example: TrophyDeer.");
+            offeringTaxiEikthyrAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Eikthyr altar item amount", defaultValue: 10, "An amount of configured items required to travel to the Eikthyr altar.");
+            offeringTaxiEikthyrAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Eikthyr altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Eikthyr altar is consumed.");
             offeringTaxiElderAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Elder altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Elder altar.");
-            offeringTaxiElderAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Elder altar", defaultValue: "AncientSeed", "A prefab name of the item required to travel to the Elder altar. Example: AncientSeed.");
-            offeringTaxiElderAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Elder altar amount", defaultValue: 3, "An amount of configured items required to travel to the Elder altar.");
-            offeringTaxiElderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Elder altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Elder altar is consumed.");
+            offeringTaxiElderAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Elder altar item", defaultValue: "AncientSeed", "A prefab name of the item required to travel to the Elder altar. Example: AncientSeed.");
+            offeringTaxiElderAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Elder altar item amount", defaultValue: 6, "An amount of configured items required to travel to the Elder altar.");
+            offeringTaxiElderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Elder altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Elder altar is consumed.");
             offeringTaxiBonemassAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Bonemass altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Bonemass altar.");
-            offeringTaxiBonemassAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Bonemass altar", defaultValue: "WitheredBone", "A prefab name of the item required to travel to the Bonemass altar. Example: WitheredBone.");
-            offeringTaxiBonemassAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Bonemass altar amount", defaultValue: 10, "An amount of configured items required to travel to the Bonemass altar.");
-            offeringTaxiBonemassAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Bonemass altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Bonemass altar is consumed.");
+            offeringTaxiBonemassAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Bonemass altar item", defaultValue: "WitheredBone", "A prefab name of the item required to travel to the Bonemass altar. Example: WitheredBone.");
+            offeringTaxiBonemassAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Bonemass altar item amount", defaultValue: 30, "An amount of configured items required to travel to the Bonemass altar.");
+            offeringTaxiBonemassAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Bonemass altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Bonemass altar is consumed.");
             offeringTaxiModerAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Moder altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Moder altar.");
-            offeringTaxiModerAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Moder altar", defaultValue: "FreezeGland", "A prefab name of the item required to travel to the Moder altar. Example: FreezeGland.");
-            offeringTaxiModerAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Moder altar amount", defaultValue: 30, "An amount of configured items required to travel to the Moder altar.");
-            offeringTaxiModerAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Moder altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Moder altar is consumed.");
+            offeringTaxiModerAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Moder altar item", defaultValue: "FreezeGland", "A prefab name of the item required to travel to the Moder altar. Example: FreezeGland.");
+            offeringTaxiModerAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Moder altar item amount", defaultValue: 50, "An amount of configured items required to travel to the Moder altar.");
+            offeringTaxiModerAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Moder altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Moder altar is consumed.");
             offeringTaxiYagluthAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Yagluth altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Yagluth altar.");
-            offeringTaxiYagluthAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Yagluth altar", defaultValue: "GoblinTotem", "A prefab name of the item required to travel to the Yagluth altar. Example: GoblinTotem.");
-            offeringTaxiYagluthAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Yagluth altar amount", defaultValue: 5, "An amount of configured items required to travel to the Yagluth altar.");
-            offeringTaxiYagluthAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Yagluth altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Yagluth altar is consumed.");
+            offeringTaxiYagluthAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Yagluth altar item", defaultValue: "GoblinTotem", "A prefab name of the item required to travel to the Yagluth altar. Example: GoblinTotem.");
+            offeringTaxiYagluthAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Yagluth altar item amount", defaultValue: 10, "An amount of configured items required to travel to the Yagluth altar.");
+            offeringTaxiYagluthAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Yagluth altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Yagluth altar is consumed.");
             offeringTaxiQueenAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Queen altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Queen altar.");
-            offeringTaxiQueenAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Queen altar", defaultValue: "DvergrKey", "A prefab name of the item required to travel to the Queen altar. Example: DvergrKey.");
-            offeringTaxiQueenAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Queen altar amount", defaultValue: 1, "An amount of configured items required to travel to the Queen altar.");
-            offeringTaxiQueenAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Queen altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Queen altar is consumed.");
+            offeringTaxiQueenAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Queen altar item", defaultValue: "DvergrKey", "A prefab name of the item required to travel to the Queen altar. Example: DvergrKey.");
+            offeringTaxiQueenAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Queen altar item amount", defaultValue: 1, "An amount of configured items required to travel to the Queen altar.");
+            offeringTaxiQueenAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Queen altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Queen altar is consumed.");
             offeringTaxiFaderAltarEnabled = config("Offerings - Taxi - Boss altars", "Allow taxi to Fader altar", defaultValue: false, "Allow configured item offerings to call a taxi to the Fader altar.");
-            offeringTaxiFaderAltarItem = config("Offerings - Taxi - Boss altars", "Item to travel to Fader altar", defaultValue: "Bell", "A prefab name of the item required to travel to the Fader altar. Example: Bell.");
-            offeringTaxiFaderAltarAmount = config("Offerings - Taxi - Boss altars", "Item to travel to Fader altar amount", defaultValue: 1, "An amount of configured items required to travel to the Fader altar.");
-            offeringTaxiFaderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Item to travel to Fader altar consumed", defaultValue: true, "Whether the configured item amount required to travel to the Fader altar is consumed.");
+            offeringTaxiFaderAltarItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Fader altar item", defaultValue: "Bell", "A prefab name of the item required to travel to the Fader altar. Example: Bell.");
+            offeringTaxiFaderAltarAmount = config("Offerings - Taxi - Boss altars", "Allow taxi to Fader altar item amount", defaultValue: 1, "An amount of configured items required to travel to the Fader altar.");
+            offeringTaxiFaderAltarConsumeItem = config("Offerings - Taxi - Boss altars", "Allow taxi to Fader altar item consumed", defaultValue: true, "Whether the configured item amount required to travel to the Fader altar is consumed.");
 
             wardPassiveRepair = config("Passive", "Activatable passive repair", defaultValue: true, "Interact with a ward to start passive repair process of all pieces in all connected areas" +
                                                                                                       "\nWard will repair one piece every 10 seconds until all pieces are healthy. Then the process will stop.");
@@ -2251,7 +2253,7 @@ namespace ProtectiveWards
             if (!Player.m_localPlayer.IsMaterialKnown(itemName) && !Player.m_localPlayer.NoCostCheat())
                 return;
 
-            offeringsList.Add($"{itemName} {(amount > 1 ? $"x{amount}" : "")} - $pw_ward_offering_bossaltar_description {destinationName}{(consumeItem ? "; $pw_ward_offering_bossaltar_item_consumed" : "")}");
+            offeringsList.Add($"{itemName} {(amount > 1 ? $"x{amount}" : "")} - $pw_ward_offering_bossaltar_description {destinationName}{(consumeItem ? $". $pw_ward_offering_bossaltar_item_consumed" : "")}");
         }
 
         private static List<string> BuildAvailableOfferingList(out bool hasTaxiOffering)
@@ -2273,10 +2275,7 @@ namespace ProtectiveWards
             if (offeringThundertone.Value && (Player.m_localPlayer.IsMaterialKnown("$item_thunderstone") || Player.m_localPlayer.NoCostCheat()))
                 offeringsList.Add("$item_thunderstone - $pw_ward_offering_thunderstone_description");
             if (offeringTrophy.Value)
-            {
                 offeringsList.Add("$inventory_trophies - $pw_ward_offering_trophies_description");
-                offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
-            }
             if (offeringYmirRemains.Value && (Player.m_localPlayer.IsMaterialKnown("$item_ymirremains") || Player.m_localPlayer.NoCostCheat()))
                 offeringsList.Add("$item_ymirremains - $pw_ward_offering_ymirremains_description");
             if (offeringEitr.Value && (Player.m_localPlayer.IsMaterialKnown("$item_eitr") || Player.m_localPlayer.NoCostCheat()))
@@ -2289,7 +2288,7 @@ namespace ProtectiveWards
 
             int taxiStartCount = offeringsList.Count;
             if (offeringTaxiStartTempleEnabled.Value)
-                offeringsList.Add("$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
+                offeringsList.Add(offeringTaxiStartTempleConsumeItem.Value ? "$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_consumed_description" : "$pw_ward_offering_bosstrophies - $pw_ward_offering_bosstrophies_description");
 
             string haldorItem = offeringTaxiPriceHaldorItem.Value.GetItemName();
             if (offeringTaxiHaldorEnabled.Value && !haldorItem.IsNullOrWhiteSpace() && (Player.m_localPlayer.IsMaterialKnown(haldorItem) || Player.m_localPlayer.NoCostCheat()))

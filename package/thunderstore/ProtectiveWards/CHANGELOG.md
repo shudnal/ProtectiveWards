@@ -9,10 +9,10 @@
 * Valkyrie passage item configs can now use item prefab names, localization tokens, or localized item names
 * Hildir chests remain free non-consumed Valkyrie passage tickets to Hildir and no longer conflict with the configured Hildir passage tribute
 * Valkyrie return flight can now be disabled by setting Seconds to fly back to 0
-* moved the detailed offerings list from the guard stone hover into the Valheim Compendium and replaced the hover list with an immediate raven-icon hint
-* expanded the guard stone Compendium text with Protective Wards behavior notes and added a dedicated Ward and offerings topic
+* moved the detailed offerings list from the ward hover into the Valheim Compendium and replaced the hover list with an immediate raven-icon hint
+* expanded the ward Compendium text with Protective Wards behavior notes and added a dedicated Ward and offerings topic
 * changed the default custom ward range value to 32 meters
-* limited ward sphere, demister, visual refresh, and range changes to vanilla player wards so Dvergr guardstones are not modified
+* limited ward sphere, demister, visual refresh, and range changes to vanilla player wards so Dvergr wards are not modified
 * fixed connected ward expiration refresh not counting players standing inside an accessible connected ward area
 * fixed plant growth offerings failing on some plant instances
 * ward permit and unpermit commands no longer match players from an empty name query
