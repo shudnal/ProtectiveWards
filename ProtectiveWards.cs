@@ -2346,16 +2346,14 @@ namespace ProtectiveWards
         {
             private static void Postfix(TextsDialog __instance)
             {
-                if (__instance == null || __instance.m_texts == null)
+                if (__instance?.m_texts == null)
                     return;
 
                 string guardstoneTopic = Localization.instance.Localize("$tutorial_guardstone_label");
-                int index = __instance.m_texts.FindIndex(text => text.m_topic == guardstoneTopic);
-                if (index < 0)
-                    return;
+                int guardstoneIndex = __instance.m_texts.FindIndex(text => text.m_topic == guardstoneTopic);
 
-                if (!__instance.m_texts[index].m_text.Contains("$pw_tutorial_guardstone_extra"))
-                    __instance.m_texts[index].m_text += "\n\n$pw_tutorial_guardstone_extra";
+                if (guardstoneIndex >= 0 && !__instance.m_texts[guardstoneIndex].m_text.Contains("$pw_tutorial_guardstone_extra"))
+                    __instance.m_texts[guardstoneIndex].m_text += "\n\n$pw_tutorial_guardstone_extra";
 
                 if (!showOfferingsInHover.Value)
                     return;
@@ -2364,10 +2362,22 @@ namespace ProtectiveWards
                 if (offeringsList.Count == 0)
                     return;
 
-                __instance.m_texts.Insert(index + 1, new TextsDialog.TextInfo("$pw_ward_offerings_compendium_topic", BuildWardSacrificesCompendiumText(offeringsList, hasTaxiOffering)));
+                string offeringsTopic =
+                    Localization.instance.Localize("$pw_ward_offerings_compendium_topic");
+
+                if (__instance.m_texts.Any(text => text.m_topic == offeringsTopic))
+                    return;
+
+                TextsDialog.TextInfo offeringsText = new(
+                    "$pw_ward_offerings_compendium_topic",
+                    BuildWardSacrificesCompendiumText(offeringsList, hasTaxiOffering));
+
+                if (guardstoneIndex >= 0)
+                    __instance.m_texts.Insert(guardstoneIndex + 1, offeringsText);
+                else if (Player.m_localPlayer?.IsRecipeKnown("$piece_guardstone") == true)
+                    __instance.m_texts.Add(offeringsText);
             }
         }
-
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.OnDestroy))]
         public static class PrivateArea_OnDestroy_ClearStatus
         {
