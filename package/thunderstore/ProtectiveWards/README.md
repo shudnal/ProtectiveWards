@@ -4,335 +4,238 @@
 
 Configurable ward protection, access control, passive base support, server-side privacy tools, multipliers and active offerings for Valheim.
 
-Protective Wards is aimed at public PvE servers: it helps keep non-permitted players from casually using, taking, moving or changing objects inside another player's warded base. It is not designed as a PvP raid system.
+Protective Wards is designed primarily for public PvE servers. It helps prevent non-permitted players from casually using, taking, moving or changing objects inside another player's warded base. It is not intended to be a PvP raid system.
 
 ## Requirements
 
 - BepInExPack Valheim
-- Jotunn 2.29.1 or newer compatible 2.x version
+- Jotunn 2.29.1 or a newer compatible 2.x version
 - YamlDotNet
 
-The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-synced configuration. In client-server mode, the mod is required on both the server and all clients.
+The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer it must be installed on the server and every client. Gameplay settings are server-synchronized; client-only visual settings are marked `[Not Synced with Server]`.
 
-## Main features
+## Features
 
-Most features work inside an active player ward area. Some background protections can be configured to use connected/overlapping ward networks.
+- per-ward range and visual settings;
+- configurable protection for containers, doors, portals, stations, vehicles, tames and other interactables;
+- connected ward networks with several access-sharing modes;
+- cylindrical or spherical ward coverage;
+- optional protection of dungeon interiors through a warded outside entrance;
+- offline/background protection while no permitted player is nearby;
+- inactive ward expiration and abandonment rules;
+- ward build limits and server-validated management commands;
+- passive repair and automatic door closing;
+- damage, drain and production-speed multipliers;
+- active offerings, including Valkyrie passage travel.
 
-### How access is evaluated
+## Access model
 
-Protective Wards separates several kinds of access instead of using only the vanilla permitted list everywhere.
+- **Direct access**: ward creator, directly permitted player, or configured admin bypass.
+- **Connected/effective access**: access inherited through overlapping active wards according to the selected connected access mode.
+- **Ownership exemptions**: narrow exceptions for objects where a foreign ward should not trap a player's own property, such as tombstones, saddles and previously controlled vehicles.
+- **Permit everyone**: a global bypass that treats every player as having ward admin access.
 
-- **Direct access** means the player is the ward creator, is directly permitted on the ward, or is allowed by the configured admin bypass.
-- **Connected/effective access** can extend access through overlapping wards according to the selected connected access mode. This is useful for shared bases made from multiple wards.
-- **Object ownership exemptions** are used only for specific objects where trapping a player would be worse than allowing a limited action. Tombstones, saddles, vehicles and similar cases are handled separately from normal base access.
-- **Admin access** is controlled by `Ward admin / Ward admin access`. By default it requires admin plus god mode, so admins can still play normally without bypassing protections accidentally.
-- **Permit everyone** is a global bypass. When enabled, access restrictions are not enforced and all players are treated as ward admins.
+Sensitive actions and console commands are validated by the server. The server checks the target ward, distance, access and requested state before applying changes.
 
-For client-server games, sensitive operations are validated on the server. Client UI and console commands are only requests; the server re-checks access, distance and the target object before changing ward data.
+## Per-ward settings
 
-### Per-ward visual settings
-
-Each ward can have its own visual settings stored in the ward ZDO.
-
-To edit a ward:
+Each ward can store its own range and visual overrides in its ZDO.
 
 1. Disable the ward.
-2. Press `AltPlace + Use` (`Left Shift + E` by default) on the ward.
-3. Change values in the settings window.
-4. Apply settings from the main settings page.
+2. Press `AltPlace + Use` (`Left Shift + E` by default).
+3. Change the range, emission, bubble or area-circle settings.
+4. Apply the settings.
 
-You can customize:
+| Config | Meaning |
+|---|---|
+| `Ward settings / Use default values for wards without custom settings` | Wards without saved overrides use the global range and visual defaults. |
+| `Ward settings / Only creator can edit ward settings` | Only the creator may edit the ward instead of any player with access. |
+| `Ward settings / Admins can edit ward settings` | Players accepted by `Ward admin access` may edit any ward. |
 
-- ward range;
-- emission color and multiplier;
-- ward sphere visibility and color;
-- detailed ward sphere shader properties;
-- ward circle colors, width, line amount and animation speed.
+## Ward coverage
 
-Wards without custom settings can either use global default config values or keep vanilla/current behavior, depending on the config option `Use default values for wards without custom settings`.
+| Config/value | Meaning |
+|---|---|
+| `Ward settings / Protected area shape = Cylinder` | Default. Uses horizontal XZ distance and ignores height. |
+| `Ward settings / Protected area shape = Sphere` | Uses full 3D distance from the ward. |
+| `Ward settings / Protect dungeon interiors through warded entrances` | When enabled, an interior inherits protection if its external `Teleport` entrance is inside an active ward. |
 
-Disabled wards owned by another player cannot be edited. Admin bypass is controlled by `Ward admin / Ward admin access`:
+Interior objects are never matched against wards at their high-altitude dungeon position. The mod resolves the outside `Location`, ignores its `m_interiorTransform` hierarchy, finds the external entrance and checks that position instead.
 
-- `Off` - admins do not bypass ward access checks;
-- `Admins` - server admins and host bypass ward access checks;
-- `AdminsInGodMode` - server admins and host bypass ward access checks only while god mode is enabled.
+Background protection intentionally keeps horizontal checks for movable boats, carts and tames so waves and physics do not move them in and out of protection because of vertical displacement.
 
-The default is `AdminsInGodMode`, so admins can play normally without accidentally bypassing protections.
+## Connected ward access
 
-`Ward admin / Permit everyone` is a stronger global bypass mode. When it is enabled, ward access checks are not enforced and every player is treated as having ward admin access. Permitted lists are still stored, but they do not restrict access. This can also be used on multiplayer servers that do not need ward ownership restrictions or inactive ward expiration enforcement.
+Connected access is configured separately for normal interactions, background protection and expiration refresh.
 
-### Access protection from non-permitted players
+| Mode | Meaning |
+|---|---|
+| `Off` | Only direct access to the ward protecting the object is accepted. |
+| `SameCreatorOnly` | Access is shared only through overlapping wards with the same creator. |
+| `MutualTrust` | Access is shared only when the creators of overlapping wards mutually permit each other. |
+| `AnyConnected` | Access to any ward grants access through the connected network; intended for shared-base or single-party servers. |
 
-The `Ward access from non-permitted players` config group controls what non-permitted players are blocked from using inside another player's active ward. These protections run on interaction points such as container opening, portal use, switch callbacks, pickup paths, saddle use, vehicle controls and station interactions.
+## Access protection
 
-The goal is to block unwanted use of another player's base without turning every object into an unconditional hard lock. Several categories have their own rules:
+The `Ward access from non-permitted players` group controls interaction blocking inside active wards.
 
-- **Food and feasts** are separate from item pickup. The food setting covers feast interaction and placed consumable item pieces.
-- **Item pickup mode** controls non-consumable item drops. It can allow all pickups, block only player-dropped items, or block every non-food item pickup in protected areas.
-- **Vehicles** use last-controller tracking. A player who drove a ship or dragged a cart into a protected area can still regain control or detach it, but the vehicle creator does not get automatic access inside someone else's ward.
-- **Saddles and tames** use separate saddle-user tracking, so legitimate riding/mounting edge cases can be handled without broadly allowing tame access.
-- **Portals** can allow teleporting while still blocking renaming, or block teleporting completely. Full portal blocking checks both the source and the destination side server-side.
-- **Generic interactables** are an optional compatibility layer for interactables not covered by a dedicated patch. Dedicated protections are preferred when the object has special game logic.
+Supported vanilla categories include containers, doors, plants, food and feasts, dropped items, ships, carts, tames, production and crafting stations, item and armor stands, portals, map tables, fireplaces, shield generators, obliterators, turrets, beds, catapults, archery targets, barber stations, traps and inactive wards.
 
-Supported vanilla access protection includes:
+`Generic interactables` is an optional broad compatibility layer for vanilla or modded `Interactable` implementations without dedicated handling. It is disabled by default because ownership-sensitive objects are safer with dedicated patches.
 
-- chests and containers;
-- doors;
-- plants and pickables;
-- feast eating and placed consumable item pieces;
-- configurable non-consumable item pickup modes, including allowing all pickups, blocking only player-dropped items, or blocking all non-food pickups;
-- ships and ship containers;
-- carts, wagons and battering rams;
-- tames, saddles and pet interactions;
-- production stations;
-- crafting stations and station discovery;
-- item stands and armor stands;
-- portals, with separate modes for teleporting and renaming;
-- map tables;
-- fireplaces;
-- shield generator fuel switches;
-- obliterator/incinerator levers;
-- turrets and ballistas;
-- beds;
-- catapults;
-- archery targets;
-- barber stations;
-- traps;
-- inactive wards inside another active ward;
-- generic interactables as an optional broad compatibility layer.
+### Portal access mode
 
-Ownership-sensitive objects are handled carefully. A foreign ward should not trap a player's own movable/owned objects such as portals, tombstones, saddles or tames. Ships and carts use a last-controller exemption instead of creator-only access, so the same player who drove or dragged the vehicle into another ward can still regain control or detach it without granting extra access to the vehicle creator.
+| Mode | Meaning |
+|---|---|
+| `AllowAll` | Non-permitted players may use and rename portals. |
+| `AllowTeleportOnly` | Default. Teleporting is allowed, but changing portal tags is blocked. |
+| `BlockAll` | Teleporting and renaming are blocked; both source and destination are validated server-side. |
 
-### Connected ward access modes
+### Item pickup mode
 
-Several systems can share access across overlapping ward networks. Connected access is used only by systems whose own config points to a connected access mode; it does not automatically make every ward permission global.
+| Mode | Meaning |
+|---|---|
+| `AllowAll` | All non-consumable drops may be picked up. |
+| `AllowNonPlayerDropped` | Default. Normal loot/world drops are allowed, but player-dropped items are protected. |
+| `BlockAll` | All non-consumable item pickup is blocked in protected areas. |
 
-Connected access is evaluated from the ward that protects the object being used. The selected mode decides whether other overlapping active player wards can grant access to that protected/root ward. Expired wards are not treated as active connected access sources for expiration refresh checks.
+Vehicles use last-controller tracking: a player who drove a ship or dragged a cart into another ward can regain control or detach it without granting the same exemption to the creator or other players.
 
-Available modes:
+## Background protection
 
-- `Off` - only direct access to the ward covering the object is accepted.
-- `SameCreatorOnly` - access is shared only between overlapping wards created by the same player.
-- `MutualTrust` - access is shared only between overlapping wards whose creators mutually permit/trust each other.
-- `AnyConnected` - access to any ward in the overlapping network can grant access to the whole network. Intended for single-party/shared-base servers.
+The `Ward without permitted players nearby` group protects inactive public PvE bases while no permitted/effective-access player is present.
 
-Access protection, background protection and expiration can use separate connected access settings. This allows strict interaction protection but looser background protection, or direct-only expiration with connected access for normal base use.
+### Permitted player presence mode
 
-### Admin/server tools
+| Mode | Meaning |
+|---|---|
+| `PermittedNearProtectedArea` | A permitted player must be within the configured horizontal radius of the protected object. |
+| `PermittedInsideConnectedArea` | A permitted player anywhere inside the connected ward area disables background protection. |
+| `PermittedOnline` | A permitted player being online is enough to disable background protection. |
 
-#### Ward permitted-list commands
+### Background protection mode
 
-`pw_permit <player name>` / `ward_permit <player name>` adds an online player to the nearest ward's permitted list.
+| Mode | Meaning |
+|---|---|
+| `Off` | No broad structure background protection. |
+| `BlockNonPermittedPlayerDamage` | Blocks direct structure damage caused by non-permitted players. |
+| `BlockAllDamageWhenNoPermittedNearby` | Blocks structure damage from all sources while no permitted/effective player is present. |
 
-`pw_unpermit <player name>` / `ward_unpermit <player name>` removes a player from the nearest ward's permitted list. It matches the existing permitted list, so the player does not need to be online.
+Other settings can require a minimum number of player-built pieces, prevent structure fire damage, protect tames/boats/carts, pacify tames, stop tames damaging structures, and block non-permitted building or demolition. Players may always demolish their own pieces.
 
-Both commands use `Ward admin / Enable external ward control commands` and `Ward admin / External ward control command range`.
-They validate on the server that:
+## Inactive ward expiration
 
-- the ward exists and is close enough;
-- the requester has ward access;
-- the target can be uniquely resolved;
-- the requested permitted-list change is still valid.
+Expiration is disabled by default, works server-side in multiplayer and is ignored in singleplayer.
 
-#### Ward toggle commands
+`Ward expiration / Expiration minutes` sets the inactivity period; `0` disables the feature. Expired wards are not deleted. Their permitted lists remain stored, but they intentionally behave like disabled wards so abandoned areas can be reclaimed through normal ward behavior.
 
-`pw_enable` / `ward_enable` enables the nearest ward within the configured command range.
+### Expiration refresh mode
 
-`pw_disable` / `ward_disable` disables the nearest ward within the configured command range.
+| Mode | Meaning |
+|---|---|
+| `DirectPermitted` | Creator, directly permitted player or admin/global bypass may refresh the ward. |
+| `EffectiveAccess` | Default. Connected ward access may also refresh it according to `Expiration connected access mode`. |
 
-The commands use the same external ward control enable/range configs as the permitted-list commands.
-They are creator/admin controlled: the ward creator may toggle their own ward, and players allowed by `Ward admin / Ward admin access` may toggle any nearby ward.
+### Expiration reactivation mode
 
-#### Ward expiration admin commands
+| Mode | Meaning |
+|---|---|
+| `ManualInteraction` | Default. An access player must interact with the expired ward. |
+| `AutomaticOnLogin` | The server may reactivate the ward when an access player is nearby during a check or when the loaded ward wakes up. |
 
-`pw_set_expired` / `ward_set_expired` marks the nearest ward as expired.
+Old wards receive a current timestamp when expiration is enabled, so existing worlds do not immediately lose every ward. `Ward admin / Permit everyone` disables expiration enforcement.
 
-`pw_set_unexpired` / `ward_set_unexpired` clears the expired state from the nearest ward.
+## Ward administration
 
-The commands use the same external ward control enable/range configs as the permitted-list and toggle commands.
-They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`, or by `Ward admin / Permit everyone`.
+### Ward admin access
 
-#### Ward build limit
+| Mode | Meaning |
+|---|---|
+| `Off` | Administrators do not bypass ward checks. |
+| `Admins` | Server administrators and the host bypass ward checks. |
+| `AdminsInGodMode` | Default. Administrators bypass ward checks only while god mode is active. |
 
-The server can limit how many wards each player may have in the world.
+`Ward admin / Permit everyone` is stronger than the admin mode. It bypasses ward ownership restrictions for every player while preserving stored permitted lists.
 
-Existing wards are never removed. If a player already exceeds the configured limit, only newly built wards are blocked: after a new ward is placed, the server checks the tracked ward ZDO collection for that creator and destroys only the newly placed ward if the limit is exceeded.
+### External ward commands
 
-### Background/passive protection
+Commands are controlled by `Ward admin / Enable external ward control commands` and `Ward admin / External ward control command range`.
 
-The `Ward without permitted players nearby` config group controls background protection for inactive public PvE bases when no permitted/effective-access player is nearby. This is separate from ordinary interaction blocking: it is meant to reduce offline grief and environmental/base damage while still allowing normal gameplay when an access player is present.
+| Command | Alias | Description |
+|---|---|---|
+| `pw_permit <player name>` | `ward_permit <player name>` | Adds a uniquely matched online player to the nearest ward. |
+| `pw_unpermit <player name>` | `ward_unpermit <player name>` | Removes a matching player from the nearest ward's stored list; the player may be offline. |
+| `pw_enable` | `ward_enable` | Enables the nearest ward. Creator or configured ward admin. |
+| `pw_disable` | `ward_disable` | Disables the nearest ward. Creator or configured ward admin. |
+| `pw_set_expired` | `ward_set_expired` | Marks the nearest ward as expired. Admin-only. |
+| `pw_set_unexpired` | `ward_set_unexpired` | Clears the expired state. Admin-only. |
 
-The background system can require a qualified base before broad protection is applied. Qualification can include a minimum number of player-built pieces inside the connected ward network. Presence detection is configurable: a permitted/effective player can be required near the protected object, anywhere inside the connected area, or simply online.
+All commands are revalidated on the server. Permit commands require ward access; expiration commands require `Ward admin access` or `Permit everyone`.
 
-Configurable behavior includes:
+`Ward admin / Ward build limit per player` limits wards per owner. `0` disables the limit. Existing wards are never removed; only the newly placed ward is destroyed when it would exceed the limit.
 
-- requiring a minimum number of player-built pieces in a connected ward network before broad background protection activates;
-- detecting permitted/effective player presence by radius, by connected area, or by online status;
-- blocking direct non-permitted player damage to structures;
-- blocking all structure damage while no permitted/effective player is nearby;
-- preventing fire/burning damage to structures while no permitted/effective player is nearby;
-- protecting tames, boats and carts while no permitted/effective player is nearby;
-- pacifying tamed creatures so they drop combat/static targets and do not acquire new targets while the base is protected;
-- blocking non-permitted players from placing new pieces or demolishing other players' pieces while the base is protected.
+## Full and passive protection
 
-Trap protection still lets permitted players move through their own traps safely. If a non-permitted player enters a qualified background-protected base, traps can still trigger against that player. Players can always demolish their own pieces even when background build/demolish protection is active.
+`Ward protects` options can protect boars and hens, structures from rain, ships from selected damage, plants, fireplaces from step damage, players from their own traps, and sitting players near an active fire from raids.
 
-### Inactive ward expiration
+Passive options include repair of one piece every 10 seconds across connected areas, optional repair of non-player location structures, optional crafting-station requirements, and automatic door closing.
 
-Inactive ward expiration is disabled by default.
+## Multipliers
 
-This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks its tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without nearby activity from players who are allowed to refresh them. The check is skipped when `Ward admin / Permit everyone` is enabled. The check is also skipped while the server has no active character ZDOs, so an empty dedicated server does not age wards just because no one is online.
+Ward-area multipliers cover damage dealt/taken, structure and ship damage, fall damage, turret fire rate, food/stamina/skill/fuel/durability drain, and smelting/cooking/fermenting/sap-collecting speed.
 
-An expired ward is not deleted and its permitted list is preserved. The mod makes it behave like a disabled ward, which means another player can claim or reuse an abandoned area through normal disabled-ward behavior. This is intentional: expiration is an abandonment/takeover mechanic, not a hidden deletion system.
+`1` keeps vanilla behavior. Values below or above `1` reduce/increase the relevant effect or slow/speed the process according to the config description.
 
-Activity and refresh rules:
+## Active offerings
 
-- activity must come from a player character near the ward, using the ward's current radius as the horizontal activation range;
-- `DirectPermitted` refresh mode accepts only the ward creator, directly permitted players and admin bypass;
-- `EffectiveAccess` refresh mode can also accept access through connected/overlapping wards according to `Expiration connected access mode`;
-- old wards are initialized with the current server time and do not expire immediately after enabling the feature;
-- `Permit everyone` disables expiration enforcement because every player is treated as having access;
-- singleplayer worlds ignore this system entirely.
+Enabled offerings are shown in the Valheim Compendium under `Ward and offerings`. If the vanilla ward text is unavailable, the topic is still added once the player knows the ward recipe. Ward hover keeps only a short hint.
 
-Reactivation rules:
+Available effects include instant repair, structure augmentation, passive healing, shared mead effects, Thor's wrath, trophy-based creature killing, plant growth, Moder power and Valkyrie passage travel.
 
-- `ManualInteraction` keeps expired wards inactive until an access player interacts with the ward;
-- `AutomaticOnLogin` reactivates an expired ward when an access player is nearby during a periodic server check, or when an expired loaded ward wakes up near an access player;
-- when a ward is reactivated, connected loaded wards that the same player can directly/admin access can also be activated so a linked base can recover together.
+`Offerings / Protect from non-permitted players` can restrict offerings to players with direct or connected access. It is disabled by default so visitors may make offerings.
 
-Admin tools:
+## Valkyrie passage
 
-- `pw_set_expired` / `ward_set_expired` marks the nearest ward as expired;
-- `pw_set_unexpired` / `ward_set_unexpired` clears the expired state;
-- optional expiration hover details show raw Unix timestamps and the last refreshing player only to players allowed by `Ward admin / Ward admin access`.
+Travel destinations include the Sacrificial Stones, Haldor, Hildir, the Bog Witch and optional Eikthyr, Elder, Bonemass, Moder, Yagluth, Queen and Fader altars. Boss altar routes are disabled by default and have separate item, amount and consumption settings. Hildir chests are never consumed.
 
-### Full protection
+Configured item names may use a prefab name such as `Coins`, a localization token such as `$item_coins`, or a localized item name when ObjectDB and localization data are available.
 
-Classic protection options include:
+| Config | Meaning |
+|---|---|
+| `Offerings - Taxi / Seconds to fly back` | Delay before the return flight; `0` makes the trip one-way. |
+| `Offerings - Taxi / Seconds to wait for return flight` | Maximum time to wait until the player becomes ready to return; `0` disables the timeout. |
+| `Offerings - Taxi / Active passage handling = RejectNewPassage` | Keeps the current passage and rejects another offering. |
+| `Offerings - Taxi / Active passage handling = StopActivePassage` | Stops the current passage without starting another; offer again to start a new one. |
+| `Misc / Maximum taxi speed` | Client-side speed cap; `60` by default. |
 
-- protect boars and hens from enemies and fire;
-- protect structures from rain damage;
-- protect ships from water damage or from all damage;
-- protect plants from damage;
-- protect fireplaces from players stepping on them;
-- protect players from raids while sitting near an active fire;
-- protect players from their own traps.
+During flight, `AltPlace + Use` (`Left Shift + E` by default) requests an immediate drop and cancels the return pickup.
 
-### Passive repair
+The player cannot be encumbered and must be teleportable, except that carried Hildir chests are ignored for this check. The destination must exist and be at least 200 meters away before an item can be consumed.
 
-Activate a ward to start passive repair of pieces in all connected ward areas. The ward repairs one piece every 10 seconds until all pieces are healthy, then stops.
+## Installation and configuration
 
-### Passive door auto-closing
+Install with a mod manager, or place `ProtectiveWards.dll` in `BepInEx/Plugins`. For multiplayer, install it on the server and every client.
 
-Doors inside a ward can be automatically closed after a configured delay after the last interaction.
-
-### Multipliers
-
-Inside ward areas, configurable multipliers can affect:
-
-- player damage dealt/taken;
-- tamed damage taken;
-- structure and ship damage taken;
-- fall damage taken;
-- turret fire rate;
-- food drain;
-- stamina drain;
-- skill drain on death;
-- fireplace fuel drain;
-- hammer durability drain;
-- smelting, cooking, fermenting and sap collecting speed.
-
-### Active offerings
-
-Offer specific items to a ward to trigger useful effects:
-
-- surtling core: instantly repair pieces;
-- black core: augment structures by increasing health;
-- food: start passive healing for players and tames;
-- mead: share mead effects with players in connected areas;
-- thunderstone: call Thor's wrath on enemies;
-- trophy: kill enemies of the offered trophy type;
-- Ymir flesh: grow healthy plants;
-- Eitr x5: grow plants regardless of normal requirements;
-- dragon egg: activate Moder power for players;
-- selected travel items: open a Valkyrie passage to distant locations.
-
-By default, offerings are still available to non-permitted players. A separate opt-in config can restrict offerings to permitted/effective-access players.
-
-When the player knows the vanilla ward text, the Valheim Compendium also shows a `Ward and offerings` topic under the raven icon. It lists the currently recognizable offerings and their effects. The ward hover only keeps a short reminder instead of showing the full offering list.
-
-### Valkyrie passage
-
-A Valkyrie passage offering can carry the player to selected distant locations and optionally bring them back.
-
-Supported destinations include:
-
-- Sacrificial Stones with a boss trophy;
-- Haldor with the configured Haldor passage item, coins by default. The amount depends on whether Haldor is already discovered;
-- Hildir with Hildir chests or the configured Hildir travel item. Hildir chests are never consumed; the configured Hildir item defaults to Linen thread x50;
-- Bog Witch with the configured Bog Witch travel item and amount;
-- optional boss altar destinations for Eikthyr, Elder, Bonemass, Moder, Yagluth, Queen, and Fader. These routes are disabled by default and can be configured with their own offering item, item amount, and consume setting.
-
-Each main destination can be enabled or disabled separately. Most Valkyrie passage offerings also have a separate setting controlling whether the offered item is consumed. Hildir chest passage is always free and does not consume the chest. Boss altar locations are fixed to vanilla world locations; if the target location is missing in the world, no item is consumed.
-
-Valkyrie passage item configs accept several item name forms:
-
-- item prefab name, for example `Coins`;
-- localization token, for example `$item_coins`;
-- localized item name from the current game language, if ObjectDB and localization data are already available.
-
-The mod resolves configured item names to the internal localization token before comparing them with inventory items.
-
-The passage starts through the `Valkyrie passage` status effect with the Celestial feather icon. If return flight is enabled, the same status effect shows the return timer. During the flight, `AltPlace + Use` (`Left Shift + E` by default) makes the Valkyrie drop you immediately. No Valkyrie will return to pick you up after that. Set `Offerings - Taxi / Seconds to fly back` to `0` to disable the return flight.
-
-Restrictions:
-
-- the player cannot be encumbered;
-- the player must be teleportable, except Hildir chests are ignored for this check;
-- the target point must be at least 300 meters away;
-- another passage cannot start while a return trip is pending unless the active-passage handling config is set to stop the current passage first.
-
-## Localization
-
-Some messages and captions use suitable vanilla localization lines. The rest is localized by the mod.
-
-To add your own localization, create a file named `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` anywhere inside the BepInEx folder. For example, to add French translations you can create `Protective Wards.French.yml` inside the config folder.
-
-Localization files are loaded on game launch or language change.
-
-You can send localization files through [GitHub](https://github.com/shudnal/ProtectiveWards/issues) or [Nexus](https://www.nexusmods.com/valheim/mods/2450?tab=posts).
-
-[Language list](https://valheim-modding.github.io/Jotunn/data/localization/language-list.html)
-
-English localization example is located in `Protective Wards.English.json` next to the plugin DLL.
-
-## Installation
-
-Extract `ProtectiveWards.dll` to your `BepInEx/Plugins` folder.
-
-For servers, install the mod on the dedicated server and on all clients.
-
-## Configuration
-
-The recommended way to edit configs is with a configuration manager:
+Recommended configuration managers:
 
 - [Configuration Manager](https://thunderstore.io/c/valheim/p/shudnal/ConfigurationManager/)
 - [Official BepInEx Configuration Manager](https://valheim.thunderstore.io/package/Azumatt/Official_BepInEx_ConfigurationManager/)
 
-Server-synced settings are admin-only. Client-only display settings are marked as not synced.
+Server-synchronized settings are admin-only in configuration managers.
+
+## Localization
+
+Create `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` anywhere under the BepInEx directory. Files are loaded on game launch and language changes. The English example is included next to the DLL as `Protective Wards.English.json`.
+
+- [Jotunn language list](https://valheim-modding.github.io/Jotunn/data/localization/language-list.html)
 
 ## Compatibility
 
-The mod tries to keep patches focused and non-invasive. Broad generic interaction protection is optional and should be enabled carefully on heavily modded servers.
+Dedicated patches are used where objects have special ownership or interaction logic. The optional generic-interactable protection is intentionally broad and should be enabled carefully on heavily modded servers.
 
-## Mirrors
+## Links
 
-[Nexus](https://www.nexusmods.com/valheim/mods/2450)
-
-## Donation
-
-[Buy Me a Coffee](https://buymeacoffee.com/shudnal)
-
-## Discord
-
-[Join server](https://discord.gg/e3UtQB8GFK)
+- [GitHub](https://github.com/shudnal/ProtectiveWards)
+- [Nexus](https://www.nexusmods.com/valheim/mods/2450)
+- [Discord](https://discord.gg/e3UtQB8GFK)
+- [Buy Me a Coffee](https://buymeacoffee.com/shudnal)

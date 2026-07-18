@@ -53,6 +53,10 @@ The default is `AdminsInGodMode`, so admins can play normally without accidental
 
 The `Ward access from non-permitted players` config group controls what non-permitted players are blocked from using inside another player's active ward.
 
+`Ward settings / Protected area shape` controls normal ward coverage and connected ward overlap. `Cylinder` is the default and uses horizontal XZ distance, matching vanilla behavior. `Sphere` uses full 3D distance from the ward. Background protection keeps horizontal coverage for movable objects, but interior targets are still resolved through their dungeon entrance.
+
+`Ward settings / Protect dungeon interiors through warded entrances` controls interior inheritance. When enabled, an interior is protected only when its outside dungeon entrance is covered by an active ward; all individually enabled protection rules then apply throughout that interior. When disabled, outside wards do not protect dungeon interiors.
+
 Supported vanilla access protection includes:
 
 - chests and containers;

@@ -1,6 +1,6 @@
 {
   "name": "ProtectiveWards",
-  "version_number": "2.0.2",
+  "version_number": "2.0.3",
   "website_url": "https://github.com/shudnal/ProtectiveWards",
   "description": "Server-synced ward access control and PvE base protection: per-ward settings, connected ward networks, protected interactions, inactive ward expiration, passive protection, offerings and multipliers.",
   "dependencies": [

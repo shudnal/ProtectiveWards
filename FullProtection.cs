@@ -43,7 +43,7 @@ namespace ProtectiveWards
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (!IsActivePlayerWard(area) || !area.IsInside(component.transform.position, 0f))
+                if (!IsActivePlayerWard(area) || !IsPointInsideWardArea(area, component.transform.position))
                     continue;
 
                 if (HasAccessToWardOrConnectedWard(area, player))
@@ -244,7 +244,7 @@ namespace ProtectiveWards
                 if (!IsActiveWardZdo(zdo))
                     continue;
 
-                if (Utils.DistanceXZ(zdo.GetPosition(), targetPoint) > zdo.GetWardRadius())
+                if (!IsPointInsideWardArea(zdo, targetPoint))
                     continue;
 
                 if (zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdo))

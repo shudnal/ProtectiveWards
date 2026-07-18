@@ -1,5 +1,10 @@
 # 2.0.3
-* wards offerings will still be put in the compendium if player knows about ward but default texts are disabled
+* added a configurable ward protected-area shape: the default XZ cylinder or full 3D sphere distance
+* added optional ward protection for dungeon interiors when the exterior entrance is covered by an active ward
+* improved Valkyrie passage flight setup with target-facing randomized spawn rotation, XZ trajectory calculations, a 200 metre minimum route distance, and a default maximum speed of 60
+* added a configurable 10-minute default timeout while the Valkyrie waits for a return flight
+* improved offering, Valkyrie passage, and Compendium text across all bundled languages and removed unused localization tokens
+* ward offerings are still added to the Compendium when the player knows the ward recipe but default tutorial texts are disabled
 
 # 2.0.2
 * major taxi system rework

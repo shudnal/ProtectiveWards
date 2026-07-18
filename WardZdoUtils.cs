@@ -141,7 +141,7 @@ namespace ProtectiveWards
 
             float protectedRadius = GetWardRadius(protectedWard);
             float candidateRadius = GetWardRadius(candidateWard);
-            return Utils.DistanceXZ(protectedWard.GetPosition(), candidateWard.GetPosition()) <= protectedRadius + candidateRadius;
+            return GetConfiguredWardDistance(protectedWard.GetPosition(), candidateWard.GetPosition()) <= protectedRadius + candidateRadius;
         }
 
         internal static bool CanShareConnectedWardAccess(ZDO protectedWard, ZDO candidateWard, WardConnectedAccessMode mode)

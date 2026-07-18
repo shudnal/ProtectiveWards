@@ -137,7 +137,7 @@ namespace ProtectiveWards
                 switch (wardExpirationRefreshMode.Value)
                 {
                     case WardExpirationRefreshMode.DirectPermitted:
-                        if (IsInsideWardArea(zdo, playerPosition) && zdo.HasDirectWardAccess(playerID))
+                        if (IsPointInsideWardArea(zdo, playerPosition) && zdo.HasDirectWardAccess(playerID))
                             return RefreshingPlayer.FromCharacterZdo(characterZdo, playerID);
                         break;
 
@@ -154,7 +154,7 @@ namespace ProtectiveWards
 
         private static bool IsInsideExpirationRefreshArea(ZDO rootWard, WardConnectedAccessMode mode, Vector3 playerPosition)
         {
-            if (IsInsideWardArea(rootWard, playerPosition))
+            if (IsPointInsideWardArea(rootWard, playerPosition))
                 return true;
 
             if (mode == WardConnectedAccessMode.Off)
@@ -165,16 +165,11 @@ namespace ProtectiveWards
                 if (candidate == null || candidate.m_uid.Equals(rootWard.m_uid))
                     continue;
 
-                if (IsInsideWardArea(candidate, playerPosition))
+                if (IsPointInsideWardArea(candidate, playerPosition))
                     return true;
             }
 
             return false;
-        }
-
-        private static bool IsInsideWardArea(ZDO ward, Vector3 playerPosition)
-        {
-            return ward != null && Utils.DistanceXZ(playerPosition, ward.GetPosition()) <= Math.Max(ward.GetWardRadius(), 0f);
         }
 
         private static bool IsActiveForExpirationConnectedAccess(ZDO zdo)

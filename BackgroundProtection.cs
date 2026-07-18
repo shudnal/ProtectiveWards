@@ -33,6 +33,10 @@ namespace ProtectiveWards
         internal static bool TryFindBackgroundWard(Vector3 sourcePoint, Vector3 targetPoint, out PrivateArea ward)
         {
             ward = null;
+
+            if (!TryResolveWardCheckPoint(sourcePoint, out sourcePoint) || !TryResolveWardCheckPoint(targetPoint, out targetPoint))
+                return false;
+
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
@@ -58,6 +62,9 @@ namespace ProtectiveWards
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
             float radius = Mathf.Max(wardBackgroundPresenceRadius.Value, 0f);
 
+            if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))
+                return false;
+
             foreach (Player player in Player.GetAllPlayers())
             {
                 if (player == null)
@@ -66,17 +73,20 @@ namespace ProtectiveWards
                 if (!HasAccessToWardOrConnectedWard(ward, player, mode))
                     continue;
 
+                if (!TryResolveWardCheckPoint(player.transform.position, out Vector3 resolvedPlayerPoint))
+                    continue;
+
                 switch (wardBackgroundPresenceMode.Value)
                 {
                     case WardBackgroundPresenceMode.PermittedOnline:
                         return true;
                     case WardBackgroundPresenceMode.PermittedInsideConnectedArea:
-                        if (ConnectedAccessAreas(ward, mode).AnySafe(area => IsInsideWardXZ(area, player.transform.position)))
+                        if (ConnectedAccessAreas(ward, mode).AnySafe(area => IsInsideWardXZ(area, resolvedPlayerPoint)))
                             return true;
                         break;
                     case WardBackgroundPresenceMode.PermittedNearProtectedArea:
                     default:
-                        if (Utils.DistanceXZ(player.transform.position, point) <= radius)
+                        if (Utils.DistanceXZ(resolvedPlayerPoint, resolvedPoint) <= radius)
                             return true;
                         break;
                 }

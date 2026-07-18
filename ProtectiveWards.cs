@@ -19,7 +19,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.2";
+        public const string pluginVersion = "2.0.3";
 
         private static Harmony _harmony;
 
@@ -104,6 +104,8 @@ namespace ProtectiveWards
 
         public static ConfigEntry<bool> setWardRange;
         public static ConfigEntry<float> wardRange;
+        public static ConfigEntry<WardAreaShape> wardAreaShape;
+        public static ConfigEntry<bool> wardProtectDungeonInteriors;
         public static ConfigEntry<bool> supressSpawnInRange;
         public static ConfigEntry<bool> permitEveryone;
 
@@ -209,6 +211,7 @@ namespace ProtectiveWards
         internal static ProtectiveWards instance;
         internal static long startTimeCached;
         internal static Dictionary<Vector3, PrivateArea> areaCache = new();
+        private static readonly Dictionary<Location, Teleport> dungeonEntranceCache = new();
         internal static Dictionary<PrivateArea, int> wardIsRepairing = new();
         internal static Dictionary<PrivateArea, int> wardIsHealing = new();
         internal static Dictionary<PrivateArea, int> wardIsClosing = new();
@@ -286,6 +289,12 @@ namespace ProtectiveWards
             SameCreatorOnly,
             MutualTrust,
             AnyConnected
+        }
+
+        public enum WardAreaShape
+        {
+            Cylinder,
+            Sphere
         }
 
         public enum WardPortalAccessMode
@@ -391,6 +400,11 @@ namespace ProtectiveWards
             wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied.");
             wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings.");
             wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, players allowed by Ward admin access can open and apply the per-ward settings window regardless of ward creator/access checks.");
+            wardAreaShape = config("Ward settings", "Protected area shape", WardAreaShape.Cylinder, "Controls normal active player ward range checks and connected ward overlap."
+                                                                                                        + "\nCylinder: uses horizontal XZ distance and ignores height."
+                                                                                                        + "\nSphere: uses full 3D distance from the ward."
+                                                                                                        + "\nBackground protection keeps horizontal XZ checks for movable objects.");
+            wardProtectDungeonInteriors = config("Ward settings", "Protect dungeon interiors through warded entrances", defaultValue: true, "When enabled, an interior inherits ward protection when its outside entrance is inside an active ward. All enabled protection rules then apply throughout that interior. When disabled, outside wards do not protect dungeon interiors.");
 
             
             disableFlash = config("Misc", "Disable flash", defaultValue: false, "Disable flash on hit [Not Synced with Server]", false);
@@ -617,6 +631,9 @@ namespace ProtectiveWards
 
             wardExpirationMinutes.SettingChanged += (sender, args) => WardExpiration.ResetNextCheckTime();
 
+            wardAreaShape.SettingChanged += (sender, args) => areaCache.Clear();
+            wardProtectDungeonInteriors.SettingChanged += (sender, args) => areaCache.Clear();
+
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
 
@@ -662,32 +679,36 @@ namespace ProtectiveWards
         public static bool InsideEnabledPlayersArea(Vector3 point, out PrivateArea area, bool checkCache = false)
         {
             area = null;
+
+            if (!TryResolveWardCheckPoint(point, out Vector3 wardCheckPoint))
+                return false;
+
             if (checkCache)
             {
                 UpdateCache();
 
-                if (areaCache.TryGetValue(point, out area))
+                if (areaCache.TryGetValue(wardCheckPoint, out area))
                 {
                     if (area && area.isActiveAndEnabled && area.IsEnabled())
                         return true;
 
-                    areaCache.Remove(point);
+                    areaCache.Remove(wardCheckPoint);
                 }
             }
 
             foreach (PrivateArea allArea in PrivateArea.m_allAreas)
-                if (allArea.IsEnabled() && allArea.m_ownerFaction == Character.Faction.Players && allArea.IsInside(point, 0f))
+                if (allArea.IsEnabled() && allArea.m_ownerFaction == Character.Faction.Players && IsWorldPointInsideWardArea(allArea.transform.position, allArea.m_radius, wardCheckPoint))
                 {
                     area = allArea;
 
                     if (checkCache)
-                        areaCache.Add(point, area);
+                        areaCache.Add(wardCheckPoint, area);
 
                     return true;
                 }
 
             if (checkCache)
-                areaCache.Add(point, area);
+                areaCache.Add(wardCheckPoint, area);
             
             return false;
         }
@@ -696,7 +717,115 @@ namespace ProtectiveWards
 
         private static bool IsPlayerWardPrefab(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players && WardZdoUtils.IsWardPrefab(ward.gameObject);
 
-        private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate) => ward != null && candidate != null && ward.m_radius + candidate.m_radius >= Utils.DistanceXZ(ward.transform.position, candidate.transform.position);
+        private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate) => ward != null && candidate != null && GetConfiguredWardDistance(ward.transform.position, candidate.transform.position) <= ward.m_radius + candidate.m_radius;
+
+        internal static bool TryResolveWardCheckPoint(Vector3 point, out Vector3 resolvedPoint)
+        {
+            resolvedPoint = point;
+
+            if (!Character.InInterior(point))
+                return true;
+
+            if (wardProtectDungeonInteriors?.Value != true)
+                return false;
+
+            Location location = Location.GetLocation(point);
+            Teleport entrance = FindDungeonEntranceTeleport(location);
+            if (entrance == null)
+                return false;
+
+            resolvedPoint = entrance.transform.position;
+            return true;
+        }
+
+        private static Teleport FindDungeonEntranceTeleport(Location location)
+        {
+            if (location == null || !location.m_hasInterior)
+                return null;
+
+            if (dungeonEntranceCache.TryGetValue(location, out Teleport cachedEntrance))
+            {
+                if (cachedEntrance != null)
+                    return cachedEntrance;
+
+                dungeonEntranceCache.Remove(location);
+            }
+
+            Transform locationRoot = location.transform;
+            Transform interiorRoot = location.m_interiorTransform;
+            Transform gateway = locationRoot.Find("Gateway");
+            Teleport entrance = FindTeleportInHierarchy(gateway);
+            if (entrance != null)
+                return CacheDungeonEntrance(location, entrance);
+
+            for (int i = 0; i < locationRoot.childCount; ++i)
+            {
+                Transform child = locationRoot.GetChild(i);
+                if (child == interiorRoot)
+                    continue;
+
+                entrance = FindTeleportInHierarchy(child, interiorRoot);
+                if (entrance != null)
+                    return CacheDungeonEntrance(location, entrance);
+            }
+
+            return null;
+        }
+
+        private static Teleport FindTeleportInHierarchy(Transform root, Transform excludedRoot = null)
+        {
+            if (root == null || root == excludedRoot)
+                return null;
+
+            Teleport teleport = root.GetComponent<Teleport>();
+            if (teleport != null)
+                return teleport;
+
+            for (int i = 0; i < root.childCount; ++i)
+            {
+                teleport = FindTeleportInHierarchy(root.GetChild(i), excludedRoot);
+                if (teleport != null)
+                    return teleport;
+            }
+
+            return null;
+        }
+
+        private static Teleport CacheDungeonEntrance(Location location, Teleport entrance)
+        {
+            dungeonEntranceCache[location] = entrance;
+            return entrance;
+        }
+
+        internal static float GetConfiguredWardDistance(Vector3 firstPoint, Vector3 secondPoint)
+        {
+            WardAreaShape shape = wardAreaShape?.Value ?? WardAreaShape.Cylinder;
+            return shape == WardAreaShape.Sphere
+                ? Vector3.Distance(firstPoint, secondPoint)
+                : Utils.DistanceXZ(firstPoint, secondPoint);
+        }
+
+        internal static bool IsWorldPointInsideWardArea(Vector3 wardPosition, float wardRadius, Vector3 point, float radius = 0f)
+        {
+            float combinedRadius = wardRadius + radius;
+            return combinedRadius > 0f && GetConfiguredWardDistance(wardPosition, point) < combinedRadius;
+        }
+
+        public static bool IsPointInsideWardArea(PrivateArea ward, Vector3 point, float radius = 0f)
+        {
+            if (ward == null || !TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))
+                return false;
+
+            return IsWorldPointInsideWardArea(ward.transform.position, ward.m_radius, resolvedPoint, radius);
+        }
+
+        public static bool IsPointInsideWardArea(ZDO ward, Vector3 point, float radius = 0f)
+        {
+            if (ward == null || !TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))
+                return false;
+
+            return IsWorldPointInsideWardArea(ward.GetPosition(), ward.GetWardRadius(), resolvedPoint, radius);
+        }
 
         public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f) => ward != null && Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
 
@@ -829,7 +958,7 @@ namespace ProtectiveWards
         {
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (IsActivePlayerWard(area) && area.IsInside(point, 0f))
+                if (IsActivePlayerWard(area) && IsPointInsideWardArea(area, point))
                     return area;
             }
 
@@ -838,7 +967,7 @@ namespace ProtectiveWards
 
         public static bool IsPointInsideWardNetwork(Vector3 point, PrivateArea ward, WardConnectedAccessMode mode)
         {
-            return ConnectedAccessAreas(ward, mode).Any(area => area.IsInside(point, 0f));
+            return ConnectedAccessAreas(ward, mode).Any(area => IsPointInsideWardArea(area, point));
         }
 
         public static bool IsPointInsideWardNetworkXZ(Vector3 point, PrivateArea ward, WardConnectedAccessMode mode)
@@ -853,7 +982,7 @@ namespace ProtectiveWards
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (!IsActivePlayerWard(area) || !area.IsInside(sourcePoint, 0f))
+                if (!IsActivePlayerWard(area) || !IsPointInsideWardArea(area, sourcePoint))
                     continue;
 
                 if (!IsPointInsideWardNetwork(targetPoint, area, mode))
@@ -1096,7 +1225,7 @@ namespace ProtectiveWards
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (area == null || !area.IsEnabled() || !area.IsInside(component.transform.position, 0f))
+                if (area == null || !area.IsEnabled() || !IsPointInsideWardArea(area, component.transform.position))
                     continue;
 
                 if (!IsActivePlayerWard(area))
@@ -1189,7 +1318,7 @@ namespace ProtectiveWards
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (!IsActivePlayerWard(area) || !area.IsInside(point, 0f))
+                if (!IsActivePlayerWard(area) || !IsPointInsideWardArea(area, point))
                     continue;
 
                 if (HasAccessToWardOrConnectedWard(area, player))
@@ -1236,7 +1365,7 @@ namespace ProtectiveWards
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !area.IsInside(inactiveWard.transform.position, 0f))
+                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !IsPointInsideWardArea(area, inactiveWard.transform.position))
                     continue;
 
                 if (HasAccessToWardOrConnectedWard(area, player, mode))
@@ -1259,7 +1388,7 @@ namespace ProtectiveWards
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !area.IsInside(inactiveWard.transform.position, 0f))
+                if (area == null || area == inactiveWard || !IsActivePlayerWard(area) || !IsPointInsideWardArea(area, inactiveWard.transform.position))
                     continue;
 
                 if (HasAccessToWardOrConnectedWard(area, playerID, mode))
@@ -1785,7 +1914,7 @@ namespace ProtectiveWards
 
         public static IEnumerable<PrivateArea> ConnectedAreas(PrivateArea ward)
         {
-            return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && area.m_radius + ward.m_radius >= Utils.DistanceXZ(area.transform.position, ward.transform.position)));
+            return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && AreWardsOverlapping(ward, area)));
         }
 
         private static bool s_activatingConnectedWards;
@@ -2378,6 +2507,30 @@ namespace ProtectiveWards
                     __instance.m_texts.Add(offeringsText);
             }
         }
+
+        [HarmonyPatch(typeof(Location), nameof(Location.OnDestroy))]
+        public static class Location_OnDestroy_ClearDungeonEntranceCache
+        {
+            private static void Prefix(Location __instance)
+            {
+                if (__instance != null)
+                    dungeonEntranceCache.Remove(__instance);
+            }
+        }
+
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsInside))]
+        public static class PrivateArea_IsInside_UseConfiguredAreaShape
+        {
+            private static bool Prefix(PrivateArea __instance, Vector3 point, float radius, ref bool __result)
+            {
+                if (__instance == null || __instance.m_ownerFaction != Character.Faction.Players)
+                    return true;
+
+                __result = IsPointInsideWardArea(__instance, point, radius);
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.OnDestroy))]
         public static class PrivateArea_OnDestroy_ClearStatus
         {
