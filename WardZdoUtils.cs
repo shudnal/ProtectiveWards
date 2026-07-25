@@ -2,6 +2,7 @@ using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using ProtectiveWards.Compatibility;
 using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
@@ -66,7 +67,7 @@ namespace ProtectiveWards
             if (zdo == null || playerID == 0L)
                 return false;
 
-            if (HasWardAdminAccess(playerID))
+            if (HasWardManagementAccess(zdo, playerID))
                 return true;
 
             int count = Math.Max(zdo.GetInt(ZDOVars.s_permitted, 0), 0);
@@ -76,7 +77,7 @@ namespace ProtectiveWards
                     return true;
             }
 
-            return false;
+            return GuildsCompat.HasWardGuildAccess(zdo, playerID);
         }
 
         internal static bool HasDirectAccessToWardZdo(ZDO zdo, long playerID)
@@ -98,6 +99,9 @@ namespace ProtectiveWards
 
         internal static bool UseCustomWardRange(ZDO zdo)
         {
+            if (!ArePerWardSettingsEnabled())
+                return setWardRange.Value;
+
             if (zdo == null)
                 return false;
 
@@ -108,7 +112,13 @@ namespace ProtectiveWards
             return zdo.GetBool(s_customRange, fallback);
         }
 
-        internal static float GetConfiguredWardRange(ZDO zdo) => zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
+        internal static float GetConfiguredWardRange(ZDO zdo)
+        {
+            if (!ArePerWardSettingsEnabled())
+                return wardRange.Value;
+
+            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
+        }
 
         internal static float GetWardDefaultRadius()
         {

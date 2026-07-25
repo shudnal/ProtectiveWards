@@ -1,3 +1,15 @@
+# 2.0.4
+* IMPORTANT: moved `Permit everyone` from `Ward admin` to the new `Ward access` group; existing enabled values are not migrated and must be enabled again in the new config group
+* compacted the per-ward settings panel, moved password protection into the Access settings page, and aligned guild and password status actions on single rows
+* reordered password protection configs after Ward admin and removed the obsolete NexusID config
+* added a `ServerControlled` ward settings mode that hides and blocks the per-ward settings UI, preserves stored overrides without applying them, and uses global config values instead
+* moved glow, sphere, and ward circle controls to a dedicated `Ward visuals` page in the per-ward settings UI
+* added per-ward `Permit everyone` overrides that can inherit or invert the global default
+* added optional server-validated Guilds integration with one dynamically evaluated guild binding per ward
+* added dedicated EpicLoot enchanting table protection under the crafting station access setting, with type resolution from EpicLoot's loaded embedded assembly
+* fixed Food, Mead, and Dragon egg offering switches so each one independently controls its own offering logic, and made active taxi tributes exclusive to the taxi offering
+* added optional per-ward password access with server-validated permitted-list enrollment, hash-only and editable password modes, and configurable creator/permitted change access
+
 # 2.0.3
 * added a configurable ward protected-area shape: the default XZ cylinder or full 3D sphere distance
 * added optional ward protection for dungeon interiors when the exterior entrance is covered by an active ward

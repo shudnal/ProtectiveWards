@@ -18,15 +18,20 @@ The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-
 
 Most features work inside an active player ward area. Some background protections can be configured to use connected/overlapping ward networks.
 
-### Per-ward visual settings
+### Per-ward settings
 
-Each ward can have its own visual settings stored in the ward ZDO.
+`Ward settings / Ward settings mode` controls whether individual ward state is available:
+
+- `PerWard` is the default. Authorized players can open the settings window and stored per-ward range, visual and access overrides are applied.
+- `ServerControlled` removes the settings action from the ward hover, blocks opening and applying the window on both client and server, and ignores all stored per-ward overrides. Existing values remain in the ward ZDO and become active again after switching back to `PerWard`. Global config values are used while the server-controlled mode is active.
+
+Each ward can store its own range, visual and access settings in the ward ZDO while `PerWard` mode is active.
 
 To edit a ward:
 
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default) on the ward.
-3. Change values in the settings window.
+3. Change values in the settings window. Glow, sphere and ward circle controls are grouped on the `Ward visuals` page.
 4. Apply settings from the main settings page.
 
 You can customize:
@@ -35,9 +40,11 @@ You can customize:
 - emission color and multiplier;
 - ward sphere visibility and color;
 - detailed ward sphere shader properties;
-- ward circle colors, width, line amount and animation speed.
+- ward circle colors, width, line amount and animation speed;
+- the ward-specific `Permit everyone` access policy;
+- optional access for one bound guild when Guilds is installed.
 
-Wards without custom settings can either use global default config values or keep vanilla/current behavior, depending on the config option `Use default values for wards without custom settings`.
+Most per-ward values can inherit their corresponding global config. `Permit everyone` follows the same override model: an unchanged ward uses `Ward access / Permit everyone`, while a ward-specific value can make one public ward in an otherwise private world or keep one private ward when the global default is public. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
 
 Disabled wards owned by another player cannot be edited. Admin bypass is controlled by `Ward admin / Ward admin access`:
 
@@ -47,7 +54,15 @@ Disabled wards owned by another player cannot be edited. Admin bypass is control
 
 The default is `AdminsInGodMode`, so admins can play normally without accidentally bypassing protections.
 
-`Ward admin / Permit everyone` is a stronger global bypass mode. When it is enabled, ward access checks are not enforced and every player is treated as having ward admin access. Permitted lists are still stored, but they do not restrict access. This can also be used on multiplayer servers that do not need ward ownership restrictions or inactive ward expiration enforcement.
+`Ward access / Permit everyone` is the default value for wards without an override. When effective for a ward, its access checks are bypassed for every player while its permitted list remains stored. Wards whose effective value is enabled are also excluded from inactive ward expiration. The config was moved from the `Ward admin` group; existing enabled values must be enabled again under the new group.
+
+### Guild access
+
+When Guilds is installed on the server and clients and `Ward settings mode` is `PerWard`, one guild can be bound to each ward from the ward's **Access settings** page. Binding the current guild enables guild access immediately; it can later be disabled without removing the binding, or unbound completely.
+
+Current members of the bound guild receive normal permitted-equivalent access while they remain in that guild. Membership is resolved from the current server-synchronized guild data and is validated by the server. The member list is not copied into the ward ZDO. If a guild is renamed, rebind affected wards so the stored identity matches the renamed guild.
+
+Guild access is additive: the creator, directly permitted players, password-enrolled players and configured admin access continue to work normally.
 
 ### Access protection from non-permitted players
 
@@ -68,7 +83,7 @@ Supported vanilla access protection includes:
 - carts, wagons and battering rams;
 - tames, saddles and pet interactions;
 - production stations;
-- crafting stations and station discovery;
+- crafting stations and station discovery, including the EpicLoot enchanting table when EpicLoot is installed;
 - item stands and armor stands;
 - portals, with separate modes for teleporting and renaming;
 - map tables;
@@ -131,7 +146,7 @@ They are creator/admin controlled: the ward creator may toggle their own ward, a
 `pw_set_unexpired` / `ward_set_unexpired` clears the expired state from the nearest ward.
 
 The commands use the same external ward control enable/range configs as the permitted-list and toggle commands.
-They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`, or by `Ward admin / Permit everyone`.
+They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`, or by the effective `Permit everyone` value of the selected ward.
 
 #### Ward build limit
 
@@ -158,7 +173,7 @@ Trap protection still lets permitted players move through their own traps safely
 
 ### Inactive ward expiration
 
-Inactive ward expiration is disabled by default.
+Inactive ward expiration is disabled by default. Wards whose effective per-ward `Permit everyone` value is enabled are excluded from expiration enforcement.
 
 This is a multiplayer/server-side mechanic and is ignored in singleplayer. When enabled, the server periodically checks the tracked ward ZDO collection. Wards expire after the configured number of real-time minutes without nearby activity from players who can refresh them.
 
@@ -289,6 +304,8 @@ Server-synced settings are admin-only. Client-only display settings are marked a
 ## Compatibility
 
 The mod tries to keep patches focused and non-invasive. Broad generic interaction protection is optional and should be enabled carefully on heavily modded servers.
+
+Optional compatibility includes server-validated one-guild-per-ward access for Guilds and dedicated crafting-station access protection for the EpicLoot enchanting table.
 
 ## Mirrors
 

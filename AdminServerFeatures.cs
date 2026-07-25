@@ -404,11 +404,11 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
                 return;
 
-            if (!HasWardAdminAccess(requester.PlayerID))
-                return;
-
             PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+                return;
+
+            if (!HasWardManagementAccess(ward, requester.PlayerID))
                 return;
 
             if (!IsRequesterInRange(requester, ward.transform.position))
@@ -420,14 +420,14 @@ namespace ProtectiveWards
 
         private static bool CanRequesterPermit(PrivateArea ward, long requesterID) => ward != null && requesterID != 0L && HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
 
-        private static bool CanLocalToggleWard(PrivateArea ward) => ward != null && ((ward.m_piece != null && ward.m_piece.IsCreator()) || HasLocalWardAdminAccess());
+        private static bool CanLocalToggleWard(PrivateArea ward) => ward != null && ((ward.m_piece != null && ward.m_piece.IsCreator()) || HasWardManagementAccess(ward, Player.m_localPlayer?.GetPlayerID() ?? 0L));
 
         private static bool CanRequesterToggleWard(PrivateArea ward, long requesterID)
         {
             if (ward == null || requesterID == 0L)
                 return false;
 
-            if (HasWardAdminAccess(requesterID))
+            if (HasWardManagementAccess(ward, requesterID))
                 return true;
 
             return ward.m_piece != null && ward.m_piece.GetCreator() == requesterID;

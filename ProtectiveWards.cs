@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using Jotunn.Utils;
@@ -9,17 +9,19 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using UnityEngine;
+using ProtectiveWards.Compatibility;
 
 namespace ProtectiveWards
 {
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.3";
+        public const string pluginVersion = "2.0.4";
 
         private static Harmony _harmony;
 
@@ -31,9 +33,12 @@ namespace ProtectiveWards
         public static ConfigEntry<float> maxTaxiSpeed;
         public static ConfigEntry<bool> addLightMovement;
 
+        public static ConfigEntry<WardSettingsMode> wardSettingsMode;
         public static ConfigEntry<bool> wardSettingsUseDefaultsForAllWards;
         public static ConfigEntry<bool> wardSettingsRequireCreator;
         public static ConfigEntry<bool> wardSettingsAllowAdminEdit;
+        public static ConfigEntry<WardPasswordFieldMode> wardPasswordFieldMode;
+        public static ConfigEntry<WardPasswordChangeAccess> wardPasswordChangeAccess;
 
         public static ConfigEntry<bool> offeringActiveRepair;
         public static ConfigEntry<bool> offeringAugmenting;
@@ -257,6 +262,7 @@ namespace ProtectiveWards
         public static readonly int s_bubbleDepthFade = "bubble_depthfade".GetStableHashCode();
         public static readonly int s_lastSaddleUser = "pw_last_saddle_user".GetStableHashCode();
         public static readonly int s_lastVehicleController = "pw_last_vehicle_controller".GetStableHashCode();
+        public static readonly int s_permitEveryone = "pw_permit_everyone".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
@@ -295,6 +301,12 @@ namespace ProtectiveWards
         {
             Cylinder,
             Sphere
+        }
+
+        public enum WardSettingsMode
+        {
+            PerWard,
+            ServerControlled
         }
 
         public enum WardPortalAccessMode
@@ -338,6 +350,18 @@ namespace ProtectiveWards
             AdminsInGodMode
         }
 
+        public enum WardPasswordFieldMode
+        {
+            SetNewPasswordOnly,
+            EditablePassword
+        }
+
+        public enum WardPasswordChangeAccess
+        {
+            CreatorOnly,
+            CreatorAndPermitted
+        }
+
         public enum WardExpirationRefreshMode
         {
             DirectPermitted,
@@ -361,6 +385,7 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
+            CompatibilityHelper.CheckForCompatibility();
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
 
@@ -385,6 +410,7 @@ namespace ProtectiveWards
             Config.Save();
             _harmony?.UnpatchSelf();
             FullProtection.ResetDynamicPatchState();
+            CompatibilityHelper.ResetRuntimeState();
         }
         
         public static void LogInfo(object data)
@@ -395,11 +421,12 @@ namespace ProtectiveWards
 
         private void ConfigInit()
         {
-            config("General", "NexusID", 2450, "Nexus mod ID for updates", false);
-
-            wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied.");
-            wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings.");
-            wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, players allowed by Ward admin access can open and apply the per-ward settings window regardless of ward creator/access checks.");
+            wardSettingsMode = config("Ward settings", "Ward settings mode", WardSettingsMode.PerWard, "Controls whether individual wards may use and edit settings stored in their ZDO."
+                                                                                                                    + "\nPerWard: authorized players can open the ward settings window and saved per-ward overrides are applied."
+                                                                                                                    + "\nServerControlled: the ward settings action and window are disabled, saved per-ward overrides remain stored but are ignored, and global config values are used.");
+            wardSettingsUseDefaultsForAllWards = config("Ward settings", "Use default values for wards without custom settings", defaultValue: true, "If enabled, wards without per-ward ZDO overrides use the default values from this config. If disabled, only values explicitly saved on a ward are applied. This setting is ignored when Ward settings mode is ServerControlled.");
+            wardSettingsRequireCreator = config("Ward settings", "Only creator can edit ward settings", defaultValue: true, "If enabled, only the ward creator can open and apply the per-ward settings window. If disabled, any player with ward access can edit these settings. Ignored when Ward settings mode is ServerControlled.");
+            wardSettingsAllowAdminEdit = config("Ward settings", "Admins can edit ward settings", defaultValue: true, "If enabled, players allowed by Ward admin access or the ward's effective Permit everyone value can open and apply the per-ward settings window regardless of ward creator/access checks. Ignored when Ward settings mode is ServerControlled.");
             wardAreaShape = config("Ward settings", "Protected area shape", WardAreaShape.Cylinder, "Controls normal active player ward range checks and connected ward overlap."
                                                                                                         + "\nCylinder: uses horizontal XZ distance and ignores height."
                                                                                                         + "\nSphere: uses full 3D distance from the ward."
@@ -520,9 +547,6 @@ namespace ProtectiveWards
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
             wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
-            permitEveryone = config("Ward admin", "Permit everyone", defaultValue: false, "Bypasses ward access checks completely. When enabled, every player is treated as having ward admin access, regardless of the Ward admin access mode. Permitted lists are still stored on wards but do not restrict access.");
-
-
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Default bubble color for wards without per-ward bubble color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection to change color [Not Synced with Server]", false);
             wardBubbleRefractionIntensity = config("Ward Bubble", "Refraction intensity", defaultValue: 0.005f, "Intensity of light refraction caused by bubble. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
@@ -563,6 +587,7 @@ namespace ProtectiveWards
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "Carrot, Turnip, Onion, CarrotSeeds, TurnipSeeds, OnionSeeds, MushroomJotunPuffs, MushroomMagecap", "List of plant prefab names to be protected from damage.");
             boarsHensProtectionGroupList = config("Ward protects", "Boars and hens from list", "boar, chicken", "List of tamed groups to be protected from damage");
+            permitEveryone = config("Ward access", "Permit everyone", defaultValue: false, "Default access policy for wards without a per-ward Permit everyone override. When effective for a ward, every player passes that ward's access checks while its permitted list remains stored. A ward can override this value from its settings window when Ward settings mode is PerWard.");
             wardAccessProtectChests = config("Ward access from non-permitted players", "Chests", true, "Set whether an active Ward blocks non-permitted players from opening nearby chests and containers");
             wardAccessProtectDoors = config("Ward access from non-permitted players", "Doors", true, "Set whether an active Ward blocks non-permitted players from opening nearby doors");
             wardAccessProtectPlants = config("Ward access from non-permitted players", "Plant picking", true, "Set whether an active Ward blocks non-permitted players from picking nearby plants and pickables");
@@ -615,7 +640,7 @@ namespace ProtectiveWards
             wardBackgroundTamePacify = config("Ward without permitted players nearby", "Tame pacify", WardBackgroundTamePacifyMode.WhenNoPermittedNearby, "When enabled, tamed creatures inside a protected ward network drop creature/static targets and do not acquire new combat targets while no permitted/effective player is nearby.");
             wardBackgroundPreventBuildingAndDemolishing = config("Ward without permitted players nearby", "Prevent building and demolishing", true, "Blocks non-permitted players from placing new pieces or demolishing other players' pieces inside a protected ward network while no permitted/effective player is nearby. Players can always demolish their own pieces.");
 
-            wardAdminAccess = config("Ward admin", "Ward admin access", WardAdminAccessMode.AdminsInGodMode, "Controls global admin bypass behavior used by ward settings, permit command bypass, admin-only expiration commands, and admin-only expiration hover details. Ignored when Permit everyone is enabled."
+            wardAdminAccess = config("Ward admin", "Ward admin access", WardAdminAccessMode.AdminsInGodMode, "Controls global admin bypass behavior used by ward settings, permit command bypass, admin-only expiration commands, and admin-only expiration hover details. Per-ward Permit everyone access is evaluated separately."
                                                                                                     + "\nOff: admins do not bypass ward access checks."
                                                                                                     + "\nAdmins: server admins and host bypass ward access checks."
                                                                                                     + "\nAdminsInGodMode: server admins and host bypass ward access checks only while god mode is enabled.");
@@ -623,16 +648,32 @@ namespace ProtectiveWards
             wardExternalControlCommandRange = config("Ward admin", "External ward control command range", 5f, "Maximum horizontal distance from the player to the ward used by external ward management commands.");
             wardBuildLimitPerPlayer = config("Ward admin", "Ward build limit per player", 0, "Maximum number of wards each player can have in the world. 0 disables the limit. Existing wards are never removed; if the limit is exceeded after building a new ward, only the newly built ward is destroyed.");
 
-            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. This is a multiplayer/server-side abandonment mechanic and is ignored in singleplayer. It is also skipped when Ward admin / Permit everyone is enabled. When greater than 0, the server periodically checks tracked ward ZDOs while player character ZDOs are online. A ward expires after this many real-time minutes without nearby activity from a player who can refresh it. Old wards are initialized with the current server time, so enabling this option does not expire existing wards immediately.");
-            wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls which nearby players can refresh the inactive ward timer and reactivate expired wards. The player must be within the ward's current radius. DirectPermitted accepts the ward creator, directly permitted players, and admin/global bypass. EffectiveAccess also accepts access through overlapping connected wards according to Expiration connected access mode.");
+            wardPasswordFieldMode = config("Ward password protection", "Password field mode", WardPasswordFieldMode.SetNewPasswordOnly, "Controls how passwords are edited in the per-ward settings UI. Ignored when Ward settings mode is ServerControlled."
+                                                                                                                                        + "\nSetNewPasswordOnly: the current password is never shown. A new password is applied only with the dedicated Set new password button. Passwords are stored as a salted hash."
+                                                                                                                                        + "\nEditablePassword: the current password is shown and saved together with the other ward settings. This mode also stores the readable password in the ward ZDO.");
+            wardPasswordChangeAccess = config("Ward password protection", "Password change access", WardPasswordChangeAccess.CreatorOnly, "Controls who may change a ward password. Ward admins and players covered by the ward's effective Permit everyone value may always change it. Ignored when Ward settings mode is ServerControlled."
+                                                                                                                                          + "\nCreatorOnly: only the ward creator may change it."
+                                                                                                                                          + "\nCreatorAndPermitted: the creator and players with direct permitted-equivalent access, including bound guild members, may change it.");
+
+
+            wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. This is a multiplayer/server-side abandonment mechanic and is ignored in singleplayer. It is skipped for wards whose effective Permit everyone value is enabled. When greater than 0, the server periodically checks tracked ward ZDOs while player character ZDOs are online. A ward expires after this many real-time minutes without nearby activity from a player who can refresh it. Old wards are initialized with the current server time, so enabling this option does not expire existing wards immediately.");
+            wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls which nearby players can refresh the inactive ward timer and reactivate expired wards. The player must be within the ward's current radius. DirectPermitted accepts the ward creator, directly permitted players, bound guild members, and the effective admin or Permit everyone bypass. EffectiveAccess also accepts access through overlapping connected wards according to Expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for expiration refresh and reactivation when Expiration refresh mode is EffectiveAccess. Off requires direct access to this ward. SameCreatorOnly, MutualTrust, and AnyConnected can let an overlapping active connected ward keep this ward alive or reactivate it. Expired wards are not treated as active connected access sources for this check.");
             wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "Controls how expired wards become active again. ManualInteraction keeps expired wards inactive until a player with refresh access interacts with the ward. AutomaticOnLogin reactivates an expired ward when a player with refresh access is nearby during a server check, or when an expired loaded ward wakes up near such a player. Reactivation also refreshes the last-active timestamp.");
             wardExpirationAdminHover = config("Ward expiration", "Show expiration admin hover details", false, "Shows additional expiration debug details in ward hover text for players allowed by Ward admin access. The extra lines are intended for server administration and include raw Unix timestamps and the last player recorded as refreshing or reactivating the ward.", false);
 
             wardExpirationMinutes.SettingChanged += (sender, args) => WardExpiration.ResetNextCheckTime();
 
+            wardSettingsMode.SettingChanged += (sender, args) =>
+            {
+                areaCache.Clear();
+                WardSettingsUI.HandleSettingsModeChanged();
+                WardPasswordProtection.HandleSettingsModeChanged();
+                RefreshAllLoadedWardVisuals();
+            };
             wardAreaShape.SettingChanged += (sender, args) => areaCache.Clear();
             wardProtectDungeonInteriors.SettingChanged += (sender, args) => areaCache.Clear();
+            wardPasswordFieldMode.SettingChanged += (sender, args) => WardPasswordProtection.HandlePasswordFieldModeChanged();
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -829,6 +870,38 @@ namespace ProtectiveWards
 
         public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f) => ward != null && Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
 
+        public static bool ArePerWardSettingsEnabled()
+        {
+            return wardSettingsMode == null || wardSettingsMode.Value == WardSettingsMode.PerWard;
+        }
+
+        public static bool IsPermitEveryone(PrivateArea ward)
+        {
+            if (ward?.m_nview?.IsValid() != true)
+                return permitEveryone?.Value == true;
+
+            return IsPermitEveryone(ward.m_nview.GetZDO());
+        }
+
+        public static bool IsPermitEveryone(ZDO zdo)
+        {
+            bool defaultValue = permitEveryone?.Value == true;
+            if (!ArePerWardSettingsEnabled())
+                return defaultValue;
+
+            return zdo != null ? zdo.GetBool(s_permitEveryone, defaultValue) : defaultValue;
+        }
+
+        public static bool HasWardManagementAccess(PrivateArea ward, long playerID)
+        {
+            return playerID != 0L && (HasWardAdminAccess(playerID) || IsPermitEveryone(ward));
+        }
+
+        public static bool HasWardManagementAccess(ZDO zdo, long playerID)
+        {
+            return playerID != 0L && (HasWardAdminAccess(playerID) || IsPermitEveryone(zdo));
+        }
+
         public static bool HasDirectAccessToWard(PrivateArea ward, Player player)
         {
             if (ward == null || player == null)
@@ -848,10 +921,16 @@ namespace ProtectiveWards
             if (ward.m_ownerFaction != Character.Faction.Players)
                 return false;
 
+            if (HasWardManagementAccess(ward, playerID))
+                return true;
+
             if (ward.m_piece != null && ward.m_piece.GetCreator() == playerID)
                 return true;
 
-            return ward.IsPermitted(playerID);
+            if (ward.GetPermittedPlayers().Any(entry => entry.Key == playerID))
+                return true;
+
+            return GuildsCompat.HasWardGuildAccess(ward, playerID);
         }
 
         public static bool HasAccessToWard(PrivateArea ward, Player player) => HasDirectAccessToWard(ward, player);
@@ -1402,10 +1481,10 @@ namespace ProtectiveWards
 
         public static bool CanEditWardSettings(PrivateArea ward, Player player)
         {
-            if (ward == null || player == null)
+            if (!ArePerWardSettingsEnabled() || ward == null || player == null)
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && HasLocalWardAdminAccess())
+            if (wardSettingsAllowAdminEdit.Value && HasWardManagementAccess(ward, player.GetPlayerID()))
                 return true;
 
             if (ShouldBlockInactiveWardAccess(ward, player))
@@ -1422,10 +1501,10 @@ namespace ProtectiveWards
 
         public static bool CanApplyWardSettings(PrivateArea ward, long playerID)
         {
-            if (ward == null || playerID == 0L)
+            if (!ArePerWardSettingsEnabled() || ward == null || playerID == 0L)
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
+            if (wardSettingsAllowAdminEdit.Value && HasWardManagementAccess(ward, playerID))
                 return true;
 
             if (ShouldBlockInactiveWardAccess(ward, playerID))
@@ -1440,10 +1519,10 @@ namespace ProtectiveWards
 
         public static bool CanApplyWardSettings(ZDO zdo, long playerID)
         {
-            if (zdo == null || playerID == 0L)
+            if (!ArePerWardSettingsEnabled() || zdo == null || playerID == 0L)
                 return false;
 
-            if (wardSettingsAllowAdminEdit.Value && HasWardAdminAccess(playerID))
+            if (wardSettingsAllowAdminEdit.Value && HasWardManagementAccess(zdo, playerID))
                 return true;
 
             if (wardSettingsRequireCreator.Value)
@@ -1490,9 +1569,6 @@ namespace ProtectiveWards
         {
             if (playerID == 0L)
                 return false;
-
-            if (permitEveryone != null && permitEveryone.Value)
-                return true;
 
             if (wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
                 return false;
@@ -1657,7 +1733,7 @@ namespace ProtectiveWards
             return false;
         }
 
-        private static bool TryFindPlayerInfo(long playerID, out ZNet.PlayerInfo playerInfo)
+        internal static bool TryFindPlayerInfo(long playerID, out ZNet.PlayerInfo playerInfo)
         {
             playerInfo = default;
             if (playerID == 0L || ZNet.instance == null || ZDOMan.instance == null)
@@ -1713,18 +1789,21 @@ namespace ProtectiveWards
 
         public static bool GetWardBoolSetting(ZDO zdo, int key, bool defaultValue, bool disabledValue = false)
         {
+            if (!ArePerWardSettingsEnabled())
+                return defaultValue;
+
             bool fallback = wardSettingsUseDefaultsForAllWards.Value ? defaultValue : disabledValue;
             return zdo != null ? zdo.GetBool(key, fallback) : fallback;
         }
 
         public static float GetWardFloatSetting(ZDO zdo, int key, float defaultValue)
         {
-            return zdo != null ? zdo.GetFloat(key, defaultValue) : defaultValue;
+            return ArePerWardSettingsEnabled() && zdo != null ? zdo.GetFloat(key, defaultValue) : defaultValue;
         }
 
         public static string GetWardStringSetting(ZDO zdo, int key, string defaultValue)
         {
-            if (zdo == null)
+            if (!ArePerWardSettingsEnabled() || zdo == null)
                 return defaultValue;
 
             string value = zdo.GetString(key, defaultValue);
@@ -1733,7 +1812,7 @@ namespace ProtectiveWards
 
         public static Vector3 GetWardVec3Setting(ZDO zdo, int key, Vector3 defaultValue)
         {
-            return zdo != null && zdo.GetVec3(key, out Vector3 value) ? value : defaultValue;
+            return ArePerWardSettingsEnabled() && zdo != null && zdo.GetVec3(key, out Vector3 value) ? value : defaultValue;
         }
 
         public static void RemoveZdoBool(ZDO zdo, int key)
@@ -2085,7 +2164,7 @@ namespace ProtectiveWards
             float multiplier = GetWardFloatSetting(zdo, s_colorMultiplier, wardEmissionColorMultiplier.Value);
 
             Color color;
-            if (HasZdoVec3(zdo, s_color) && !HasZdoFloat(zdo, s_colorMultiplier))
+            if (ArePerWardSettingsEnabled() && HasZdoVec3(zdo, s_color) && !HasZdoFloat(zdo, s_colorMultiplier))
                 color = new Color(vector.x, vector.y, vector.z);
             else
                 color = new Color(vector.x * multiplier, vector.y * multiplier, vector.z * multiplier);
@@ -2561,19 +2640,27 @@ namespace ProtectiveWards
         {
             public static void Prefix(PrivateArea __instance, StringBuilder text)
             {
+                if (WardPasswordProtection.AppendPasswordHoverAction(__instance, text))
+                    return;
+
                 if (!__instance.HaveLocalAccess())
                     return;
 
                 bool wardEnabled = __instance.IsEnabled();
-                if (!wardEnabled && !CanEditWardSettings(__instance, Player.m_localPlayer))
+                if (!wardEnabled
+                    && !CanEditWardSettings(__instance, Player.m_localPlayer)
+                    && !WardPasswordProtection.CanChangePassword(__instance, Player.m_localPlayer))
                     return;
 
                 if (!wardEnabled)
                 {
-                    if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
-                        text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_open_settings");
-                    else
-                        text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_open_settings");
+                    if (ArePerWardSettingsEnabled())
+                    {
+                        if (!ZInput.IsNonClassicFunctionality() || !ZInput.IsGamepadActive())
+                            text.Append($"\n[<color=yellow><b>$KEY_AltPlace + $KEY_Use</b></color>] $pw_ward_open_settings");
+                        else
+                            text.Append($"\n[<color=yellow><b>$KEY_JoyAltKeys + $KEY_Use</b></color>] $pw_ward_open_settings");
+                    }
                     return;
                 }
 
@@ -2606,11 +2693,12 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
-        public static class PrivateArea_IsPermitted_GlobalAccessBypass
+        public static class PrivateArea_IsPermitted_AdditionalAccess
         {
-            public static bool Prefix(long playerID, ref bool __result)
+            public static bool Prefix(PrivateArea __instance, long playerID, ref bool __result)
             {
-                if (!HasWardAdminAccess(playerID))
+                if (!HasWardManagementAccess(__instance, playerID)
+                    && !GuildsCompat.HasWardGuildAccess(__instance, playerID))
                     return true;
 
                 __result = true;
@@ -2626,10 +2714,17 @@ namespace ProtectiveWards
                 if (hold)
                     return true;
 
-                if (!alt)
+                if (___m_ownerFaction != 0)
                     return true;
 
-                if (___m_ownerFaction != 0)
+                Player player = human as Player;
+                if (WardPasswordProtection.TryHandleInteraction(__instance, player))
+                {
+                    __result = true;
+                    return false;
+                }
+
+                if (!alt)
                     return true;
 
                 if (!__instance.HaveLocalAccess())
@@ -2645,10 +2740,11 @@ namespace ProtectiveWards
                         return false;
 
                     LogInfo($"Passive repairing begins");
-                    instance.StartCoroutine(PassiveRepairEffect(__instance, human as Player));
+                    instance.StartCoroutine(PassiveRepairEffect(__instance, player));
                     return false;
                 }
-                else if (!__instance.IsEnabled() && CanEditWardSettings(__instance, human as Player))
+                else if (!__instance.IsEnabled()
+                         && (CanEditWardSettings(__instance, player) || WardPasswordProtection.CanChangePassword(__instance, player)))
                 {
                     __result = true;
                     WardSettingsUI.Open(__instance);

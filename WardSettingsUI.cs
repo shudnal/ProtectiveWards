@@ -7,6 +7,7 @@ using Jotunn.Managers;
 using UnityEngine;
 using UnityEngine.UI;
 using static ProtectiveWards.ProtectiveWards;
+using ProtectiveWards.Compatibility;
 
 namespace ProtectiveWards
 {
@@ -14,21 +15,23 @@ namespace ProtectiveWards
     {
         private const string RPC_ApplyWardSettings = "PW_ApplyWardSettings";
         private const string RPC_RefreshWardSettings = "PW_RefreshWardSettings";
-        private const float MaxPanelWidth = 740f;
-        private const float MinPanelWidth = 620f;
-        private const float PanelHeight = 700f;
+        private const float MaxPanelWidth = 666f;
+        private const float MinPanelWidth = 558f;
+        private const float PanelHeight = 600f;
         private const int TitleFontSize = 32;
         private const int HeaderFontSize = 18;
         private const int RowFontSize = 17;
         private const float RowStep = 34f;
-        private const float PanelPadding = 34f;
-        private const float ColumnGap = 16f;
-        private const float UseDefaultColumnWidth = 110f;
-        private const float ValueWidth = 110f;
-        private const float ValueGap = 8f;
+        private const float AccessRowStep = 30f;
+        private const float NoteTopSpacing = 12f;
+        private const float PanelPadding = 30.6f;
+        private const float ColumnGap = 14.4f;
+        private const float UseDefaultColumnWidth = 99f;
+        private const float ValueWidth = 99f;
+        private const float ValueGap = 7.2f;
         private const float ToggleSize = 26f;
-        private const float MaxLabelWidth = 285f;
-        private const float MinLabelWidth = 165f;
+        private const float MaxLabelWidth = 256.5f;
+        private const float MinLabelWidth = 148.5f;
 
         private static float s_panelWidth = MaxPanelWidth;
         private static float s_labelX = -215f;
@@ -53,12 +56,33 @@ namespace ProtectiveWards
         private static readonly Dictionary<FieldId, WardSettingValue> s_values = new();
         private static bool s_rpcRegistered;
         private static bool s_inputBlocked;
+        private static bool s_canEditGeneralSettings;
+        private static bool s_canChangePassword;
+        private static SettingsPage s_currentPage;
+        private static Toggle s_passwordEnabledToggle;
+        private static InputField s_passwordInput;
+        private static Text s_passwordStatusText;
+        private static Button s_removePasswordButton;
+        private static bool s_passwordEnabled;
+        private static bool s_passwordExists;
+        private static string s_passwordValue = "";
+        private static bool s_passwordValueChanged;
+        private static Toggle s_guildAccessEnabledToggle;
+        private static Text s_boundGuildText;
+        private static Button s_guildBindingButton;
+        private static bool s_guildAccessEnabled;
+        private static bool s_guildAccessEnabledChanged;
+        private static int s_boundGuildId;
+        private static string s_boundGuildName = "";
+        private static bool s_currentGuildAvailable;
 
         private enum SettingsPage
         {
             Main,
+            Visuals,
             BubbleVisual,
-            CircleVisual
+            CircleVisual,
+            Access
         }
 
         private enum FieldId
@@ -82,15 +106,20 @@ namespace ProtectiveWards
             CircleSpeed,
             CircleLength,
             CircleWidth,
-            CircleAmount
+            CircleAmount,
+            PermitEveryone
         }
 
         private static readonly string[] s_sectionLayoutTokens =
         {
             "$pw_ward_settings_section_range",
+            "$pw_ward_settings_section_visuals",
             "$pw_ward_settings_section_emission",
             "$pw_ward_settings_section_bubble",
-            "$pw_ward_settings_section_circle"
+            "$pw_ward_settings_section_circle",
+            "$pw_ward_settings_section_access",
+            "$pw_ward_guild_section",
+            "$pw_ward_password_section"
         };
 
         private static readonly string[] s_labelLayoutTokens =
@@ -100,6 +129,7 @@ namespace ProtectiveWards
             "$pw_ward_settings_emission_enabled",
             "$pw_ward_settings_emission_color",
             "$pw_ward_settings_emission_multiplier",
+            "$pw_ward_settings_visuals",
             "$pw_ward_settings_bubble_enabled",
             "$pw_ward_settings_bubble_color",
             "$pw_ward_settings_bubble_visual",
@@ -116,7 +146,14 @@ namespace ProtectiveWards
             "$pw_ward_settings_circle_speed",
             "$pw_ward_settings_circle_length",
             "$pw_ward_settings_circle_width",
-            "$pw_ward_settings_circle_amount"
+            "$pw_ward_settings_circle_amount",
+            "$pw_ward_settings_permit_everyone",
+            "$pw_ward_guild_enabled",
+            "$pw_ward_guild_bound",
+            "$pw_ward_password_enabled",
+            "$pw_ward_password_status",
+            "$pw_ward_password_value",
+            "$pw_ward_password_new"
         };
 
         internal static void RegisterRPCs()
@@ -133,13 +170,23 @@ namespace ProtectiveWards
 
         internal static void ResetRPCRegistration() => s_rpcRegistered = false;
 
+        internal static void HandleSettingsModeChanged()
+        {
+            if (!ArePerWardSettingsEnabled())
+                Close();
+        }
+
         internal static void Open(PrivateArea ward)
         {
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (!ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
+            Close();
+
             Player player = Player.m_localPlayer;
-            if (!CanEditWardSettings(ward, player))
+            s_canEditGeneralSettings = CanEditWardSettings(ward, player);
+            s_canChangePassword = WardPasswordProtection.CanChangePassword(ward, player);
+            if (!s_canEditGeneralSettings && !s_canChangePassword)
             {
                 player?.Message(MessageHud.MessageType.Center, "$msg_privatezone");
                 return;
@@ -149,8 +196,6 @@ namespace ProtectiveWards
             if (zdo == null)
                 return;
 
-            Close();
-
             if (GUIManager.Instance == null || GUIManager.CustomGUIFront == null)
             {
                 player?.Message(MessageHud.MessageType.Center, "ProtectiveWards: GUIManager is not ready");
@@ -159,7 +204,9 @@ namespace ProtectiveWards
 
             s_zdo = zdo;
             LoadValuesFromZDO();
-            OpenPage(SettingsPage.Main);
+            LoadPasswordValuesFromZDO();
+            LoadGuildValuesFromZDO();
+            OpenPage(s_canEditGeneralSettings ? SettingsPage.Main : SettingsPage.Access);
         }
 
         internal static void Close()
@@ -167,6 +214,25 @@ namespace ProtectiveWards
             DestroyPanel();
             s_zdo = null;
             s_values.Clear();
+            s_canEditGeneralSettings = false;
+            s_canChangePassword = false;
+            s_currentPage = SettingsPage.Main;
+            s_passwordEnabledToggle = null;
+            s_passwordInput = null;
+            s_passwordStatusText = null;
+            s_removePasswordButton = null;
+            s_passwordEnabled = false;
+            s_passwordExists = false;
+            s_passwordValue = "";
+            s_passwordValueChanged = false;
+            s_guildAccessEnabledToggle = null;
+            s_boundGuildText = null;
+            s_guildBindingButton = null;
+            s_guildAccessEnabled = false;
+            s_guildAccessEnabledChanged = false;
+            s_boundGuildId = 0;
+            s_boundGuildName = "";
+            s_currentGuildAvailable = false;
             SetInputBlocked(false);
         }
 
@@ -177,6 +243,13 @@ namespace ProtectiveWards
 
             s_panel = null;
             s_rows.Clear();
+            s_passwordEnabledToggle = null;
+            s_passwordInput = null;
+            s_passwordStatusText = null;
+            s_removePasswordButton = null;
+            s_guildAccessEnabledToggle = null;
+            s_boundGuildText = null;
+            s_guildBindingButton = null;
         }
 
         private static void SetInputBlocked(bool blocked)
@@ -192,6 +265,12 @@ namespace ProtectiveWards
         {
             foreach (WardSettingRow row in s_rows)
                 s_values[row.FieldId] = row.Capture();
+
+            if (s_currentPage == SettingsPage.Access)
+            {
+                CaptureGuildControls();
+                CapturePasswordControls();
+            }
         }
 
         private static void OpenPage(SettingsPage page)
@@ -204,6 +283,7 @@ namespace ProtectiveWards
 
             CaptureCurrentRows();
             DestroyPanel();
+            s_currentPage = page;
             CreatePanel(page);
             SetInputBlocked(true);
         }
@@ -301,25 +381,41 @@ namespace ProtectiveWards
                 draggable: true);
             s_panel.SetActive(true);
 
-            string title = page == SettingsPage.BubbleVisual
-                ? "$pw_ward_settings_bubble_visual_title"
-                : page == SettingsPage.CircleVisual
-                    ? "$pw_ward_settings_circle_visual_title"
-                    : "$pw_ward_settings_title";
+            string title = page == SettingsPage.Visuals
+                ? "$pw_ward_settings_visuals_title"
+                : page == SettingsPage.BubbleVisual
+                    ? "$pw_ward_settings_bubble_visual_title"
+                    : page == SettingsPage.CircleVisual
+                        ? "$pw_ward_settings_circle_visual_title"
+                        : page == SettingsPage.Access
+                            ? "$pw_ward_settings_access_title"
+                            : "$pw_ward_settings_title";
 
-            CreateText(title.Localize(), new Vector2(0f, 315f), TitleFontSize, 650f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
-            CreateColumnHeaders();
+            float halfHeight = PanelHeight * 0.5f;
+            CreateText(title.Localize(), new Vector2(0f, halfHeight - 35f), TitleFontSize, s_panelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            float y = 240f;
+            bool showColumnHeaders = page != SettingsPage.Access || s_canEditGeneralSettings;
+            if (showColumnHeaders)
+                CreateColumnHeaders(halfHeight - 72f);
+
+            float y = halfHeight - 96f;
             switch (page)
             {
+                case SettingsPage.Visuals:
+                    CreateVisualRows(ref y);
+                    CreateFooterButtons(showBack: true);
+                    break;
                 case SettingsPage.BubbleVisual:
                     CreateBubbleVisualRows(ref y);
-                    CreateFooterButtons(showBack: true);
+                    CreateFooterButtons(showBack: true, backPage: SettingsPage.Visuals);
                     break;
                 case SettingsPage.CircleVisual:
                     CreateCircleVisualRows(ref y);
-                    CreateFooterButtons(showBack: true);
+                    CreateFooterButtons(showBack: true, backPage: SettingsPage.Visuals);
+                    break;
+                case SettingsPage.Access:
+                    CreateAccessRows(ref y);
+                    CreateFooterButtons(showBack: s_canEditGeneralSettings);
                     break;
                 default:
                     CreateMainRows(ref y);
@@ -334,6 +430,16 @@ namespace ProtectiveWards
             AddBool(FieldId.CustomRange, "$pw_ward_settings_custom_range", ref y);
             AddFloat(FieldId.Range, "$pw_ward_settings_range", ref y);
 
+            AddSection("$pw_ward_settings_section_visuals", ref y);
+            AddNavigationRow("$pw_ward_settings_visuals", "$pw_ward_settings_open", SettingsPage.Visuals, ref y);
+
+            AddSection("$pw_ward_settings_section_access", ref y);
+            AddNavigationRow("$pw_ward_settings_access", "$pw_ward_settings_open", SettingsPage.Access, ref y);
+
+        }
+
+        private static void CreateVisualRows(ref float y)
+        {
             AddSection("$pw_ward_settings_section_emission", ref y);
             AddBool(FieldId.CustomColor, "$pw_ward_settings_emission_enabled", ref y);
             AddEmissionColor(ref y);
@@ -371,14 +477,201 @@ namespace ProtectiveWards
             AddFloat(FieldId.CircleAmount, "$pw_ward_settings_circle_amount", ref y);
         }
 
-        private static void CreateColumnHeaders()
+        private static void CreateAccessRows(ref float y)
         {
-            CreateText("$pw_ward_settings_use_default".Localize(), new Vector2(s_useDefaultHeaderX, 278f), HeaderFontSize, s_useDefaultHeaderWidth, 30f, Color.white, TextAnchor.MiddleRight, FontStyle.Bold);
-            CreateText("$pw_ward_settings_value".Localize(), new Vector2(s_valueHeaderX + s_valueHeaderWidth * 0.5f, 278f), HeaderFontSize, s_valueHeaderWidth, 30f, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            if (s_canEditGeneralSettings)
+            {
+                AddAccessSection("$pw_ward_settings_section_access", ref y);
+                AddAccessBool(FieldId.PermitEveryone, "$pw_ward_settings_permit_everyone", ref y);
+
+                if (GuildsCompat.IsEnabled)
+                    CreateGuildRows(ref y);
+            }
+
+            if (s_canChangePassword)
+                CreatePasswordRows(ref y);
         }
 
-        private static void CreateFooterButtons(bool showBack)
+        private static void CreateGuildRows(ref float y)
         {
+            AddAccessSection("$pw_ward_guild_section", ref y);
+
+            CreateRowText(s_panel.transform, "$pw_ward_guild_enabled".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            GameObject enabledObject = GUIManager.Instance.CreateToggle(parent: s_panel.transform, width: ToggleSize, height: ToggleSize);
+            SetRect(enabledObject, new Vector2(s_valueBoolX, y), ToggleSize, ToggleSize);
+            s_guildAccessEnabledToggle = enabledObject.GetComponent<Toggle>();
+            s_guildAccessEnabledToggle.isOn = s_guildAccessEnabled;
+            s_guildAccessEnabledToggle.interactable = HasBoundGuild();
+            s_guildAccessEnabledToggle.onValueChanged.AddListener(value =>
+            {
+                s_guildAccessEnabled = value;
+                s_guildAccessEnabledChanged = true;
+            });
+            y -= AccessRowStep;
+
+            CreateRowText(s_panel.transform, "$pw_ward_guild_bound".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            GameObject guildTextObject = CreateRowText(
+                s_panel.transform,
+                GetBoundGuildDisplay(),
+                new Vector2(GetPasswordInputX(150f, 170f), y),
+                150f,
+                HasBoundGuild() ? Color.white : new Color(1f, 0.72f, 0.42f));
+            s_boundGuildText = guildTextObject.GetComponent<Text>();
+
+            GameObject bindingObject = GUIManager.Instance.CreateButton(
+                text: GetGuildBindingButtonText(),
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(GetPasswordButtonX(), y),
+                width: 170f,
+                height: 32f);
+            s_guildBindingButton = bindingObject.GetComponent<Button>();
+            s_guildBindingButton.onClick.AddListener(ToggleGuildBinding);
+            y -= AccessRowStep;
+
+            AddInfoNote("$pw_ward_guild_note", ref y, 48f, new Color(0.85f, 0.85f, 0.85f), NoteTopSpacing * 0.5f);
+            UpdateGuildControls();
+        }
+
+        private static void CreatePasswordRows(ref float y)
+        {
+            AddAccessSection("$pw_ward_password_section", ref y);
+
+            CreateRowText(s_panel.transform, "$pw_ward_password_enabled".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            GameObject enabledObject = GUIManager.Instance.CreateToggle(parent: s_panel.transform, width: ToggleSize, height: ToggleSize);
+            SetRect(enabledObject, new Vector2(s_valueBoolX, y), ToggleSize, ToggleSize);
+            s_passwordEnabledToggle = enabledObject.GetComponent<Toggle>();
+            s_passwordEnabledToggle.isOn = s_passwordEnabled;
+            s_passwordEnabledToggle.onValueChanged.AddListener(value => s_passwordEnabled = value);
+            y -= AccessRowStep;
+
+            if (wardPasswordFieldMode.Value == WardPasswordFieldMode.SetNewPasswordOnly)
+                CreateSetNewPasswordRows(ref y);
+            else
+                CreateEditablePasswordRow(ref y);
+        }
+
+        private static void CreateSetNewPasswordRows(ref float y)
+        {
+            CreateRowText(s_panel.transform, "$pw_ward_password_status".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            GameObject statusObject = CreateRowText(
+                s_panel.transform,
+                GetPasswordStatusToken().Localize(),
+                new Vector2(GetPasswordInputX(150f, 170f), y),
+                150f,
+                s_passwordExists ? Color.white : new Color(1f, 0.72f, 0.42f));
+            s_passwordStatusText = statusObject.GetComponent<Text>();
+
+            GameObject removeObject = GUIManager.Instance.CreateButton(
+                text: "$pw_ward_password_remove".Localize(),
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(GetPasswordButtonX(), y),
+                width: 170f,
+                height: 32f);
+            s_removePasswordButton = removeObject.GetComponent<Button>();
+            s_removePasswordButton.interactable = s_passwordExists;
+            s_removePasswordButton.onClick.AddListener(RemovePassword);
+            y -= AccessRowStep;
+
+            CreateRowText(s_panel.transform, "$pw_ward_password_new".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            CreatePasswordInput(y, showPassword: false, initialValue: "", width: 150f, x: GetPasswordInputX(150f, 170f));
+
+            GameObject setObject = GUIManager.Instance.CreateButton(
+                text: "$pw_ward_password_set_new".Localize(),
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(GetPasswordButtonX(), y),
+                width: 170f,
+                height: 32f);
+            setObject.GetComponent<Button>().onClick.AddListener(SetNewPassword);
+            y -= AccessRowStep;
+
+            AddInfoNote("$pw_ward_password_hash_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f));
+        }
+
+        private static void CreateEditablePasswordRow(ref float y)
+        {
+            CreateRowText(s_panel.transform, "$pw_ward_password_value".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+            CreatePasswordInput(y, showPassword: true, initialValue: s_passwordValue, width: 320f, x: GetPasswordWideInputX(320f));
+            y -= AccessRowStep;
+
+            AddInfoNote("$pw_ward_password_plaintext_note", ref y, 50f, new Color(1f, 0.72f, 0.42f), NoteTopSpacing * 0.5f);
+        }
+
+        private static void AddInfoNote(string token, ref float y, float height, Color color, float topSpacing = NoteTopSpacing)
+        {
+            y -= topSpacing;
+            CreateText(
+                token.Localize(),
+                new Vector2(0f, y - height * 0.5f),
+                15,
+                s_panelWidth - PanelPadding * 2f,
+                height,
+                color,
+                TextAnchor.UpperLeft);
+            y -= height;
+        }
+
+        private static void CreatePasswordInput(float y, bool showPassword, string initialValue, float width, float x)
+        {
+            GameObject inputObject = GUIManager.Instance.CreateInputField(
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(x, y),
+                contentType: showPassword ? InputField.ContentType.Standard : InputField.ContentType.Password,
+                placeholderText: "$pw_ward_password_placeholder".Localize(),
+                fontSize: RowFontSize,
+                width: width,
+                height: 30f);
+            s_passwordInput = inputObject.GetComponent<InputField>();
+            s_passwordInput.characterLimit = WardPasswordProtection.PasswordCharacterLimit;
+            s_passwordInput.text = initialValue ?? "";
+            if (s_passwordInput.textComponent != null)
+                s_passwordInput.textComponent.alignment = TextAnchor.MiddleLeft;
+            s_passwordInput.onValueChanged.AddListener(value =>
+            {
+                s_passwordValue = value;
+                s_passwordValueChanged = true;
+            });
+        }
+
+        private static float GetPasswordButtonX()
+        {
+            float right = s_panelWidth * 0.5f - PanelPadding;
+            return right - 85f;
+        }
+
+        private static float GetPasswordInputX(float inputWidth, float buttonWidth)
+        {
+            float buttonLeft = GetPasswordButtonX() - buttonWidth * 0.5f;
+            return buttonLeft - ValueGap - inputWidth * 0.5f;
+        }
+
+        private static float GetPasswordWideInputX(float width)
+        {
+            float right = s_panelWidth * 0.5f - PanelPadding;
+            return right - width * 0.5f;
+        }
+
+        private static string GetPasswordStatusToken()
+        {
+            return s_passwordExists ? "$pw_ward_password_is_set" : "$pw_ward_password_not_set";
+        }
+
+        private static void CreateColumnHeaders(float y)
+        {
+            CreateText("$pw_ward_settings_use_default".Localize(), new Vector2(s_useDefaultHeaderX, y), HeaderFontSize, s_useDefaultHeaderWidth, 30f, Color.white, TextAnchor.MiddleRight, FontStyle.Bold);
+            CreateText("$pw_ward_settings_value".Localize(), new Vector2(s_valueHeaderX + s_valueHeaderWidth * 0.5f, y), HeaderFontSize, s_valueHeaderWidth, 30f, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+        }
+
+        private static void CreateFooterButtons(bool showBack, SettingsPage backPage = SettingsPage.Main)
+        {
+            float footerY = -PanelHeight * 0.5f + 45f;
             if (showBack)
             {
                 GameObject backButton = GUIManager.Instance.CreateButton(
@@ -386,10 +679,10 @@ namespace ProtectiveWards
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
-                    position: new Vector2(0f, -300f),
+                    position: new Vector2(0f, footerY),
                     width: 170f,
                     height: 50f);
-                backButton.GetComponent<Button>().onClick.AddListener(() => OpenPage(SettingsPage.Main));
+                backButton.GetComponent<Button>().onClick.AddListener(() => OpenPage(backPage));
             }
             else
             {
@@ -398,7 +691,7 @@ namespace ProtectiveWards
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
-                    position: new Vector2(-120f, -300f),
+                    position: new Vector2(-120f, footerY),
                     width: 220f,
                     height: 50f);
                 applyButton.GetComponent<Button>().onClick.AddListener(Apply);
@@ -408,7 +701,7 @@ namespace ProtectiveWards
                     parent: s_panel.transform,
                     anchorMin: new Vector2(0.5f, 0.5f),
                     anchorMax: new Vector2(0.5f, 0.5f),
-                    position: new Vector2(140f, -300f),
+                    position: new Vector2(140f, footerY),
                     width: 170f,
                     height: 50f);
                 cancelButton.GetComponent<Button>().onClick.AddListener(Close);
@@ -423,21 +716,269 @@ namespace ProtectiveWards
                 return;
             }
 
-            ZPackage package = CreateApplyPackage();
+            CaptureCurrentRows();
 
-            if (ZNet.instance != null && ZNet.instance.IsServer())
-                RPC_ApplyWardSettingsServer(0L, new ZPackage(package.GetArray()));
-            else
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ApplyWardSettings, package);
+            bool replacePassword = false;
+            if (s_canChangePassword && wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword)
+                replacePassword = s_passwordValueChanged || !s_passwordExists;
+
+            bool effectiveHasPassword = replacePassword ? !string.IsNullOrEmpty(s_passwordValue) : s_passwordExists;
+            if (s_canChangePassword && s_passwordEnabled && !effectiveHasPassword)
+            {
+                Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_password_required");
+                return;
+            }
+
+            if (s_canEditGeneralSettings)
+            {
+                ZPackage package = CreateApplyPackage();
+                if (ZNet.instance != null && ZNet.instance.IsServer())
+                    RPC_ApplyWardSettingsServer(0L, new ZPackage(package.GetArray()));
+                else
+                    ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ApplyWardSettings, package);
+            }
+
+            if (s_canChangePassword)
+                WardPasswordProtection.RequestSettingsUpdate(s_zdo.m_uid, s_passwordEnabled, replacePassword, s_passwordValue);
 
             Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_settings_applied");
             Close();
         }
 
+        private static void CapturePasswordControls()
+        {
+            if (s_passwordEnabledToggle != null)
+                s_passwordEnabled = s_passwordEnabledToggle.isOn;
+
+            if (wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword && s_passwordInput != null)
+                s_passwordValue = s_passwordInput.text ?? "";
+        }
+
+        private static void CaptureGuildControls()
+        {
+            if (s_guildAccessEnabledToggle == null)
+                return;
+
+            bool value = s_guildAccessEnabledToggle.isOn;
+            if (value != s_guildAccessEnabled)
+                s_guildAccessEnabledChanged = true;
+
+            s_guildAccessEnabled = value;
+        }
+
+        private static void LoadGuildValuesFromZDO()
+        {
+            s_guildAccessEnabled = GuildsCompat.IsGuildAccessEnabled(s_zdo);
+            s_guildAccessEnabledChanged = false;
+            s_boundGuildId = GuildsCompat.GetBoundGuildId(s_zdo);
+            s_boundGuildName = GuildsCompat.GetBoundGuildName(s_zdo);
+            s_currentGuildAvailable = HasCurrentPlayerGuild();
+        }
+
+        private static bool HasBoundGuild() => s_boundGuildId > 0 && !string.IsNullOrEmpty(s_boundGuildName);
+
+        private static string GetBoundGuildDisplay()
+        {
+            return HasBoundGuild() ? s_boundGuildName : "$pw_ward_guild_not_bound".Localize();
+        }
+
+        private static bool HasCurrentPlayerGuild()
+        {
+            Player player = Player.m_localPlayer;
+            return player != null && GuildsCompat.TryGetPlayerGuild(player.GetPlayerID(), out _);
+        }
+
+        private static string GetGuildBindingButtonText()
+        {
+            if (HasBoundGuild())
+                return "$pw_ward_guild_unbind".Localize();
+
+            return s_currentGuildAvailable
+                ? "$pw_ward_guild_bind_current".Localize()
+                : "$pw_ward_guild_not_found".Localize();
+        }
+
+        private static void ToggleGuildBinding()
+        {
+            if (s_zdo == null || !GuildsCompat.IsEnabled)
+                return;
+
+            if (HasBoundGuild())
+                GuildsCompat.RequestUnbindGuild(s_zdo.m_uid);
+            else if (s_currentGuildAvailable)
+                GuildsCompat.RequestBindCurrentGuild(s_zdo.m_uid);
+        }
+
+        internal static void OnGuildBindingResult(ZDOID wardID, GuildsCompat.GuildBindingResult result, bool enabled, int guildId, string guildName)
+        {
+            bool currentWard = s_zdo != null && s_zdo.m_uid.Equals(wardID);
+            if (currentWard && (result == GuildsCompat.GuildBindingResult.Success || result == GuildsCompat.GuildBindingResult.NoGuild))
+            {
+                if (result == GuildsCompat.GuildBindingResult.Success)
+                {
+                    s_guildAccessEnabled = enabled;
+                    s_guildAccessEnabledChanged = false;
+                    s_boundGuildId = guildId;
+                    s_boundGuildName = guildName ?? "";
+                }
+                else
+                {
+                    s_currentGuildAvailable = false;
+                }
+
+                UpdateGuildControls();
+            }
+
+            Player player = Player.m_localPlayer;
+            if (player == null)
+                return;
+
+            switch (result)
+            {
+                case GuildsCompat.GuildBindingResult.Success:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_guild_updated");
+                    break;
+                case GuildsCompat.GuildBindingResult.NoGuild:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_guild_no_guild");
+                    break;
+                case GuildsCompat.GuildBindingResult.NotAuthorized:
+                    player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+                    break;
+                case GuildsCompat.GuildBindingResult.TooFar:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_guild_too_far");
+                    break;
+                default:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_guild_unavailable");
+                    break;
+            }
+        }
+
+        private static void UpdateGuildControls()
+        {
+            bool hasBoundGuild = HasBoundGuild();
+            bool canBindGuild = !hasBoundGuild && s_currentGuildAvailable;
+
+            if (s_guildAccessEnabledToggle != null)
+            {
+                s_guildAccessEnabledToggle.SetIsOnWithoutNotify(s_guildAccessEnabled);
+                s_guildAccessEnabledToggle.interactable = hasBoundGuild;
+            }
+
+            if (s_boundGuildText != null)
+            {
+                s_boundGuildText.text = GetBoundGuildDisplay();
+                s_boundGuildText.color = hasBoundGuild ? Color.white : new Color(1f, 0.72f, 0.42f);
+            }
+
+            if (s_guildBindingButton != null)
+            {
+                s_guildBindingButton.interactable = hasBoundGuild || canBindGuild;
+                Text buttonText = s_guildBindingButton.GetComponentInChildren<Text>();
+                if (buttonText != null)
+                    buttonText.text = GetGuildBindingButtonText();
+            }
+        }
+
+        private static void SetNewPassword()
+        {
+            if (s_zdo == null || !s_canChangePassword)
+                return;
+
+            CapturePasswordControls();
+            string password = s_passwordInput != null ? s_passwordInput.text : "";
+            if (string.IsNullOrEmpty(password))
+            {
+                Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_password_required");
+                return;
+            }
+
+            WardPasswordProtection.RequestSettingsUpdate(s_zdo.m_uid, s_passwordEnabled, replacePassword: true, password);
+        }
+
+        private static void RemovePassword()
+        {
+            if (s_zdo == null || !s_canChangePassword)
+                return;
+
+            s_passwordEnabled = false;
+            if (s_passwordEnabledToggle != null)
+                s_passwordEnabledToggle.isOn = false;
+
+            WardPasswordProtection.RequestSettingsUpdate(s_zdo.m_uid, enabled: false, replacePassword: true, password: "");
+        }
+
+        private static void LoadPasswordValuesFromZDO()
+        {
+            s_passwordEnabled = s_zdo != null && s_zdo.GetBool(WardPasswordProtection.s_passwordProtectionEnabled, false);
+            s_passwordExists = WardPasswordProtection.HasPassword(s_zdo);
+            s_passwordValue = WardPasswordProtection.GetEditablePassword(s_zdo);
+            s_passwordValueChanged = false;
+        }
+
+        internal static void OnPasswordSettingsResult(ZDOID wardID, WardPasswordProtection.PasswordSettingsResult result, bool enabled, bool hasPassword)
+        {
+            bool currentWard = s_zdo != null && s_zdo.m_uid.Equals(wardID);
+            if (result == WardPasswordProtection.PasswordSettingsResult.Success && currentWard)
+            {
+                s_passwordEnabled = enabled;
+                s_passwordExists = hasPassword;
+                if (!hasPassword)
+                    s_passwordValue = "";
+
+                if (s_passwordEnabledToggle != null)
+                    s_passwordEnabledToggle.isOn = enabled;
+
+                if (wardPasswordFieldMode.Value == WardPasswordFieldMode.SetNewPasswordOnly && s_passwordInput != null)
+                {
+                    s_passwordInput.text = "";
+                    s_passwordValueChanged = false;
+                }
+
+                UpdatePasswordStatusControls();
+            }
+
+            Player player = Player.m_localPlayer;
+            if (player == null)
+                return;
+
+            switch (result)
+            {
+                case WardPasswordProtection.PasswordSettingsResult.Success:
+                    if (s_panel != null)
+                        player.Message(MessageHud.MessageType.Center, "$pw_ward_password_settings_saved");
+                    break;
+                case WardPasswordProtection.PasswordSettingsResult.MissingPassword:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_password_required");
+                    break;
+                case WardPasswordProtection.PasswordSettingsResult.NotAuthorized:
+                    player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
+                    break;
+                case WardPasswordProtection.PasswordSettingsResult.TooFar:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_password_too_far");
+                    break;
+                case WardPasswordProtection.PasswordSettingsResult.PasswordTooLong:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_password_too_long");
+                    break;
+                default:
+                    player.Message(MessageHud.MessageType.Center, "$pw_ward_password_unavailable");
+                    break;
+            }
+        }
+
+        private static void UpdatePasswordStatusControls()
+        {
+            if (s_passwordStatusText != null)
+            {
+                s_passwordStatusText.text = GetPasswordStatusToken().Localize();
+                s_passwordStatusText.color = s_passwordExists ? Color.white : new Color(1f, 0.72f, 0.42f);
+            }
+
+            if (s_removePasswordButton != null)
+                s_removePasswordButton.interactable = s_passwordExists;
+        }
+
         private static ZPackage CreateApplyPackage()
         {
-            CaptureCurrentRows();
-
             ZPackage package = new();
             package.Write(s_zdo.m_uid);
             package.Write(Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerID() : 0L);
@@ -445,6 +986,11 @@ namespace ProtectiveWards
 
             foreach (KeyValuePair<FieldId, WardSettingValue> pair in s_values)
                 WriteStoredField(package, pair.Key, pair.Value);
+
+            bool includeGuildAccessEnabled = GuildsCompat.IsEnabled && s_guildAccessEnabledChanged;
+            package.Write(includeGuildAccessEnabled);
+            if (includeGuildAccessEnabled)
+                package.Write(s_guildAccessEnabled);
 
             return package;
         }
@@ -462,6 +1008,7 @@ namespace ProtectiveWards
                 case FieldId.CustomRange:
                 case FieldId.CustomColor:
                 case FieldId.CircleEnabled:
+                case FieldId.PermitEveryone:
                     package.Write(value.BoolValue);
                     break;
                 case FieldId.Range:
@@ -509,6 +1056,15 @@ namespace ProtectiveWards
             for (int i = 0; i < count; i++)
                 ApplyField(zdo, package, refreshPackage);
 
+            bool includeGuildAccessEnabled = package.ReadBool();
+            refreshPackage.Write(includeGuildAccessEnabled);
+            if (includeGuildAccessEnabled)
+            {
+                bool guildAccessEnabled = package.ReadBool();
+                GuildsCompat.SetGuildAccessEnabled(zdo, guildAccessEnabled);
+                refreshPackage.Write(GuildsCompat.IsGuildAccessEnabled(zdo));
+            }
+
             BroadcastWardSettingsRefresh(refreshPackage);
             LogInfo($"Ward settings applied for {zdoID}");
         }
@@ -531,6 +1087,10 @@ namespace ProtectiveWards
             int count = package.ReadInt();
             for (int i = 0; i < count; i++)
                 ApplyField(zdo, package);
+
+            bool includeGuildAccessEnabled = package.ReadBool();
+            if (includeGuildAccessEnabled)
+                GuildsCompat.SetGuildAccessEnabled(zdo, package.ReadBool());
 
             RefreshLoadedWard(zdoID);
         }
@@ -631,6 +1191,9 @@ namespace ProtectiveWards
                     break;
                 case FieldId.CircleAmount:
                     ApplyFloat(zdo, s_circleAmount, useDefault, package, mirror);
+                    break;
+                case FieldId.PermitEveryone:
+                    ApplyBool(zdo, s_permitEveryone, useDefault, package, mirror);
                     break;
             }
         }
@@ -743,6 +1306,8 @@ namespace ProtectiveWards
             StoreFloat(FieldId.CircleLength, s_circleLength, wardAreaMarkerLength.Value);
             StoreFloat(FieldId.CircleWidth, s_circleWidth, wardAreaMarkerWidth.Value);
             StoreFloat(FieldId.CircleAmount, s_circleAmount, wardAreaMarkerAmount.Value);
+
+            StoreBool(FieldId.PermitEveryone, s_permitEveryone, permitEveryone.Value);
         }
 
         private static void StoreBool(FieldId field, int key, bool defaultValue)
@@ -849,6 +1414,20 @@ namespace ProtectiveWards
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
+        }
+
+        private static void AddAccessBool(FieldId field, string labelToken, ref float y)
+        {
+            AddBool(field, labelToken, ref y);
+            y += RowStep - AccessRowStep;
+        }
+
+        private static void AddAccessSection(string labelToken, ref float y)
+        {
+            y -= 4f;
+            CreateText(labelToken.Localize(), new Vector2(s_sectionX, y), HeaderFontSize, s_labelWidth, 30f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleLeft, FontStyle.Bold);
+            CreateDivider(new Vector2(s_sectionDividerX, y - 1f), s_sectionDividerWidth);
+            y -= 30f;
         }
 
         private static void AddSection(string labelToken, ref float y)

@@ -22,7 +22,7 @@ namespace ProtectiveWards
         private static bool s_interactablePatchesApplied;
         private static Player s_autoPickupPlayer;
 
-        private static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
+        internal static bool BlockProtectedInteraction(Component component, Humanoid human, ref bool result)
         {
             if (!BlockUnauthorizedWardInteraction(component, human))
                 return false;
@@ -109,6 +109,8 @@ namespace ProtectiveWards
         }
 
         internal static void ResetDynamicPatchState() => s_interactablePatchesApplied = false;
+
+        internal static void ExcludeInteractableType(Type type) => Interactable_PreventUnauthorizedAccess.ExcludeType(type);
 
         private static bool TeleportTargetAccessCheckStarted(TeleportWorld teleport, Player player)
         {
@@ -1636,6 +1638,12 @@ namespace ProtectiveWards
                 typeof(ArcheryTarget),
                 typeof(Barber)
             };
+
+            internal static void ExcludeType(Type type)
+            {
+                if (type != null)
+                    ExcludedInteractableTypes.Add(type);
+            }
 
             internal static IEnumerable<MethodBase> TargetMethods()
             {

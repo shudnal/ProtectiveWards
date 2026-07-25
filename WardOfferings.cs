@@ -199,21 +199,27 @@ namespace ProtectiveWards
 
                 LogInfo($"{player.GetPlayerName()} used {item.m_shared.m_name} on {__instance.m_nview.GetZDO()}");
 
-                bool augment = item.m_shared.m_name == "$item_blackcore" && offeringAugmenting.Value;
-                bool repair = augment || (item.m_shared.m_name == "$item_surtlingcore" && offeringActiveRepair.Value);
-
-                bool consumable = (offeringFood.Value || offeringMead.Value) && (item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Consumable);
-
-                bool thunderstrike = offeringThundertone.Value && item.m_shared.m_name == "$item_thunderstone";
-
-                bool trophy = offeringTrophy.Value && (item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Trophy);
-
-                bool growAll = offeringEitr.Value && item.m_shared.m_name == "$item_eitr";
-                bool growth = (offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
-
-                bool moderPower = item.m_shared.m_name == "$item_dragonegg" && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon);
-
                 bool taxi = offeringTaxi.Value && WardTaxi.IsTaxiOfferingItem(item.m_shared.m_name);
+
+                bool augment = !taxi && item.m_shared.m_name == "$item_blackcore" && offeringAugmenting.Value;
+                bool repair = augment || (!taxi && item.m_shared.m_name == "$item_surtlingcore" && offeringActiveRepair.Value);
+
+                bool isConsumable = item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Consumable;
+                bool foodOffering = !taxi && offeringFood.Value && item.m_shared.m_food > 0f;
+                bool meadOffering = !taxi && offeringMead.Value && item.m_shared.m_food <= 0f && (bool)item.m_shared.m_consumeStatusEffect;
+                bool consumable = isConsumable && (foodOffering || meadOffering);
+
+                bool thunderstrike = !taxi && offeringThundertone.Value && item.m_shared.m_name == "$item_thunderstone";
+
+                bool trophy = !taxi && offeringTrophy.Value && item.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Trophy;
+
+                bool growAll = !taxi && offeringEitr.Value && item.m_shared.m_name == "$item_eitr";
+                bool growth = (!taxi && offeringYmirRemains.Value && item.m_shared.m_name == "$item_ymirremains") || growAll;
+
+                bool moderPower = !taxi
+                                  && offeringDragonEgg.Value
+                                  && item.m_shared.m_name == "$item_dragonegg"
+                                  && ZoneSystem.instance.GetGlobalKey(GlobalKeys.defeated_dragon);
 
                 if (!repair && !consumable && !thunderstrike && !trophy && !growth && !moderPower && !taxi)
                 {
