@@ -1,8 +1,8 @@
 {
   "name": "ProtectiveWards",
-  "version_number": "2.0.4",
+  "version_number": "2.0.5",
   "website_url": "https://github.com/shudnal/ProtectiveWards",
-  "description": "Server-synced ward access control and PvE base protection: per-ward settings and password access, connected ward networks, protected interactions, expiration, passive protection and offerings.",
+  "description": "Server-synced ward access control and PvE base protection: per-ward settings, permitted-player management and password access, connected ward networks, protected interactions, expiration, passive protection and offerings.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
     "ValheimModding-YamlDotNet-16.3.1",

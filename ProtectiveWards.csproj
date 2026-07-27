@@ -112,6 +112,7 @@
     <Compile Include="WardOfferings.cs" />
     <Compile Include="WardTaxi.cs" />
     <Compile Include="WardSettingsUI.cs" />
+    <Compile Include="WardPermittedPlayersUI.cs" />
     <Compile Include="WardPasswordProtection.cs" />
     <Compile Include="WardExpiration.cs" />
     <Compile Include="ProtectiveWards.cs" />

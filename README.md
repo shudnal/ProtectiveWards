@@ -32,7 +32,8 @@ To edit a ward:
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default) on the ward.
 3. Change values in the settings window. Glow, sphere and ward circle controls are grouped on the `Ward visuals` page.
-4. Apply settings from the main settings page.
+4. Use the main Access section to add an online player by nickname, and open the `Permitted players` page to review or remove stored entries.
+5. Apply settings from the main settings page.
 
 You can customize:
 
@@ -42,9 +43,12 @@ You can customize:
 - detailed ward sphere shader properties;
 - ward circle colors, width, line amount and animation speed;
 - the ward-specific `Permit everyone` access policy;
+- the explicit permitted-player list, including server-validated add and remove actions;
 - optional access for one bound guild when Guilds is installed.
 
-Most per-ward values can inherit their corresponding global config. `Permit everyone` follows the same override model: an unchanged ward uses `Ward access / Permit everyone`, while a ward-specific value can make one public ward in an otherwise private world or keep one private ward when the global default is public. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
+Most per-ward values can inherit their corresponding global config. `Permit everyone` follows the same override model: an unchanged ward uses `Ward access / Permit everyone`, while a ward-specific value can make one public ward in an otherwise private world or keep one private ward when the global default is public. The Access settings page shows this inheritance rule directly below the toggle. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
+
+The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the ward, requester, edit permission and distance.
 
 Disabled wards owned by another player cannot be edited. Admin bypass is controlled by `Ward admin / Ward admin access`:
 
@@ -63,6 +67,8 @@ When Guilds is installed on the server and clients and `Ward settings mode` is `
 Current members of the bound guild receive normal permitted-equivalent access while they remain in that guild. Membership is resolved from the current server-synchronized guild data and is validated by the server. The member list is not copied into the ward ZDO. If a guild is renamed, rebind affected wards so the stored identity matches the renamed guild.
 
 Guild access is additive: the creator, directly permitted players, password-enrolled players and configured admin access continue to work normally.
+
+Ward hover text presents a concise effective access summary. It lists short explicit permitted names, switches to a player count when the combined names exceed 30 characters, and appends active guild and password access. When effective `Permit everyone` is enabled, the summary is simply `Permitted: everyone`.
 
 ### Access protection from non-permitted players
 

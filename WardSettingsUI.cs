@@ -23,7 +23,7 @@ namespace ProtectiveWards
         private const int RowFontSize = 17;
         private const float RowStep = 34f;
         private const float AccessRowStep = 30f;
-        private const float NoteTopSpacing = 12f;
+        private const float NoteTopSpacing = 6f;
         private const float PanelPadding = 30.6f;
         private const float ColumnGap = 14.4f;
         private const float UseDefaultColumnWidth = 99f;
@@ -75,6 +75,8 @@ namespace ProtectiveWards
         private static int s_boundGuildId;
         private static string s_boundGuildName = "";
         private static bool s_currentGuildAvailable;
+        private static InputField s_permittedPlayerInput;
+        private static string s_permittedPlayerQuery = "";
 
         private enum SettingsPage
         {
@@ -130,6 +132,8 @@ namespace ProtectiveWards
             "$pw_ward_settings_emission_color",
             "$pw_ward_settings_emission_multiplier",
             "$pw_ward_settings_visuals",
+            "$pw_ward_settings_permitted_players",
+            "$pw_ward_permitted_add_section",
             "$pw_ward_settings_bubble_enabled",
             "$pw_ward_settings_bubble_color",
             "$pw_ward_settings_bubble_visual",
@@ -173,7 +177,10 @@ namespace ProtectiveWards
         internal static void HandleSettingsModeChanged()
         {
             if (!ArePerWardSettingsEnabled())
+            {
                 Close();
+                WardPermittedPlayersUI.Close();
+            }
         }
 
         internal static void Open(PrivateArea ward)
@@ -181,6 +188,7 @@ namespace ProtectiveWards
             if (!ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
+            WardPermittedPlayersUI.Close();
             Close();
 
             Player player = Player.m_localPlayer;
@@ -233,6 +241,8 @@ namespace ProtectiveWards
             s_boundGuildId = 0;
             s_boundGuildName = "";
             s_currentGuildAvailable = false;
+            s_permittedPlayerInput = null;
+            s_permittedPlayerQuery = "";
             SetInputBlocked(false);
         }
 
@@ -250,6 +260,7 @@ namespace ProtectiveWards
             s_guildAccessEnabledToggle = null;
             s_boundGuildText = null;
             s_guildBindingButton = null;
+            s_permittedPlayerInput = null;
         }
 
         private static void SetInputBlocked(bool blocked)
@@ -435,6 +446,8 @@ namespace ProtectiveWards
 
             AddSection("$pw_ward_settings_section_access", ref y);
             AddNavigationRow("$pw_ward_settings_access", "$pw_ward_settings_open", SettingsPage.Access, ref y);
+            AddNavigationRow("$pw_ward_settings_permitted_players", "$pw_ward_settings_open", OpenPermittedPlayersPage, ref y);
+            CreateAddOnlinePlayerRow(ref y);
 
         }
 
@@ -483,6 +496,7 @@ namespace ProtectiveWards
             {
                 AddAccessSection("$pw_ward_settings_section_access", ref y);
                 AddAccessBool(FieldId.PermitEveryone, "$pw_ward_settings_permit_everyone", ref y);
+                AddInfoNote("$pw_ward_settings_permit_everyone_note", ref y, 34f, new Color(0.85f, 0.85f, 0.85f), -5f);
 
                 if (GuildsCompat.IsEnabled)
                     CreateGuildRows(ref y);
@@ -530,7 +544,7 @@ namespace ProtectiveWards
             s_guildBindingButton.onClick.AddListener(ToggleGuildBinding);
             y -= AccessRowStep;
 
-            AddInfoNote("$pw_ward_guild_note", ref y, 48f, new Color(0.85f, 0.85f, 0.85f), NoteTopSpacing * 0.5f);
+            AddInfoNote("$pw_ward_guild_note", ref y, 48f, new Color(0.85f, 0.85f, 0.85f), -2f);
             UpdateGuildControls();
         }
 
@@ -590,7 +604,7 @@ namespace ProtectiveWards
             setObject.GetComponent<Button>().onClick.AddListener(SetNewPassword);
             y -= AccessRowStep;
 
-            AddInfoNote("$pw_ward_password_hash_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f));
+            AddInfoNote("$pw_ward_password_hash_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f), -5f);
         }
 
         private static void CreateEditablePasswordRow(ref float y)
@@ -599,7 +613,7 @@ namespace ProtectiveWards
             CreatePasswordInput(y, showPassword: true, initialValue: s_passwordValue, width: 320f, x: GetPasswordWideInputX(320f));
             y -= AccessRowStep;
 
-            AddInfoNote("$pw_ward_password_plaintext_note", ref y, 50f, new Color(1f, 0.72f, 0.42f), NoteTopSpacing * 0.5f);
+            AddInfoNote("$pw_ward_password_plaintext_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f), -5f);
         }
 
         private static void AddInfoNote(string token, ref float y, float height, Color color, float topSpacing = NoteTopSpacing)
@@ -1440,6 +1454,11 @@ namespace ProtectiveWards
 
         private static void AddNavigationRow(string labelToken, string buttonToken, SettingsPage targetPage, ref float y)
         {
+            AddNavigationRow(labelToken, buttonToken, () => OpenPage(targetPage), ref y);
+        }
+
+        private static void AddNavigationRow(string labelToken, string buttonToken, Action action, ref float y)
+        {
             CreateRowText(s_panel.transform, labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
             GameObject button = GUIManager.Instance.CreateButton(
                 text: buttonToken.Localize(),
@@ -1449,8 +1468,82 @@ namespace ProtectiveWards
                 position: new Vector2(s_valueX, y),
                 width: ValueWidth,
                 height: 32f);
-            button.GetComponent<Button>().onClick.AddListener(() => OpenPage(targetPage));
+            button.GetComponent<Button>().onClick.AddListener(() => action?.Invoke());
             y -= RowStep;
+        }
+
+        private static void CreateAddOnlinePlayerRow(ref float y)
+        {
+            const float inputWidth = 190f;
+            const float buttonWidth = 110f;
+            float right = s_panelWidth * 0.5f - PanelPadding;
+            float buttonX = right - buttonWidth * 0.5f;
+            float inputRight = buttonX - buttonWidth * 0.5f - ValueGap;
+            float inputX = inputRight - inputWidth * 0.5f;
+
+            CreateRowText(s_panel.transform, "$pw_ward_permitted_add_section".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
+
+            GameObject inputObject = GUIManager.Instance.CreateInputField(
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(inputX, y),
+                contentType: InputField.ContentType.Standard,
+                placeholderText: "$pw_ward_permitted_placeholder".Localize(),
+                fontSize: RowFontSize,
+                width: inputWidth,
+                height: 30f);
+            s_permittedPlayerInput = inputObject.GetComponent<InputField>();
+            s_permittedPlayerInput.characterLimit = 64;
+            s_permittedPlayerInput.text = s_permittedPlayerQuery;
+            s_permittedPlayerInput.onValueChanged.AddListener(value => s_permittedPlayerQuery = value ?? "");
+            if (s_permittedPlayerInput.textComponent != null)
+                s_permittedPlayerInput.textComponent.alignment = TextAnchor.MiddleLeft;
+
+            GameObject addButton = GUIManager.Instance.CreateButton(
+                text: "$pw_ward_permitted_add".Localize(),
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(buttonX, y),
+                width: buttonWidth,
+                height: 32f);
+            addButton.GetComponent<Button>().onClick.AddListener(RequestAddOnlinePlayer);
+            y -= RowStep;
+
+            AddInfoNote("$pw_ward_permitted_add_note", ref y, 34f, new Color(0.85f, 0.85f, 0.85f), -5f);
+        }
+
+        private static void RequestAddOnlinePlayer()
+        {
+            if (s_zdo == null)
+                return;
+
+            string query = s_permittedPlayerInput != null
+                ? s_permittedPlayerInput.text.Trim()
+                : s_permittedPlayerQuery.Trim();
+            s_permittedPlayerQuery = query;
+            WardPermittedPlayersUI.RequestAddPlayer(s_zdo.m_uid, query);
+        }
+
+        internal static void HandlePermittedPlayerAdded(ZDOID wardID)
+        {
+            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID))
+                return;
+
+            s_permittedPlayerQuery = "";
+            if (s_permittedPlayerInput != null)
+                s_permittedPlayerInput.text = "";
+        }
+
+        private static void OpenPermittedPlayersPage()
+        {
+            if (s_zdo == null)
+                return;
+
+            PrivateArea ward = WardZdoUtils.FindLoadedWard(s_zdo.m_uid);
+            if (ward != null)
+                WardPermittedPlayersUI.Open(ward);
         }
 
         private static GameObject CreateText(string text, Vector2 position, int fontSize, float width, float height, Color color, TextAnchor alignment = TextAnchor.MiddleLeft, FontStyle fontStyle = FontStyle.Normal)
@@ -1814,7 +1907,15 @@ namespace ProtectiveWards
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))
+                {
                     Close();
+                    return;
+                }
+
+                if (s_permittedPlayerInput != null
+                    && s_permittedPlayerInput.isFocused
+                    && (ZInput.GetKeyDown(KeyCode.Return) || ZInput.GetKeyDown(KeyCode.KeypadEnter)))
+                    RequestAddOnlinePlayer();
             }
         }
 

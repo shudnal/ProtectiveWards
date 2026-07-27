@@ -16,7 +16,7 @@ The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer 
 
 ## Features
 
-- per-ward range, visual settings, access policy, guild binding and optional password access;
+- per-ward range, visual settings, access policy, permitted-player management, guild binding and optional password access;
 - configurable protection for containers, doors, portals, stations, vehicles, tames and other interactables;
 - connected ward networks with several access-sharing modes;
 - cylindrical or spherical ward coverage;
@@ -49,7 +49,8 @@ Each ward can store its own range, visual and access overrides in its ZDO while 
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default).
 3. Change the range, access settings, or glow, sphere and ward circle controls on the **Ward visuals** page.
-4. Apply the settings from the main page.
+4. Use the main **Access** section to add an online player by nickname, and open the **Permitted players** page to review or remove stored entries.
+5. Apply the settings from the main page.
 
 | Config | Meaning |
 |---|---|
@@ -58,7 +59,11 @@ Each ward can store its own range, visual and access overrides in its ZDO while 
 | `Ward settings / Only creator can edit ward settings` | Only the creator may edit the ward instead of any player with access. Ignored in `ServerControlled` mode. |
 | `Ward settings / Admins can edit ward settings` | Players accepted by `Ward admin access`, or by the ward's effective `Permit everyone` value, may edit any ward. Ignored in `ServerControlled` mode. |
 
-The **Access settings** page contains a per-ward `Permit everyone` value with the same **Use default** behavior as the visual settings. This allows a public ward while the global default is private, or a private ward while the global default is public. When effective for a ward, all players pass its access checks and that ward is excluded from inactive expiration. The global default is now `Ward access / Permit everyone`; values previously enabled under `Ward admin` must be enabled again in the new group. Per-ward access overrides are ignored in `ServerControlled` mode.
+The **Access settings** page contains a per-ward `Permit everyone` value with the same **Use default** behavior as the visual settings. An inline note explains whether the global value or the local override is being used. This allows a public ward while the global default is private, or a private ward while the global default is public. When effective for a ward, all players pass its access checks and that ward is excluded from inactive expiration. The global default is now `Ward access / Permit everyone`; values previously enabled under `Ward admin` must be enabled again in the new group. Per-ward access overrides are ignored in `ServerControlled` mode.
+
+The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester, target ward, edit permission and distance before changing the list.
+
+Ward hover text summarizes effective access without allowing long name lists to dominate the hover. Explicit names are shown while their combined text is at most 30 characters; longer lists are replaced with a player count. Active guild and password access are appended to the same line. Effective `Permit everyone` is shown simply as `Permitted: everyone`.
 
 ## Guild access
 

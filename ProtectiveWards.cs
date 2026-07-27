@@ -21,7 +21,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.4";
+        public const string pluginVersion = "2.0.5";
 
         private static Harmony _harmony;
 
@@ -890,6 +890,88 @@ namespace ProtectiveWards
                 return defaultValue;
 
             return zdo != null ? zdo.GetBool(s_permitEveryone, defaultValue) : defaultValue;
+        }
+
+        private const int WardHoverPermittedNamesLengthLimit = 30;
+
+        private static void ReplaceWardPermittedHoverStatus(PrivateArea ward, StringBuilder text)
+        {
+            if (ward == null || text == null)
+                return;
+
+            string hoverText = text.ToString();
+            int start = FindWardPermittedHoverStart(hoverText);
+            if (start < 0)
+                return;
+
+            int end = hoverText.IndexOf('\n', start);
+            if (end < 0)
+                end = hoverText.Length;
+
+            text.Remove(start, end - start);
+            text.Insert(start, BuildWardPermittedHoverStatus(ward));
+        }
+
+        private static int FindWardPermittedHoverStart(string hoverText)
+        {
+            string[] tokens =
+            {
+                "$piece_guardstone_additional",
+                "$piece_guardstone_permitted"
+            };
+
+            foreach (string token in tokens)
+            {
+                int start = hoverText.LastIndexOf(token, StringComparison.Ordinal);
+                if (start >= 0)
+                    return start;
+
+                string localized = token.Localize();
+                if (!string.IsNullOrEmpty(localized))
+                {
+                    start = hoverText.LastIndexOf(localized, StringComparison.Ordinal);
+                    if (start >= 0)
+                        return start;
+                }
+            }
+
+            return -1;
+        }
+
+        private static string BuildWardPermittedHoverStatus(PrivateArea ward)
+        {
+            string prefix = "$pw_ward_hover_permitted".Localize();
+            if (IsPermitEveryone(ward))
+            {
+                string everyone = "$pw_ward_hover_everyone".Localize();
+                return $"{prefix} {everyone}.";
+            }
+
+            List<string> accessSources = new();
+            List<string> permittedNames = ward.GetPermittedPlayers()
+                .Select(player => CensorShittyWords.FilterUGC(player.Value, UGCType.CharacterName, ward.m_piece.GetCreator()))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+            string permittedNamesText = string.Join(", ", permittedNames.ToArray());
+            if (permittedNamesText.Length > WardHoverPermittedNamesLengthLimit)
+            {
+                string countToken = permittedNames.Count == 1
+                    ? "$pw_ward_hover_player"
+                    : "$pw_ward_hover_players";
+                accessSources.Add(countToken.Localize(permittedNames.Count.ToString()));
+            }
+            else if (permittedNamesText.Length > 0)
+                accessSources.Add(permittedNamesText);
+
+            ZDO zdo = ward.m_nview?.IsValid() == true ? ward.m_nview.GetZDO() : null;
+            if (GuildsCompat.IsEnabled && GuildsCompat.IsGuildAccessEnabled(zdo))
+                accessSources.Add("$pw_ward_hover_guild_access".Localize());
+            if (WardPasswordProtection.IsPasswordProtectionActive(zdo))
+                accessSources.Add("$pw_ward_hover_password_access".Localize());
+            if (accessSources.Count == 0)
+                accessSources.Add("$pw_ward_hover_none".Localize());
+
+            return $"{prefix} {string.Join(", ", accessSources.ToArray())}.";
         }
 
         public static bool HasWardManagementAccess(PrivateArea ward, long playerID)
@@ -2689,6 +2771,12 @@ namespace ProtectiveWards
 
                 if (showOfferingsInHover.Value && BuildAvailableOfferingList(out _).Count > 0)
                     text.Append("\n[<color=yellow><b>1-8</b></color>] $piece_offerbowl_offeritem\n$pw_ward_offerings_compendium_hint");
+            }
+
+            [HarmonyPriority(Priority.Last)]
+            public static void Postfix(PrivateArea __instance, StringBuilder text)
+            {
+                ReplaceWardPermittedHoverStatus(__instance, text);
             }
         }
 

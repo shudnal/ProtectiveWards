@@ -1,3 +1,8 @@
+# 2.0.5
+* added server-validated per-ward permitted-player management: add online players from the main Access section and review or remove stored entries from a paginated list
+* improved ward hover access status with concise permitted-player counts and active guild, password, or everyone access states
+* added clear inline explanations for per-ward `Permit everyone` and password access
+
 # 2.0.4
 * IMPORTANT: moved `Permit everyone` from `Ward admin` to the new `Ward access` group; existing enabled values are not migrated and must be enabled again in the new config group
 * compacted the per-ward settings panel, moved password protection into the Access settings page, and aligned guild and password status actions on single rows
