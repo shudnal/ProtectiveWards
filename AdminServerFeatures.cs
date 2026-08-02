@@ -308,25 +308,19 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
-                return;
-
-            if (!CanRequesterPermit(ward, requester.PlayerID))
-                return;
-
-            if (!IsRequesterInRange(requester, ward.transform.position))
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null || !CanRequesterPermit(zdo, requester.PlayerID))
                 return;
 
             Player target = Player.GetPlayer(targetID);
             if (target == null || target.GetPlayerName() != targetName)
                 return;
 
-            if (IsPlayerInPermittedList(ward, targetID))
+            if (WardZdoUtils.IsExplicitlyPermitted(zdo, targetID))
                 return;
 
-            ward.AddPermitted(targetID, targetName);
-            LogInfo($"Added {targetName} to ward permitted list by command");
+            WardZdoUtils.AddPermitted(zdo, targetID, targetName);
+            LogInfo($"Added {targetName} to ward {wardID} permitted list by command");
         }
 
         private static void RPC_UnpermitPlayerServer(long sender, ZPackage package)
@@ -341,22 +335,14 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null || !CanRequesterPermit(zdo, requester.PlayerID))
                 return;
 
-            if (!CanRequesterPermit(ward, requester.PlayerID))
+            if (!WardZdoUtils.RemovePermitted(zdo, targetID, out string targetName))
                 return;
 
-            if (!IsRequesterInRange(requester, ward.transform.position))
-                return;
-
-            if (!IsPlayerInPermittedList(ward, targetID))
-                return;
-
-            string targetName = ward.GetPermittedPlayers().FirstOrDefault(player => player.Key == targetID).Value;
-            ward.RemovePermitted(targetID);
-            LogInfo($"Removed {targetName} from ward permitted list by command");
+            LogInfo($"Removed {targetName} from ward {wardID} permitted list by command");
         }
 
         private static void RPC_SetWardEnabledServer(long sender, ZPackage package)
@@ -371,24 +357,18 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null || !CanRequesterToggleWard(zdo, requester.PlayerID))
                 return;
 
-            if (!CanRequesterToggleWard(ward, requester.PlayerID))
+            if (zdo.GetBool(ZDOVars.s_enabled, false) == enabled)
                 return;
 
-            if (!IsRequesterInRange(requester, ward.transform.position))
-                return;
-
-            if (ward.IsEnabled() == enabled)
-                return;
-
-            ward.SetEnabled(enabled);
+            zdo.Set(ZDOVars.s_enabled, enabled);
             if (enabled)
-                ActivateConnectedLoadedWards(ward, requester.PlayerID, requester.PlayerName);
+                ActivateConnectedWardZdos(zdo, requester.PlayerID, requester.PlayerName);
 
-            LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward by command");
+            LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward {wardID} by command");
         }
 
         private static void RPC_SetWardExpiredServer(long sender, ZPackage package)
@@ -404,38 +384,44 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null || !HasWardManagementAccess(zdo, requester.PlayerID))
                 return;
 
-            if (!HasWardManagementAccess(ward, requester.PlayerID))
-                return;
-
-            if (!IsRequesterInRange(requester, ward.transform.position))
-                return;
-
-            WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired, requester.PlayerID, requester.PlayerName);
-            LogInfo($"{(expired ? "Marked" : "Cleared")} ward expired state by admin command");
+            WardExpiration.SetExpired(zdo, expired, requester.PlayerID, requester.PlayerName);
+            LogInfo($"{(expired ? "Marked" : "Cleared")} ward {wardID} expired state by admin command");
         }
 
-        private static bool CanRequesterPermit(PrivateArea ward, long requesterID) => ward != null && requesterID != 0L && HasAccessToWardOrConnectedWard(ward, requesterID, wardAccessConnectedAccessMode.Value);
+        private static bool CanRequesterPermit(ZDO zdo, long requesterID)
+        {
+            if (!WardZdoUtils.IsWard(zdo) || requesterID == 0L)
+                return false;
+
+            if (WardZdoUtils.HasDirectAccessToWardZdo(zdo, requesterID))
+                return true;
+
+            if (!IsActiveWardZdoForCommandAccess(zdo))
+                return false;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
+            return zdo.HasConnectedWardAccess(requesterID, mode, IsActiveWardZdoForCommandAccess);
+        }
 
         private static bool CanLocalToggleWard(PrivateArea ward) => ward != null && ((ward.m_piece != null && ward.m_piece.IsCreator()) || HasWardManagementAccess(ward, Player.m_localPlayer?.GetPlayerID() ?? 0L));
 
-        private static bool CanRequesterToggleWard(PrivateArea ward, long requesterID)
+        private static bool CanRequesterToggleWard(ZDO zdo, long requesterID)
         {
-            if (ward == null || requesterID == 0L)
+            if (!WardZdoUtils.IsWard(zdo) || requesterID == 0L)
                 return false;
 
-            if (HasWardManagementAccess(ward, requesterID))
-                return true;
-
-            return ward.m_piece != null && ward.m_piece.GetCreator() == requesterID;
+            return HasWardManagementAccess(zdo, requesterID) || zdo.IsCreator(requesterID);
         }
 
-        private static bool IsRequesterInRange(RoutedPlayerContext requester, Vector3 point)
+        private static bool IsActiveWardZdoForCommandAccess(ZDO zdo)
         {
-            return requester.HasPosition && Utils.DistanceXZ(requester.Position, point) <= GetWardControlCommandRange();
+            return WardZdoUtils.IsWard(zdo)
+                   && zdo.GetBool(ZDOVars.s_enabled, false)
+                   && !WardExpiration.IsExpired(zdo);
         }
 
         private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID) => ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);

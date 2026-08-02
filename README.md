@@ -46,9 +46,9 @@ You can customize:
 - the explicit permitted-player list, including server-validated add and remove actions;
 - optional access for one bound guild when Guilds is installed.
 
-Most per-ward values can inherit their corresponding global config. `Permit everyone` follows the same override model: an unchanged ward uses `Ward access / Permit everyone`, while a ward-specific value can make one public ward in an otherwise private world or keep one private ward when the global default is public. The Access settings page shows this inheritance rule directly below the toggle. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
+Most per-ward values can inherit their corresponding global config. `Permit everyone` follows the same override model: an unchanged ward uses `Ward access / Permit everyone`, while a ward-specific value can make one public ward in an otherwise private world or keep one private ward when the global default is public. The Access settings page explains that enabling the effective value treats every player as permitted. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
 
-The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the ward, requester, edit permission and distance.
+The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the tracked ward ZDO, requester identity and edit permission.
 
 Disabled wards owned by another player cannot be edited. Admin bypass is controlled by `Ward admin / Ward admin access`:
 
@@ -162,7 +162,7 @@ Existing wards are never removed. If a player already exceeds the configured lim
 
 ### Background/passive protection
 
-The `Ward without permitted players nearby` config group controls background protection for inactive public PvE bases when no permitted/effective-access player is nearby.
+The `Ward without permitted players nearby` config group controls background protection for inactive public PvE bases when no permitted/effective-access player is nearby. Background protection resolves ward coverage, connected access and ownership from the server-tracked ward ZDO collection, so the ward centre does not need a loaded scene instance.
 
 Configurable behavior includes:
 

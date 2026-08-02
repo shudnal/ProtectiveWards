@@ -13,7 +13,6 @@ namespace ProtectiveWards
     {
         private const string RPC_UpdatePermittedPlayers = "PW_UpdatePermittedPlayers";
         private const string RPC_UpdatePermittedPlayersResult = "PW_UpdatePermittedPlayersResult";
-        private const float SettingsRange = 7f;
         private const float PanelWidth = 600f;
         private const float PanelHeight = 600f;
         private const float PanelPadding = 30f;
@@ -102,8 +101,7 @@ namespace ProtectiveWards
                 return;
 
             s_permittedPlayers.AddRange(
-                ward.GetPermittedPlayers()
-                    .Where(player => player.Key != 0L)
+                WardZdoUtils.GetPermittedPlayers(ward.GetWardZDO())
                     .OrderBy(player => player.Value, StringComparer.OrdinalIgnoreCase));
         }
 
@@ -341,22 +339,15 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward?.m_nview?.IsValid() != true || ward.m_ownerFaction != Character.Faction.Players)
+            if (!WardZdoUtils.TryGetWard(wardID, out ZDO zdo))
             {
-                SendResult(sender, wardID, action, PermittedPlayerResult.Unavailable, "", ward);
+                SendResult(sender, wardID, action, PermittedPlayerResult.Unavailable, "", null);
                 return;
             }
 
-            if (!requester.HasPosition || Vector3.Distance(requester.Position, ward.transform.position) > SettingsRange)
+            if (!CanApplyWardSettings(zdo, requester.PlayerID))
             {
-                SendResult(sender, wardID, action, PermittedPlayerResult.TooFar, "", ward);
-                return;
-            }
-
-            if (!CanApplyWardSettings(ward, requester.PlayerID))
-            {
-                SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", ward);
+                SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", zdo);
                 return;
             }
 
@@ -382,29 +373,24 @@ namespace ProtectiveWards
                     Player target = matches[0];
                     targetPlayerID = target.GetPlayerID();
                     detail = target.GetPlayerName();
-                    if (ward.GetPermittedPlayers().Any(player => player.Key == targetPlayerID))
+                    if (WardZdoUtils.IsExplicitlyPermitted(zdo, targetPlayerID))
                         result = PermittedPlayerResult.AlreadyPermitted;
                     else
                     {
-                        ward.AddPermitted(targetPlayerID, detail);
+                        WardZdoUtils.AddPermitted(zdo, targetPlayerID, detail);
                         LogInfo($"Added {detail} to ward {wardID} permitted list from ward settings");
                     }
                 }
             }
             else if (action == PermittedPlayerAction.Remove)
             {
-                KeyValuePair<long, string> target = ward.GetPermittedPlayers().FirstOrDefault(player => player.Key == targetPlayerID);
-                if (target.Key == 0L)
+                if (!WardZdoUtils.RemovePermitted(zdo, targetPlayerID, out detail))
                     result = PermittedPlayerResult.NotPermitted;
                 else
-                {
-                    detail = target.Value;
-                    ward.RemovePermitted(targetPlayerID);
                     LogInfo($"Removed {detail} from ward {wardID} permitted list from ward settings");
-                }
             }
 
-            SendResult(sender, wardID, action, result, detail, ward);
+            SendResult(sender, wardID, action, result, detail, zdo);
         }
 
         private static List<Player> FindOnlinePlayers(string query)
@@ -425,7 +411,7 @@ namespace ProtectiveWards
                 .ToList();
         }
 
-        private static void SendResult(long targetPeerID, ZDOID wardID, PermittedPlayerAction action, PermittedPlayerResult result, string detail, PrivateArea ward)
+        private static void SendResult(long targetPeerID, ZDOID wardID, PermittedPlayerAction action, PermittedPlayerResult result, string detail, ZDO zdo)
         {
             ZPackage response = new();
             response.Write(wardID);
@@ -433,9 +419,9 @@ namespace ProtectiveWards
             response.Write((int)result);
             response.Write(detail ?? "");
 
-            List<KeyValuePair<long, string>> permitted = ward != null
-                ? ward.GetPermittedPlayers().OrderBy(player => player.Value, StringComparer.OrdinalIgnoreCase).ToList()
-                : new List<KeyValuePair<long, string>>();
+            List<KeyValuePair<long, string>> permitted = WardZdoUtils.GetPermittedPlayers(zdo)
+                .OrderBy(player => player.Value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             response.Write(permitted.Count);
             foreach (KeyValuePair<long, string> player in permitted)
             {

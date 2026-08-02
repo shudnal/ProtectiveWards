@@ -1,3 +1,7 @@
+# 2.0.6
+* fixed dedicated-server ward management and access updates for distant or unloaded wards by validating and modifying their tracked ZDO data instead of requiring a loaded `PrivateArea`
+* changed background protection and connected automatic reactivation to use the server's tracked ward ZDO collection, so they no longer depend on ward instances being loaded around their centres
+
 # 2.0.5
 * added server-validated per-ward permitted-player management: add online players from the main Access section and review or remove stored entries from a paginated list
 * improved ward hover access status with concise permitted-player counts and active guild, password, or everyone access states

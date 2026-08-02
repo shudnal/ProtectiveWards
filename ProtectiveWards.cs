@@ -21,7 +21,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.5";
+        public const string pluginVersion = "2.0.6";
 
         private static Harmony _harmony;
 
@@ -870,6 +870,8 @@ namespace ProtectiveWards
 
         public static bool IsInsideWardXZ(PrivateArea ward, Vector3 point, float radius = 0f) => ward != null && Utils.DistanceXZ(ward.transform.position, point) <= ward.m_radius + radius;
 
+        public static bool IsInsideWardXZ(ZDO ward, Vector3 point, float radius = 0f) => WardZdoUtils.IsWard(ward) && Utils.DistanceXZ(ward.GetPosition(), point) <= ward.GetWardRadius() + radius;
+
         public static bool ArePerWardSettingsEnabled()
         {
             return wardSettingsMode == null || wardSettingsMode.Value == WardSettingsMode.PerWard;
@@ -1561,6 +1563,29 @@ namespace ProtectiveWards
             return false;
         }
 
+        public static bool ShouldBlockInactiveWardAccess(ZDO inactiveWard, long playerID)
+        {
+            if (!WardZdoUtils.IsWard(inactiveWard) || inactiveWard.GetBool(ZDOVars.s_enabled, false) || playerID == 0L)
+                return false;
+
+            if (wardAccessProtectInactiveWards == null || !wardAccessProtectInactiveWards.Value)
+                return false;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
+            foreach (ZDO area in WardZdoUtils.GetAllWards())
+            {
+                if (area == null || area.m_uid.Equals(inactiveWard.m_uid) || !IsActiveWardZdoForSettings(area) || !IsPointInsideWardArea(area, inactiveWard.GetPosition()))
+                    continue;
+
+                if (area.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings))
+                    continue;
+
+                return true;
+            }
+
+            return false;
+        }
+
         public static bool CanEditWardSettings(PrivateArea ward, Player player)
         {
             if (!ArePerWardSettingsEnabled() || ward == null || player == null)
@@ -1607,8 +1632,17 @@ namespace ProtectiveWards
             if (wardSettingsAllowAdminEdit.Value && HasWardManagementAccess(zdo, playerID))
                 return true;
 
+            if (ShouldBlockInactiveWardAccess(zdo, playerID))
+                return false;
+
             if (wardSettingsRequireCreator.Value)
                 return !IsDisabledForeignWard(zdo, playerID) && zdo.IsCreator(playerID);
+
+            if (WardZdoUtils.HasDirectAccessToWardZdo(zdo, playerID))
+                return true;
+
+            if (!IsActiveWardZdoForSettings(zdo))
+                return false;
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardAccessConnectedAccessMode.Value;
             return zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings);
@@ -2107,6 +2141,65 @@ namespace ProtectiveWards
             finally
             {
                 s_activatingConnectedWards = false;
+            }
+        }
+
+        private static bool s_activatingConnectedWardZdos;
+
+        internal static void ActivateConnectedWardZdos(ZDO rootWard, long requesterID, string requesterName = "")
+        {
+            if (s_activatingConnectedWardZdos
+                || !WardZdoUtils.IsWard(rootWard)
+                || requesterID == 0L
+                || !rootWard.GetBool(ZDOVars.s_enabled, false)
+                || WardExpiration.IsExpired(rootWard))
+                return;
+
+            WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
+            if (mode == WardConnectedAccessMode.Off)
+                return;
+
+            s_activatingConnectedWardZdos = true;
+            try
+            {
+                HashSet<ZDOID> visited = new();
+                List<ZDO> queue = new();
+                int queueIndex = 0;
+
+                visited.Add(rootWard.m_uid);
+                queue.Add(rootWard);
+
+                while (queueIndex < queue.Count)
+                {
+                    ZDO current = queue[queueIndex++];
+                    foreach (ZDO candidate in WardZdoUtils.GetAllWards())
+                    {
+                        if (candidate == null || visited.Contains(candidate.m_uid))
+                            continue;
+
+                        if (!WardZdoUtils.AreWardZdosOverlapping(current, candidate))
+                            continue;
+
+                        if (!WardZdoUtils.HasDirectAccessToWardZdo(candidate, requesterID) && !HasWardAdminAccess(requesterID))
+                            continue;
+
+                        if (!WardZdoUtils.CanShareConnectedWardAccess(rootWard, candidate, mode))
+                            continue;
+
+                        visited.Add(candidate.m_uid);
+                        queue.Add(candidate);
+
+                        if (WardExpiration.IsExpired(candidate))
+                            WardExpiration.SetExpired(candidate, expired: false, requesterID, requesterName);
+
+                        if (!candidate.GetBool(ZDOVars.s_enabled, false))
+                            candidate.Set(ZDOVars.s_enabled, true);
+                    }
+                }
+            }
+            finally
+            {
+                s_activatingConnectedWardZdos = false;
             }
         }
 

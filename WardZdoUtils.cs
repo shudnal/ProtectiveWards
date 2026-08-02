@@ -1,8 +1,9 @@
 using HarmonyLib;
+using ProtectiveWards.Compatibility;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
-using ProtectiveWards.Compatibility;
 using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
@@ -22,14 +23,26 @@ namespace ProtectiveWards
 
         internal static IEnumerable<ZDO> GetAllWards()
         {
-            if (!ShouldTrackServerWards())
+            if (ShouldTrackServerWards())
+            {
+                EnsureWardObjectsInitialized();
+                PruneWardObjects();
+
+                foreach (ZDO zdo in s_wardObjects)
+                    yield return zdo;
+
                 yield break;
+            }
 
-            EnsureWardObjectsInitialized();
-            PruneWardObjects();
+            HashSet<ZDOID> visited = new();
+            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            {
+                ZDO zdo = area?.m_nview?.IsValid() == true ? area.m_nview.GetZDO() : null;
+                if (!IsWard(zdo) || !visited.Add(zdo.m_uid))
+                    continue;
 
-            foreach (ZDO zdo in s_wardObjects)
                 yield return zdo;
+            }
         }
 
         internal static int CountWardsByCreator(long creatorID)
@@ -62,6 +75,87 @@ namespace ProtectiveWards
             return null;
         }
 
+        internal static ZDO GetWard(ZDOID zdoID)
+        {
+            ZDO zdo = ZDOMan.instance?.GetZDO(zdoID);
+            return IsWard(zdo) ? zdo : null;
+        }
+
+        internal static bool TryGetWard(ZDOID zdoID, out ZDO zdo)
+        {
+            zdo = GetWard(zdoID);
+            return zdo != null;
+        }
+
+        internal static List<KeyValuePair<long, string>> GetPermittedPlayers(ZDO zdo)
+        {
+            List<KeyValuePair<long, string>> permitted = new();
+            if (!IsWard(zdo))
+                return permitted;
+
+            int count = Math.Max(zdo.GetInt(ZDOVars.s_permitted, 0), 0);
+            for (int i = 0; i < count; i++)
+            {
+                long playerID = zdo.GetLong("pu_id" + i, 0L);
+                if (playerID == 0L)
+                    continue;
+
+                permitted.Add(new KeyValuePair<long, string>(playerID, zdo.GetString("pu_name" + i, "")));
+            }
+
+            return permitted;
+        }
+
+        internal static bool IsExplicitlyPermitted(ZDO zdo, long playerID)
+        {
+            return playerID != 0L && GetPermittedPlayers(zdo).Any(player => player.Key == playerID);
+        }
+
+        internal static bool AddPermitted(ZDO zdo, long playerID, string playerName)
+        {
+            if (!IsWard(zdo) || playerID == 0L)
+                return false;
+
+            List<KeyValuePair<long, string>> permitted = GetPermittedPlayers(zdo);
+            if (permitted.Any(player => player.Key == playerID))
+                return false;
+
+            permitted.Add(new KeyValuePair<long, string>(playerID, playerName ?? ""));
+            SetPermittedPlayers(zdo, permitted);
+            return true;
+        }
+
+        internal static bool RemovePermitted(ZDO zdo, long playerID, out string playerName)
+        {
+            playerName = "";
+            if (!IsWard(zdo) || playerID == 0L)
+                return false;
+
+            List<KeyValuePair<long, string>> permitted = GetPermittedPlayers(zdo);
+            KeyValuePair<long, string> target = permitted.FirstOrDefault(player => player.Key == playerID);
+            if (target.Key == 0L)
+                return false;
+
+            playerName = target.Value ?? "";
+            permitted.RemoveAll(player => player.Key == playerID);
+            SetPermittedPlayers(zdo, permitted);
+            return true;
+        }
+
+        internal static void SetPermittedPlayers(ZDO zdo, List<KeyValuePair<long, string>> permitted)
+        {
+            if (!IsWard(zdo))
+                return;
+
+            permitted ??= new List<KeyValuePair<long, string>>();
+            zdo.Set(ZDOVars.s_permitted, permitted.Count);
+            for (int i = 0; i < permitted.Count; i++)
+            {
+                zdo.Set("pu_id" + i, permitted[i].Key);
+                zdo.Set("pu_name" + i, permitted[i].Value ?? "");
+            }
+        }
+
         internal static bool IsPermitted(ZDO zdo, long playerID)
         {
             if (zdo == null || playerID == 0L)
@@ -70,12 +164,8 @@ namespace ProtectiveWards
             if (HasWardManagementAccess(zdo, playerID))
                 return true;
 
-            int count = Math.Max(zdo.GetInt(ZDOVars.s_permitted, 0), 0);
-            for (int i = 0; i < count; i++)
-            {
-                if (zdo.GetLong("pu_id" + i, 0L) == playerID)
-                    return true;
-            }
+            if (IsExplicitlyPermitted(zdo, playerID))
+                return true;
 
             return GuildsCompat.HasWardGuildAccess(zdo, playerID);
         }

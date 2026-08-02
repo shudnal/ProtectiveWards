@@ -1,13 +1,12 @@
+using HarmonyLib;
+using Jotunn.Managers;
+using ProtectiveWards.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using BepInEx.Configuration;
-using HarmonyLib;
-using Jotunn.Managers;
 using UnityEngine;
 using UnityEngine.UI;
 using static ProtectiveWards.ProtectiveWards;
-using ProtectiveWards.Compatibility;
 
 namespace ProtectiveWards
 {
@@ -1058,8 +1057,8 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, playerID, out RoutedPlayerContext requester))
                 return;
 
-            ZDO zdo = ZDOMan.instance.GetZDO(zdoID);
-            if (zdo == null || !CanApplyWardSettings(zdoID, zdo, requester.PlayerID))
+            ZDO zdo = WardZdoUtils.GetWard(zdoID);
+            if (zdo == null || !CanApplyWardSettings(zdo, requester.PlayerID))
                 return;
 
             int count = package.ReadInt();
@@ -1107,33 +1106,6 @@ namespace ProtectiveWards
                 GuildsCompat.SetGuildAccessEnabled(zdo, package.ReadBool());
 
             RefreshLoadedWard(zdoID);
-        }
-
-        private static bool CanApplyWardSettings(ZDOID zdoID, ZDO zdo, long playerID)
-        {
-            if (playerID == 0L)
-                return false;
-
-            PrivateArea loadedWard = FindLoadedWard(zdoID);
-            if (loadedWard != null)
-                return ProtectiveWards.CanApplyWardSettings(loadedWard, playerID);
-
-            return ProtectiveWards.CanApplyWardSettings(zdo, playerID);
-        }
-
-        private static PrivateArea FindLoadedWard(ZDOID zdoID)
-        {
-            foreach (PrivateArea area in PrivateArea.m_allAreas)
-            {
-                if (area == null || area.m_nview == null || !area.m_nview.IsValid())
-                    continue;
-
-                ZDO zdo = area.m_nview.GetZDO();
-                if (zdo != null && zdo.m_uid.Equals(zdoID))
-                    return area;
-            }
-
-            return null;
         }
 
         private static void ApplyField(ZDO zdo, ZPackage package, ZPackage mirror = null)
@@ -1286,7 +1258,7 @@ namespace ProtectiveWards
 
         private static void RefreshLoadedWard(ZDOID zdoID)
         {
-            PrivateArea area = FindLoadedWard(zdoID);
+            PrivateArea area = WardZdoUtils.FindLoadedWard(zdoID);
             if (area == null)
                 return;
 

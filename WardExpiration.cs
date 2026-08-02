@@ -95,9 +95,7 @@ namespace ProtectiveWards
                     if (IsExpired(zdo) && wardExpirationReactivationMode.Value == WardExpirationReactivationMode.AutomaticOnLogin)
                     {
                         Reactivate(zdo, activePlayer, now);
-                        PrivateArea loadedWard = WardZdoUtils.FindLoadedWard(zdo.m_uid);
-                        if (loadedWard != null)
-                            ActivateConnectedLoadedWards(loadedWard, activePlayer.PlayerID, activePlayer.PlayerName);
+                        ActivateConnectedWardZdos(zdo, activePlayer.PlayerID, activePlayer.PlayerName);
                     }
 
                     continue;

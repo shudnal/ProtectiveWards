@@ -35,7 +35,7 @@ The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer 
 - **Ownership exemptions**: narrow exceptions for objects where a foreign ward should not trap a player's own property, such as tombstones, saddles and previously controlled vehicles.
 - **Permit everyone**: a global default that each ward may inherit or override independently.
 
-Sensitive actions and console commands are validated by the server. The server checks the target ward, distance, access and requested state before applying changes.
+Sensitive actions and console commands are validated by the server. The server checks the requester identity, target ward ZDO, access and requested state before applying changes.
 
 ## Per-ward settings
 
@@ -59,9 +59,9 @@ Each ward can store its own range, visual and access overrides in its ZDO while 
 | `Ward settings / Only creator can edit ward settings` | Only the creator may edit the ward instead of any player with access. Ignored in `ServerControlled` mode. |
 | `Ward settings / Admins can edit ward settings` | Players accepted by `Ward admin access`, or by the ward's effective `Permit everyone` value, may edit any ward. Ignored in `ServerControlled` mode. |
 
-The **Access settings** page contains a per-ward `Permit everyone` value with the same **Use default** behavior as the visual settings. An inline note explains whether the global value or the local override is being used. This allows a public ward while the global default is private, or a private ward while the global default is public. When effective for a ward, all players pass its access checks and that ward is excluded from inactive expiration. The global default is now `Ward access / Permit everyone`; values previously enabled under `Ward admin` must be enabled again in the new group. Per-ward access overrides are ignored in `ServerControlled` mode.
+The **Access settings** page contains a per-ward `Permit everyone` value with the same **Use default** behavior as the visual settings. Its inline note explains that enabling the effective value treats every player as permitted. This allows a public ward while the global default is private, or a private ward while the global default is public. When effective for a ward, all players pass its access checks and that ward is excluded from inactive expiration. The global default is now `Ward access / Permit everyone`; values previously enabled under `Ward admin` must be enabled again in the new group. Per-ward access overrides are ignored in `ServerControlled` mode.
 
-The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester, target ward, edit permission and distance before changing the list.
+The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester identity, target ward ZDO and edit permission before changing the list.
 
 Ward hover text summarizes effective access without allowing long name lists to dominate the hover. Explicit names are shown while their combined text is at most 30 characters; longer lists are replaced with a player count. Active guild and password access are appended to the same line. Effective `Permit everyone` is shown simply as `Permitted: everyone`.
 
@@ -96,7 +96,7 @@ Password entry does not grant connected-network ownership or admin rights. It ad
 | `Ward password protection / Password change access = CreatorOnly` | Yes | Only the ward creator may change or remove the password. Configured ward admins and players covered by the ward's effective `Permit everyone` value may still edit it. |
 | `Ward password protection / Password change access = CreatorAndPermitted` | No | The creator and players with direct permitted-equivalent access, including explicit permitted players and bound guild members, may change or remove the password. |
 
-Password checks and permitted-list changes are performed on the server. The requester must still be standing near the ward. Passwords are case-sensitive and limited to 64 characters. Hash-only storage prevents the password from being read directly, but weak passwords may still be guessed by anyone who can inspect and copy ward ZDO data.
+Password checks and permitted-list changes are performed on the server against the target ward ZDO. Passwords are case-sensitive and limited to 64 characters. Hash-only storage prevents the password from being read directly, but weak passwords may still be guessed by anyone who can inspect and copy ward ZDO data.
 
 ## Ward coverage
 
@@ -149,7 +149,7 @@ Vehicles use last-controller tracking: a player who drove a ship or dragged a ca
 
 ## Background protection
 
-The `Ward without permitted players nearby` group protects inactive public PvE bases while no permitted/effective-access player is present.
+The `Ward without permitted players nearby` group protects inactive public PvE bases while no permitted/effective-access player is present. It uses the server-tracked ward ZDO collection rather than requiring loaded ward scene instances.
 
 ### Permitted player presence mode
 

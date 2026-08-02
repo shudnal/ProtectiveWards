@@ -8,7 +8,7 @@ namespace ProtectiveWards
 {
     internal static class BackgroundProtection
     {
-        private static readonly Dictionary<PrivateArea, CachedBool> s_qualifiedBaseCache = new();
+        private static readonly Dictionary<ZDOID, CachedBool> s_qualifiedBaseCache = new();
         private const float QualifiedBaseCacheSeconds = 10f;
 
         private struct CachedBool
@@ -17,7 +17,9 @@ namespace ProtectiveWards
             public bool Value;
         }
 
-        internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out PrivateArea ward)
+        private static void ResetCache() => s_qualifiedBaseCache.Clear();
+
+        internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out ZDO ward)
         {
             ward = null;
 
@@ -30,7 +32,7 @@ namespace ProtectiveWards
             return !HasEffectiveAccessPresence(ward, point);
         }
 
-        internal static bool TryFindBackgroundWard(Vector3 sourcePoint, Vector3 targetPoint, out PrivateArea ward)
+        internal static bool TryFindBackgroundWard(Vector3 sourcePoint, Vector3 targetPoint, out ZDO ward)
         {
             ward = null;
 
@@ -39,12 +41,12 @@ namespace ProtectiveWards
 
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
 
-            foreach (PrivateArea area in PrivateArea.m_allAreas)
+            foreach (ZDO area in WardZdoUtils.GetAllWards())
             {
-                if (!IsActivePlayerWard(area) || !IsInsideWardXZ(area, sourcePoint))
+                if (!IsActiveBackgroundWard(area) || !IsInsideWardXZ(area, sourcePoint))
                     continue;
 
-                if (!ConnectedAccessAreas(area, mode).AnySafe(candidate => IsInsideWardXZ(candidate, targetPoint)))
+                if (!WardZdoUtils.ConnectedAccessWardZdos(area, mode, IsActiveBackgroundWard).AnySafe(candidate => IsInsideWardXZ(candidate, targetPoint)))
                     continue;
 
                 ward = area;
@@ -54,9 +56,9 @@ namespace ProtectiveWards
             return false;
         }
 
-        internal static bool HasEffectiveAccessPresence(PrivateArea ward, Vector3 point)
+        internal static bool HasEffectiveAccessPresence(ZDO ward, Vector3 point)
         {
-            if (ward == null)
+            if (!WardZdoUtils.IsWard(ward))
                 return false;
 
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
@@ -70,7 +72,8 @@ namespace ProtectiveWards
                 if (player == null)
                     continue;
 
-                if (!HasAccessToWardOrConnectedWard(ward, player, mode))
+                long playerID = player.GetPlayerID();
+                if (!ward.HasConnectedWardAccess(playerID, mode, IsActiveBackgroundWard))
                     continue;
 
                 if (!TryResolveWardCheckPoint(player.transform.position, out Vector3 resolvedPlayerPoint))
@@ -81,7 +84,7 @@ namespace ProtectiveWards
                     case WardBackgroundPresenceMode.PermittedOnline:
                         return true;
                     case WardBackgroundPresenceMode.PermittedInsideConnectedArea:
-                        if (ConnectedAccessAreas(ward, mode).AnySafe(area => IsInsideWardXZ(area, resolvedPlayerPoint)))
+                        if (WardZdoUtils.ConnectedAccessWardZdos(ward, mode, IsActiveBackgroundWard).AnySafe(area => IsInsideWardXZ(area, resolvedPlayerPoint)))
                             return true;
                         break;
                     case WardBackgroundPresenceMode.PermittedNearProtectedArea:
@@ -95,33 +98,33 @@ namespace ProtectiveWards
             return false;
         }
 
-        internal static bool IsQualifiedProtectedBase(PrivateArea ward)
+        internal static bool IsQualifiedProtectedBase(ZDO ward)
         {
-            if (ward == null)
+            if (!WardZdoUtils.IsWard(ward))
                 return false;
 
             int minimumPieces = Math.Max(wardBackgroundProtectedBaseMinPieces.Value, 0);
             if (minimumPieces == 0)
                 return true;
 
-            if (s_qualifiedBaseCache.TryGetValue(ward, out CachedBool cached) && Time.time - cached.Time < QualifiedBaseCacheSeconds)
+            if (s_qualifiedBaseCache.TryGetValue(ward.m_uid, out CachedBool cached) && Time.time - cached.Time < QualifiedBaseCacheSeconds)
                 return cached.Value;
 
             bool result = CountPlayerBuiltPiecesInNetwork(ward, minimumPieces) >= minimumPieces;
-            s_qualifiedBaseCache[ward] = new CachedBool { Time = Time.time, Value = result };
+            s_qualifiedBaseCache[ward.m_uid] = new CachedBool { Time = Time.time, Value = result };
             return result;
         }
 
-        private static int CountPlayerBuiltPiecesInNetwork(PrivateArea ward, int stopAt)
+        private static int CountPlayerBuiltPiecesInNetwork(ZDO ward, int stopAt)
         {
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
             HashSet<Piece> pieces = new();
             List<Piece> buffer = new();
 
-            foreach (PrivateArea area in ConnectedAccessAreas(ward, mode))
+            foreach (ZDO area in WardZdoUtils.ConnectedAccessWardZdos(ward, mode, IsActiveBackgroundWard))
             {
                 buffer.Clear();
-                Piece.GetAllPiecesInRadius(area.transform.position, area.m_radius, buffer);
+                Piece.GetAllPiecesInRadius(area.GetPosition(), area.GetWardRadius(), buffer);
                 foreach (Piece piece in buffer)
                 {
                     if (piece == null || !piece.IsPlacedByPlayer())
@@ -134,6 +137,13 @@ namespace ProtectiveWards
             }
 
             return pieces.Count;
+        }
+
+        private static bool IsActiveBackgroundWard(ZDO zdo)
+        {
+            return WardZdoUtils.IsWard(zdo)
+                   && zdo.GetBool(ZDOVars.s_enabled, false)
+                   && !WardExpiration.IsExpired(zdo);
         }
 
         internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)
@@ -149,7 +159,7 @@ namespace ProtectiveWards
             if (!isPlayerBuiltPiece && !isShip && !isCart)
                 return false;
 
-            if (!TryFindBackgroundWard(wearNTear.transform.position, wearNTear.transform.position, out PrivateArea ward))
+            if (!TryFindBackgroundWard(wearNTear.transform.position, wearNTear.transform.position, out ZDO ward))
                 return false;
 
             if (!IsQualifiedProtectedBase(ward))
@@ -161,7 +171,7 @@ namespace ProtectiveWards
                 && isPlayerBuiltPiece
                 && attacker != null
                 && attacker.IsPlayer()
-                && !HasAccessToWardOrConnectedWard(ward, attacker as Player, wardBackgroundConnectedAccessMode.Value))
+                && !ward.HasConnectedWardAccess((attacker as Player)?.GetPlayerID() ?? 0L, wardBackgroundConnectedAccessMode.Value, IsActiveBackgroundWard))
                 return true;
 
             if (HasEffectiveAccessPresence(ward, wearNTear.transform.position))
@@ -201,7 +211,7 @@ namespace ProtectiveWards
             if (attacker == null || attacker.IsPlayer() || !attacker.IsTamed())
                 return false;
 
-            if (!TryFindBackgroundWard(attacker.transform.position, wearNTear.transform.position, out PrivateArea ward))
+            if (!TryFindBackgroundWard(attacker.transform.position, wearNTear.transform.position, out ZDO ward))
                 return false;
 
             if (!IsQualifiedProtectedBase(ward))
@@ -268,19 +278,31 @@ namespace ProtectiveWards
             if (HasWardAdminAccess(playerID))
                 return false;
 
-            if (!TryFindBackgroundWard(point, point, out PrivateArea ward))
+            if (!TryFindBackgroundWard(point, point, out ZDO ward))
                 return false;
 
             if (!IsQualifiedProtectedBase(ward))
                 return false;
 
-            if (HasAccessToWardOrConnectedWard(ward, player, wardBackgroundConnectedAccessMode.Value))
+            if (ward.HasConnectedWardAccess(player.GetPlayerID(), wardBackgroundConnectedAccessMode.Value, IsActiveBackgroundWard))
                 return false;
 
             return !HasEffectiveAccessPresence(ward, point);
         }
 
         private static bool IsFireDamage(HitData hit) => hit != null && (hit.m_damage.m_fire > 0f || hit.m_hitType == HitData.HitType.Burning);
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+        private static class ZoneSystem_Start_ResetBackgroundProtectionCache
+        {
+            private static void Postfix() => ResetCache();
+        }
+
+        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
+        private static class ZoneSystem_OnDestroy_ResetBackgroundProtectionCache
+        {
+            private static void Postfix() => ResetCache();
+        }
 
         [HarmonyPatch(typeof(Player), nameof(Player.TryPlacePiece))]
         private static class Player_TryPlacePiece_PreventBuildingWithoutPermittedPlayersNearby

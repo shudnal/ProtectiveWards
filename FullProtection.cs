@@ -1775,9 +1775,9 @@ namespace ProtectiveWards
                 if (!InsideEnabledPlayersArea(__instance.transform.position, out _, checkCache: true))
                     return true;
 
-                if (BackgroundProtection.IsBackgroundProtectionActiveAt(__instance.transform.position, out PrivateArea backgroundWard)
+                if (BackgroundProtection.IsBackgroundProtectionActiveAt(__instance.transform.position, out ZDO backgroundWard)
                     && backgroundWard != null
-                    && !HasAccessToWardOrConnectedWard(backgroundWard, player, wardBackgroundConnectedAccessMode.Value))
+                    && !backgroundWard.HasConnectedWardAccess(player.GetPlayerID(), wardBackgroundConnectedAccessMode.Value, IsActiveWardZdo))
                     return true;
 
                 return false;

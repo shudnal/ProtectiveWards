@@ -18,7 +18,6 @@ namespace ProtectiveWards
         private const string RPC_UpdateWardPasswordResult = "PW_UpdateWardPasswordResult";
         internal const int PasswordCharacterLimit = 64;
         private const int PasswordHashIterations = 10000;
-        private const float PasswordInteractionRange = 5f;
 
         internal static readonly int s_passwordProtectionEnabled = "pw_password_enabled".GetStableHashCode();
         internal static readonly int s_passwordHash = "pw_password_hash".GetStableHashCode();
@@ -135,6 +134,26 @@ namespace ProtectiveWards
                 return false;
 
             return HasDirectAccessToWard(ward, playerID);
+        }
+
+        internal static bool CanChangePassword(ZDO zdo, long playerID)
+        {
+            if (!ArePerWardSettingsEnabled() || !WardZdoUtils.IsWard(zdo) || playerID == 0L)
+                return false;
+
+            if (HasWardManagementAccess(zdo, playerID))
+                return true;
+
+            if (ShouldBlockInactiveWardAccess(zdo, playerID))
+                return false;
+
+            if (zdo.IsCreator(playerID))
+                return true;
+
+            if (wardPasswordChangeAccess.Value != WardPasswordChangeAccess.CreatorAndPermitted)
+                return false;
+
+            return WardZdoUtils.HasDirectAccessToWardZdo(zdo, playerID);
         }
 
         internal static bool AppendPasswordHoverAction(PrivateArea ward, StringBuilder text)
@@ -323,26 +342,18 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward?.m_nview?.IsValid() != true || ward.m_ownerFaction != Character.Faction.Players)
+            if (!WardZdoUtils.TryGetWard(wardID, out ZDO zdo))
             {
                 SendPasswordEntryResult(sender, wardID, PasswordEntryResult.Unavailable);
                 return;
             }
 
-            if (!requester.HasPosition || Vector3.Distance(requester.Position, ward.transform.position) > PasswordInteractionRange)
-            {
-                SendPasswordEntryResult(sender, wardID, PasswordEntryResult.TooFar);
-                return;
-            }
-
-            if (HasDirectAccessToWard(ward, requester.PlayerID))
+            if (WardZdoUtils.HasDirectAccessToWardZdo(zdo, requester.PlayerID))
             {
                 SendPasswordEntryResult(sender, wardID, PasswordEntryResult.AlreadyPermitted);
                 return;
             }
 
-            ZDO zdo = ward.m_nview.GetZDO();
             if (!IsPasswordProtectionActive(zdo))
             {
                 SendPasswordEntryResult(sender, wardID, PasswordEntryResult.Unavailable);
@@ -355,8 +366,8 @@ namespace ProtectiveWards
                 return;
             }
 
-            ward.AddPermitted(requester.PlayerID, requester.PlayerName);
-            LogInfo($"Added {requester.PlayerName} to ward permitted list by password");
+            WardZdoUtils.AddPermitted(zdo, requester.PlayerID, requester.PlayerName);
+            LogInfo($"Added {requester.PlayerName} to ward {wardID} permitted list by password");
             SendPasswordEntryResult(sender, wardID, PasswordEntryResult.Success);
         }
 
@@ -449,20 +460,13 @@ namespace ProtectiveWards
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward?.m_nview?.IsValid() != true || ward.m_ownerFaction != Character.Faction.Players)
+            if (!WardZdoUtils.TryGetWard(wardID, out ZDO zdo))
             {
                 SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Unavailable, false, false);
                 return;
             }
 
-            if (!requester.HasPosition || Vector3.Distance(requester.Position, ward.transform.position) > PasswordInteractionRange + 2f)
-            {
-                SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.TooFar, false, false);
-                return;
-            }
-
-            if (!CanChangePassword(ward, requester.PlayerID))
+            if (!CanChangePassword(zdo, requester.PlayerID))
             {
                 SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.NotAuthorized, false, false);
                 return;
@@ -471,13 +475,6 @@ namespace ProtectiveWards
             if (replacePassword && password.Length > PasswordCharacterLimit)
             {
                 SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.PasswordTooLong, false, false);
-                return;
-            }
-
-            ZDO zdo = ward.m_nview.GetZDO();
-            if (zdo == null)
-            {
-                SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Unavailable, false, false);
                 return;
             }
 

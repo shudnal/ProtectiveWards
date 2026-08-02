@@ -19,7 +19,6 @@ namespace ProtectiveWards.Compatibility
         private const string GuildGeneralTypeName = "Guilds.GuildGeneral";
         private const string RPC_UpdateGuildBinding = "PW_UpdateGuildBinding";
         private const string RPC_UpdateGuildBindingResult = "PW_UpdateGuildBindingResult";
-        private const float GuildSettingsRange = 7f;
         private const float PlayerGuildCacheSeconds = 1f;
 
         internal static readonly int s_guildAccessEnabled = "pw_guild_access_enabled".GetStableHashCode();
@@ -305,21 +304,13 @@ namespace ProtectiveWards.Compatibility
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
 
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
-            if (ward?.m_nview?.IsValid() != true || ward.m_ownerFaction != Character.Faction.Players)
+            if (!WardZdoUtils.TryGetWard(wardID, out ZDO zdo))
             {
                 SendGuildBindingResult(sender, wardID, GuildBindingResult.Unavailable, null);
                 return;
             }
 
-            ZDO zdo = ward.m_nview.GetZDO();
-            if (!requester.HasPosition || Vector3.Distance(requester.Position, ward.transform.position) > GuildSettingsRange)
-            {
-                SendGuildBindingResult(sender, wardID, GuildBindingResult.TooFar, zdo);
-                return;
-            }
-
-            if (!CanApplyWardSettings(ward, requester.PlayerID))
+            if (!CanApplyWardSettings(zdo, requester.PlayerID))
             {
                 SendGuildBindingResult(sender, wardID, GuildBindingResult.NotAuthorized, zdo);
                 return;
