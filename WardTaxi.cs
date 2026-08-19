@@ -10,6 +10,8 @@ namespace ProtectiveWards
 {
     internal static class WardTaxi
     {
+        private const string RPC_ClosestLocationRequest = "PW_ClosestLocationRequest";
+        private const string RPC_StartTaxi = "PW_StartTaxi";
         private const string WardTaxiStatusEffectName = "PW_WardTaxiStatus";
         internal static readonly int wardTaxiStatusHash = WardTaxiStatusEffectName.GetStableHashCode();
         private static readonly int slowFallHash = "SlowFall".GetStableHashCode();
@@ -66,6 +68,8 @@ namespace ProtectiveWards
         private static ZDOID s_activeValkyrieId = ZDOID.None;
         private static Vector3 s_lastProgressPosition;
         private static float s_lastProgressTime;
+        private static int s_nextLocationRequestId;
+        private static int s_pendingLocationRequestId;
 
         internal sealed class SE_WardTaxi : SE_Stats
         {
@@ -128,26 +132,36 @@ namespace ProtectiveWards
                 return;
 
             if (ZNet.instance.IsServer())
-                ZRoutedRpc.instance.Register<ZPackage>("ClosestLocationRequest", RPC_ClosestLocationRequest);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_ClosestLocationRequest, RPC_ClosestLocationRequestServer);
             else
-                ZRoutedRpc.instance.Register<ZPackage>("StartTaxi", RPC_StartTaxi);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_StartTaxi, RPC_StartTaxiClient);
         }
 
         private static void ClosestLocationRequest(TaxiOffer offer, Vector3 offeringPosition)
         {
             LogInfo($"{offer.LocationName} closest location request");
 
+            int requestId = ++s_nextLocationRequestId;
+            if (requestId <= 0)
+            {
+                s_nextLocationRequestId = 1;
+                requestId = 1;
+            }
+            s_pendingLocationRequestId = requestId;
+
             ZPackage zPackage = new();
+            zPackage.Write(requestId);
             zPackage.Write(offer.LocationName);
             zPackage.Write(offer.ItemName);
             zPackage.Write(offer.Stack);
             zPackage.Write(offeringPosition);
 
-            ZRoutedRpc.instance.InvokeRoutedRPC("ClosestLocationRequest", zPackage);
+            ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ClosestLocationRequest, zPackage);
         }
 
-        private static void RPC_ClosestLocationRequest(long sender, ZPackage pkg)
+        private static void RPC_ClosestLocationRequestServer(long sender, ZPackage pkg)
         {
+            int requestId = pkg.ReadInt();
             string name = pkg.ReadString();
             string itemName = pkg.ReadString().GetItemName();
             int stack = pkg.ReadInt();
@@ -168,6 +182,7 @@ namespace ProtectiveWards
             }
 
             ZPackage zPackage = new();
+            zPackage.Write(requestId);
             zPackage.Write(target);
             zPackage.Write(name);
             zPackage.Write(itemName);
@@ -175,11 +190,16 @@ namespace ProtectiveWards
             zPackage.Write(searchPosition);
             zPackage.Write(ShouldConsumeTaxiItem(name, itemName));
 
-            ZRoutedRpc.instance.InvokeRoutedRPC(sender, "StartTaxi", zPackage);
+            ZRoutedRpc.instance.InvokeRoutedRPC(sender, RPC_StartTaxi, zPackage);
         }
 
-        private static void RPC_StartTaxi(long sender, ZPackage pkg)
+        private static void RPC_StartTaxiClient(long sender, ZPackage pkg)
         {
+            int requestId = pkg.ReadInt();
+            if (requestId <= 0 || requestId != s_pendingLocationRequestId)
+                return;
+
+            s_pendingLocationRequestId = 0;
             Vector3 location = pkg.ReadVector3();
             string locationName = pkg.ReadString();
             string itemName = pkg.ReadString().GetItemName();
@@ -687,6 +707,7 @@ namespace ProtectiveWards
             s_activeValkyrieId = ZDOID.None;
             s_lastProgressPosition = Vector3.zero;
             s_lastProgressTime = 0f;
+            s_pendingLocationRequestId = 0;
         }
 
         private static void CleanupActiveValkyrie()

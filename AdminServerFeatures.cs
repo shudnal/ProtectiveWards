@@ -172,7 +172,7 @@ namespace ProtectiveWards
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_PermitPlayer, package);
 
-            context.AddString("$pw_permit_added".Localize(target.GetPlayerName()));
+            context.AddString($"Permit for {target.GetPlayerName()} requested.");
         }
 
         private static void RequestUnpermit(string query, Terminal context)
@@ -221,7 +221,7 @@ namespace ProtectiveWards
             else
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UnpermitPlayer, package);
 
-            context.AddString($"Removed {target.Value} from ward permitted list.");
+            context.AddString($"Unpermit for {target.Value} requested.");
         }
 
         private static void RequestSetWardEnabled(bool enabled, Terminal context)

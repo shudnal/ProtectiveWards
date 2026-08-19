@@ -27,6 +27,9 @@ namespace ProtectiveWards
         private static int s_page;
         private static bool s_rpcRegistered;
         private static bool s_inputBlocked;
+        private static bool s_updatePending;
+
+        internal static bool IsRequestPending => s_updatePending;
 
         private enum PermittedPlayerAction
         {
@@ -43,7 +46,6 @@ namespace ProtectiveWards
             AlreadyPermitted,
             NotPermitted,
             NotAuthorized,
-            TooFar,
             Unavailable
         }
 
@@ -60,7 +62,9 @@ namespace ProtectiveWards
                 return;
             }
 
-            WardSettingsUI.Close();
+            if (!WardSettingsUI.SuspendForPermittedPlayers())
+                return;
+
             Close();
 
             s_wardID = ward.m_nview.GetZDO().m_uid;
@@ -69,7 +73,8 @@ namespace ProtectiveWards
             LoadPermittedPlayers(ward);
             CreatePanel();
             SetInputBlocked(true);
-            RequestUpdate(s_wardID, PermittedPlayerAction.Refresh, 0L, "");
+            if (RequestUpdate(s_wardID, PermittedPlayerAction.Refresh, 0L, "") && s_updatePending)
+                CreatePanel();
         }
 
         internal static void Close()
@@ -82,6 +87,7 @@ namespace ProtectiveWards
             s_wardCreatorID = 0L;
             s_page = 0;
             s_permittedPlayers.Clear();
+            s_updatePending = false;
             SetInputBlocked(false);
         }
 
@@ -167,7 +173,9 @@ namespace ProtectiveWards
                     width: buttonWidth,
                     height: 32f);
                 long playerID = player.Key;
-                removeButton.GetComponent<Button>().onClick.AddListener(() => RequestRemovePlayer(playerID));
+                Button remove = removeButton.GetComponent<Button>();
+                remove.interactable = !s_updatePending;
+                remove.onClick.AddListener(() => RequestRemovePlayer(playerID));
                 y -= RowStep;
             }
         }
@@ -273,16 +281,16 @@ namespace ProtectiveWards
             CreatePanel();
         }
 
-        internal static void RequestAddPlayer(ZDOID wardID, string query)
+        internal static bool RequestAddPlayer(ZDOID wardID, string query)
         {
             string normalized = (query ?? "").Trim();
             if (normalized.Length == 0)
             {
                 Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_permit_no_match".Localize(normalized));
-                return;
+                return false;
             }
 
-            RequestUpdate(wardID, PermittedPlayerAction.Add, 0L, normalized);
+            return RequestUpdate(wardID, PermittedPlayerAction.Add, 0L, normalized);
         }
 
         private static void RequestRemovePlayer(long playerID)
@@ -290,11 +298,14 @@ namespace ProtectiveWards
             RequestUpdate(s_wardID, PermittedPlayerAction.Remove, playerID, "");
         }
 
-        private static void RequestUpdate(ZDOID wardID, PermittedPlayerAction action, long targetPlayerID, string query)
+        private static bool RequestUpdate(ZDOID wardID, PermittedPlayerAction action, long targetPlayerID, string query)
         {
+            if (s_updatePending)
+                return false;
+
             Player player = Player.m_localPlayer;
             if (player == null || wardID.IsNone())
-                return;
+                return false;
 
             ZPackage package = new();
             package.Write(wardID);
@@ -303,10 +314,23 @@ namespace ProtectiveWards
             package.Write(targetPlayerID);
             package.Write(query ?? "");
 
+            s_updatePending = true;
             if (ZNet.instance?.IsServer() == true)
+            {
                 RPC_UpdatePermittedPlayersServer(0L, new ZPackage(package.GetArray()));
-            else if (ZRoutedRpc.instance != null)
+                return true;
+            }
+
+            if (ZRoutedRpc.instance != null)
+            {
                 ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdatePermittedPlayers, package);
+                return true;
+            }
+
+            s_updatePending = false;
+            WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
+            Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_permitted_unavailable");
+            return false;
         }
 
         private static void RegisterRPCs()
@@ -442,6 +466,8 @@ namespace ProtectiveWards
             PermittedPlayerResult result = (PermittedPlayerResult)package.ReadInt();
             string detail = package.ReadString();
             int count = package.ReadInt();
+            s_updatePending = false;
+            WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
 
             List<KeyValuePair<long, string>> permitted = new(count);
             for (int i = 0; i < count; i++)
@@ -495,9 +521,6 @@ namespace ProtectiveWards
                 case PermittedPlayerResult.NotAuthorized:
                     player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
                     break;
-                case PermittedPlayerResult.TooFar:
-                    player.Message(MessageHud.MessageType.Center, "$pw_ward_guild_too_far");
-                    break;
                 default:
                     player.Message(MessageHud.MessageType.Center, "$pw_ward_permitted_unavailable");
                     break;
@@ -506,8 +529,15 @@ namespace ProtectiveWards
 
         private static void BackToWardSettings()
         {
-            PrivateArea ward = WardZdoUtils.FindLoadedWard(s_wardID);
+            if (s_updatePending)
+                return;
+
+            ZDOID wardID = s_wardID;
+            PrivateArea ward = WardZdoUtils.FindLoadedWard(wardID);
             Close();
+            if (WardSettingsUI.ResumeFromPermittedPlayers(wardID))
+                return;
+
             if (ward != null)
                 WardSettingsUI.Open(ward);
         }
@@ -522,7 +552,7 @@ namespace ProtectiveWards
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))
                 {
-                    Close();
+                    BackToWardSettings();
                     return;
                 }
 

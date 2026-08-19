@@ -5,6 +5,7 @@ using Jotunn.Utils;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -21,7 +22,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.6";
+        public const string pluginVersion = "2.0.7";
 
         private static Harmony _harmony;
 
@@ -267,6 +268,8 @@ namespace ProtectiveWards
         private static readonly MaterialPropertyBlock s_matBlock = new();
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
         private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
+        private static readonly Dictionary<PrivateArea, uint> s_wardVisualDataRevisions = new();
+        private static readonly HashSet<ZDOID> s_dirtyWardVisuals = new();
 
         private sealed class WardEmissionDefaults
         {
@@ -545,7 +548,7 @@ namespace ProtectiveWards
             autoCloseDoorsIgnorePrefabs = config("Passive", "Auto close doors ignore prefabs", defaultValue: "", "Comma-separated list of prefab names which should not be auto closed.");
 
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
-            wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect");
+            wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window.");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Default bubble color for wards without per-ward bubble color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection to change color [Not Synced with Server]", false);
@@ -579,10 +582,10 @@ namespace ProtectiveWards
                                                                                                                                            + "\nIf the fire does not burn - you are vulnerable");
 
 
-            wardEmissionColorEnabled = config("Ward Color", "Change emission color", defaultValue: false, "Default value for whether wards without per-ward color override should use a custom emission color. Each disabled ward can be configured separately from its settings window. World restart required to apply changes. [Not Synced with Server]", false);
-            wardEmissionColor = config("Ward Color", "Color", defaultValue: new Color(0.967f, 0.508f, 0.092f), "Default ward emission color for wards without per-ward color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
-            wardEmissionColorMultiplier = config("Ward Color", "Color multiplier", defaultValue: 2f, "Default ward emission color multiplier for wards without per-ward color multiplier override. Each disabled ward can be configured separately from its settings window. Makes color more bright and intense. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
-            wardLightColorEnabled = config("Ward Color", "Change flare and light accordingly", defaultValue: true, "Flare and emitted light color will fit ward color. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
+            wardEmissionColorEnabled = config("Ward Color", "Change emission color", defaultValue: false, "Default value for whether wards without per-ward color override should use a custom emission color. Each disabled ward can be configured separately from its settings window. [Not Synced with Server]", false);
+            wardEmissionColor = config("Ward Color", "Color", defaultValue: new Color(0.967f, 0.508f, 0.092f), "Default ward emission color for wards without per-ward color override. Each disabled ward can be configured separately from its settings window. [Not Synced with Server]", false);
+            wardEmissionColorMultiplier = config("Ward Color", "Color multiplier", defaultValue: 2f, "Default ward emission color multiplier for wards without per-ward color multiplier override. Each disabled ward can be configured separately from its settings window. Makes color more bright and intense. [Not Synced with Server]", false);
+            wardLightColorEnabled = config("Ward Color", "Change flare and light accordingly", defaultValue: true, "Flare and emitted light color will fit ward color. [Not Synced with Server]", false);
 
 
             wardPlantProtectionList = config("Ward protects", "Plants from list", "Carrot, Turnip, Onion, CarrotSeeds, TurnipSeeds, OnionSeeds, MushroomJotunPuffs, MushroomMagecap", "List of plant prefab names to be protected from damage.");
@@ -659,7 +662,7 @@ namespace ProtectiveWards
             wardExpirationMinutes = config("Ward expiration", "Expiration minutes", 0, "0 disables inactive ward expiration. This is a multiplayer/server-side abandonment mechanic and is ignored in singleplayer. It is skipped for wards whose effective Permit everyone value is enabled. When greater than 0, the server periodically checks tracked ward ZDOs while player character ZDOs are online. A ward expires after this many real-time minutes without nearby activity from a player who can refresh it. Old wards are initialized with the current server time, so enabling this option does not expire existing wards immediately.");
             wardExpirationRefreshMode = config("Ward expiration", "Expiration refresh mode", WardExpirationRefreshMode.EffectiveAccess, "Controls which nearby players can refresh the inactive ward timer and reactivate expired wards. The player must be within the ward's current radius. DirectPermitted accepts the ward creator, directly permitted players, bound guild members, and the effective admin or Permit everyone bypass. EffectiveAccess also accepts access through overlapping connected wards according to Expiration connected access mode.");
             wardExpirationConnectedAccessMode = config("Ward expiration", "Expiration connected access mode", WardConnectedAccessMode.Off, "Controls connected ward access only for expiration refresh and reactivation when Expiration refresh mode is EffectiveAccess. Off requires direct access to this ward. SameCreatorOnly, MutualTrust, and AnyConnected can let an overlapping active connected ward keep this ward alive or reactivate it. Expired wards are not treated as active connected access sources for this check.");
-            wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "Controls how expired wards become active again. ManualInteraction keeps expired wards inactive until a player with refresh access interacts with the ward. AutomaticOnLogin reactivates an expired ward when a player with refresh access is nearby during a server check, or when an expired loaded ward wakes up near such a player. Reactivation also refreshes the last-active timestamp.");
+            wardExpirationReactivationMode = config("Ward expiration", "Expiration reactivation mode", WardExpirationReactivationMode.ManualInteraction, "Controls how expired wards become active again. ManualInteraction keeps expired wards inactive until a player with refresh access interacts with the ward. AutomaticOnLogin reactivates an expired ward when a player with refresh access is nearby during a server check. Reactivation also refreshes the last-active timestamp.");
             wardExpirationAdminHover = config("Ward expiration", "Show expiration admin hover details", false, "Shows additional expiration debug details in ward hover text for players allowed by Ward admin access. The extra lines are intended for server administration and include raw Unix timestamps and the last player recorded as refreshing or reactivating the ward.", false);
 
             wardExpirationMinutes.SettingChanged += (sender, args) => WardExpiration.ResetNextCheckTime();
@@ -674,6 +677,15 @@ namespace ProtectiveWards
             wardAreaShape.SettingChanged += (sender, args) => areaCache.Clear();
             wardProtectDungeonInteriors.SettingChanged += (sender, args) => areaCache.Clear();
             wardPasswordFieldMode.SettingChanged += (sender, args) => WardPasswordProtection.HandlePasswordFieldModeChanged();
+
+            wardSettingsUseDefaultsForAllWards.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
+            wardDemisterEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
+            setWardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customRange);
+            wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);
+            wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customColor);
+            wardEmissionColor.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultVec3(s_color);
+            wardEmissionColorMultiplier.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_colorMultiplier);
+            wardLightColorEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
 
             wardPlantProtectionList.SettingChanged += (sender, args) => FillWardProtectionLists();
             boarsHensProtectionGroupList.SettingChanged += (sender, args) => FillWardProtectionLists();
@@ -896,6 +908,39 @@ namespace ProtectiveWards
 
         private const int WardHoverPermittedNamesLengthLimit = 30;
 
+        private static readonly Dictionary<string, CultureInfo> WardHoverCultures = new(StringComparer.Ordinal)
+        {
+            ["English"] = CultureInfo.GetCultureInfo("en-US"),
+            ["Russian"] = CultureInfo.GetCultureInfo("ru-RU"),
+            ["German"] = CultureInfo.GetCultureInfo("de-DE"),
+            ["Spanish"] = CultureInfo.GetCultureInfo("es-ES"),
+            ["Czech"] = CultureInfo.GetCultureInfo("cs-CZ"),
+            ["Dutch"] = CultureInfo.GetCultureInfo("nl-NL"),
+            ["French"] = CultureInfo.GetCultureInfo("fr-FR"),
+            ["Japanese"] = CultureInfo.GetCultureInfo("ja-JP"),
+            ["Korean"] = CultureInfo.GetCultureInfo("ko-KR"),
+            ["Polish"] = CultureInfo.GetCultureInfo("pl-PL"),
+            ["Portuguese_Brazilian"] = CultureInfo.GetCultureInfo("pt-BR"),
+            ["Turkish"] = CultureInfo.GetCultureInfo("tr-TR"),
+            ["Ukrainian"] = CultureInfo.GetCultureInfo("uk-UA"),
+            ["Chinese"] = CultureInfo.GetCultureInfo("zh-CN"),
+            ["Chinese_Trad"] = CultureInfo.GetCultureInfo("zh-TW")
+        };
+
+        private static string CapitalizeWardHoverAccessText(string value)
+        {
+            if (string.IsNullOrEmpty(value) || !char.IsLetter(value[0]))
+                return value;
+
+            string language = Localization.instance?.GetSelectedLanguage();
+            CultureInfo culture = language != null && WardHoverCultures.TryGetValue(language, out CultureInfo selectedCulture)
+                ? selectedCulture
+                : CultureInfo.InvariantCulture;
+
+            char upper = culture.TextInfo.ToUpper(value[0]);
+            return upper == value[0] ? value : upper + value.Substring(1);
+        }
+
         private static void ReplaceWardPermittedHoverStatus(PrivateArea ward, StringBuilder text)
         {
             if (ward == null || text == null)
@@ -945,7 +990,7 @@ namespace ProtectiveWards
             string prefix = "$pw_ward_hover_permitted".Localize();
             if (IsPermitEveryone(ward))
             {
-                string everyone = "$pw_ward_hover_everyone".Localize();
+                string everyone = CapitalizeWardHoverAccessText("$pw_ward_hover_everyone".Localize());
                 return $"{prefix} {everyone}.";
             }
 
@@ -973,7 +1018,8 @@ namespace ProtectiveWards
             if (accessSources.Count == 0)
                 accessSources.Add("$pw_ward_hover_none".Localize());
 
-            return $"{prefix} {string.Join(", ", accessSources.ToArray())}.";
+            string accessText = CapitalizeWardHoverAccessText(string.Join(", ", accessSources.ToArray()));
+            return $"{prefix} {accessText}.";
         }
 
         public static bool HasWardManagementAccess(PrivateArea ward, long playerID)
@@ -2078,32 +2124,55 @@ namespace ProtectiveWards
                     yield break;
 
                 if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
+                {
+                    wardIsClosing.Remove(ward);
                     yield break;
+                }
 
                 if (secondsToClose <= 0)
                 {
-                    if (doors.Count > 0)
-                    {
-                        LogInfo($"Closed {doors.Count} doors");
-                        doors.ForEach(door =>
-                        {
-                            if (door.m_nview.IsValid())
-                            {
-                                door.m_nview.GetZDO().Set(ZDOVars.s_state, 0);
-                                door.UpdateState();
-                            }
-                        });
-                    }
+                    List<Door> openDoors = doors
+                        .Where(door => door != null
+                                       && door.m_nview != null
+                                       && door.m_nview.IsValid()
+                                       && door.m_nview.GetZDO().GetInt(ZDOVars.s_state) != 0)
+                        .Distinct()
+                        .ToList();
 
                     wardIsClosing.Remove(ward);
                     doorsToClose.Remove(ward);
-                    LogInfo($"Doors closing stopped");
+
+                    foreach (Door door in openDoors)
+                        door.m_nview.InvokeRPC("UseDoor", false);
+
+                    if (openDoors.Count > 0)
+                        LogInfo($"Closed {openDoors.Count} doors");
+
+                    LogInfo("Doors closing stopped");
                     yield break;
                 }
 
                 wardIsClosing[ward] -= 1;
-
                 yield return new WaitForSeconds(1f);
+            }
+        }
+
+        private static void RemoveDoorFromAutoCloseTracking(Door door)
+        {
+            if (door == null)
+                return;
+
+            foreach (PrivateArea ward in doorsToClose.Keys.ToList())
+            {
+                if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
+                    continue;
+
+                doors.Remove(door);
+                if (doors.Count != 0)
+                    continue;
+
+                doorsToClose.Remove(ward);
+                wardIsClosing.Remove(ward);
             }
         }
 
@@ -2112,43 +2181,12 @@ namespace ProtectiveWards
             return PrivateArea.m_allAreas.Where(area => area == ward || (area.IsEnabled() && AreWardsOverlapping(ward, area)));
         }
 
-        private static bool s_activatingConnectedWards;
-
-        internal static void ActivateConnectedLoadedWards(PrivateArea rootWard, long requesterID, string requesterName = "")
-        {
-            if (s_activatingConnectedWards || rootWard == null || requesterID == 0L || !rootWard.IsEnabled())
-                return;
-
-            WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
-            if (mode == WardConnectedAccessMode.Off)
-                return;
-
-            s_activatingConnectedWards = true;
-            try
-            {
-                foreach (PrivateArea ward in ConnectedActivationAreas(rootWard, requesterID, mode))
-                {
-                    if (ward == rootWard)
-                        continue;
-
-                    if (WardExpiration.IsExpired(ward))
-                        WardExpiration.SetExpired(ward.m_nview.GetZDO(), expired: false, requesterID, requesterName);
-
-                    if (!ward.IsEnabled())
-                        ward.SetEnabled(true);
-                }
-            }
-            finally
-            {
-                s_activatingConnectedWards = false;
-            }
-        }
-
         private static bool s_activatingConnectedWardZdos;
 
         internal static void ActivateConnectedWardZdos(ZDO rootWard, long requesterID, string requesterName = "")
         {
-            if (s_activatingConnectedWardZdos
+            if (ZNet.instance?.IsServer() != true
+                || s_activatingConnectedWardZdos
                 || !WardZdoUtils.IsWard(rootWard)
                 || requesterID == 0L
                 || !rootWard.GetBool(ZDOVars.s_enabled, false)
@@ -2200,73 +2238,6 @@ namespace ProtectiveWards
             finally
             {
                 s_activatingConnectedWardZdos = false;
-            }
-        }
-
-        private static IEnumerable<PrivateArea> ConnectedActivationAreas(PrivateArea rootWard, long requesterID, WardConnectedAccessMode mode)
-        {
-            HashSet<PrivateArea> visited = new();
-            List<PrivateArea> queue = new();
-            int queueIndex = 0;
-
-            visited.Add(rootWard);
-            queue.Add(rootWard);
-
-            while (queueIndex < queue.Count)
-            {
-                PrivateArea current = queue[queueIndex++];
-                yield return current;
-
-                foreach (PrivateArea candidate in PrivateArea.m_allAreas)
-                {
-                    if (candidate == null || visited.Contains(candidate))
-                        continue;
-
-                    if (!IsPlayerWard(candidate) || !AreWardsOverlapping(current, candidate))
-                        continue;
-
-                    if (!HasDirectAccessToWard(candidate, requesterID) && !HasWardAdminAccess(requesterID))
-                        continue;
-
-                    if (!CanShareConnectedActivation(rootWard, candidate, mode))
-                        continue;
-
-                    visited.Add(candidate);
-                    queue.Add(candidate);
-                }
-            }
-        }
-
-        private static bool IsPlayerWard(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players;
-
-        private static bool CanShareConnectedActivation(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
-        {
-            if (mode == WardConnectedAccessMode.Off)
-                return false;
-
-            if (!IsPlayerWard(protectedWard) || !IsPlayerWard(candidateWard))
-                return false;
-
-            if (protectedWard == candidateWard)
-                return true;
-
-            switch (mode)
-            {
-                case WardConnectedAccessMode.SameCreatorOnly:
-                    long protectedCreator = GetCreatorId(protectedWard);
-                    long candidateCreator = GetCreatorId(candidateWard);
-                    return protectedCreator != 0L && protectedCreator == candidateCreator;
-                case WardConnectedAccessMode.MutualTrust:
-                    protectedCreator = GetCreatorId(protectedWard);
-                    candidateCreator = GetCreatorId(candidateWard);
-                    return protectedCreator != 0L
-                           && candidateCreator != 0L
-                           && HasDirectAccessToWard(protectedWard, candidateCreator)
-                           && HasDirectAccessToWard(candidateWard, protectedCreator);
-                case WardConnectedAccessMode.AnyConnected:
-                    return true;
-                default:
-                    return false;
             }
         }
 
@@ -2375,6 +2346,10 @@ namespace ProtectiveWards
                     }
                 }
             }
+            else
+            {
+                ResetWardLightColor(ward);
+            }
         }
 
         private static int FindWardEmissionMaterialIndex(PrivateArea ward)
@@ -2422,8 +2397,12 @@ namespace ProtectiveWards
                 return;
 
             ward.m_model.SetPropertyBlock(null, materialIndex);
+            ResetWardLightColor(ward);
+        }
 
-            if (!s_wardEmissionDefaults.TryGetValue(ward, out WardEmissionDefaults defaults))
+        private static void ResetWardLightColor(PrivateArea ward)
+        {
+            if (ward == null || !s_wardEmissionDefaults.TryGetValue(ward, out WardEmissionDefaults defaults))
                 return;
 
             if (defaults.ParticleSystems != null && defaults.ParticleStartColors != null)
@@ -2440,19 +2419,19 @@ namespace ProtectiveWards
                 }
             }
 
-            if (defaults.Light)
-            {
-                defaults.Light.color = defaults.LightColor;
+            if (!defaults.Light)
+                return;
 
-                LightFlicker flicker = defaults.Light.GetComponent<LightFlicker>();
-                if (flicker != null)
-                {
-                    if (defaults.HadFlicker)
-                        flicker.enabled = defaults.FlickerEnabled;
-                    else
-                        UnityEngine.Object.Destroy(flicker);
-                }
-            }
+            defaults.Light.color = defaults.LightColor;
+
+            LightFlicker flicker = defaults.Light.GetComponent<LightFlicker>();
+            if (flicker == null)
+                return;
+
+            if (defaults.HadFlicker)
+                flicker.enabled = defaults.FlickerEnabled;
+            else
+                UnityEngine.Object.Destroy(flicker);
         }
 
         private static string NormalizeHtmlColor(string value)
@@ -2573,19 +2552,23 @@ namespace ProtectiveWards
             demister.GetComponent<ParticleSystemForceField>().endRange = ward.m_radius;
         }
 
-        [HarmonyPatch(typeof(Door), nameof(Door.Interact))]
-        public static class Door_SetState_AutoClose
+        [HarmonyPatch(typeof(Door), nameof(Door.RPC_UseDoor))]
+        public static class Door_RPC_UseDoor_AutoClose
         {
-            public static void Postfix(Door __instance, ZNetView ___m_nview, bool __result)
+            public static void Postfix(Door __instance, ZNetView ___m_nview)
             {
                 if (autoCloseDoorsTime.Value == 0 || autoCloseDoorsIgnorePrefabs.Value.IndexOf(Utils.GetPrefabName(__instance.gameObject)) > -1)
                     return;
 
-                if (!___m_nview.IsValid())
+                if (___m_nview == null || !___m_nview.IsValid() || !___m_nview.IsOwner())
                     return;
 
-                if (!__result)
+                int state = ___m_nview.GetZDO().GetInt(ZDOVars.s_state);
+                if (state == 0)
+                {
+                    RemoveDoorFromAutoCloseTracking(__instance);
                     return;
+                }
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward, checkCache: true))
                     return;
@@ -2593,37 +2576,21 @@ namespace ProtectiveWards
                 if (!doorsToClose.TryGetValue(ward, out List<Door> doors))
                     doors = new List<Door>();
 
-                int state = ___m_nview.GetZDO().GetInt(ZDOVars.s_state);
-
-                if (state == 0)
-                    doors.Remove(__instance);
-                else if (!doors.Contains(__instance))
+                if (!doors.Contains(__instance))
                     doors.Add(__instance);
 
-                if (doors.Count == 0)
-                {
-                    wardIsClosing.Remove(ward);
-                    doorsToClose.Remove(ward);
-                    return;
-                }
-
-                if (state == 0)
-                    return;
-
                 doorsToClose[ward] = doors;
+                bool alreadyClosing = wardIsClosing.ContainsKey(ward);
+                wardIsClosing[ward] = Math.Max(autoCloseDoorsTime.Value, 2);
 
-                LogInfo(doors.Count);
-
-                if (wardIsClosing.ContainsKey(ward))
+                if (alreadyClosing)
                 {
-                    wardIsClosing[ward] = Math.Max(autoCloseDoorsTime.Value, 2);
                     LogInfo($"Doors closing reset to {wardIsClosing[ward]} seconds");
                 }
                 else
                 {
-                    wardIsClosing[ward] = Math.Max(autoCloseDoorsTime.Value, 2);
                     ward.StartCoroutine(AutoClosingDoors(ward));
-                    LogInfo($"Doors closing started");
+                    LogInfo("Doors closing started");
                 }
             }
         }
@@ -2795,8 +2762,10 @@ namespace ProtectiveWards
                 wardIsHealing.Remove(__instance);
                 wardIsRepairing.Remove(__instance);
                 wardIsClosing.Remove(__instance);
+                doorsToClose.Remove(__instance);
                 s_wardDefaultRanges.Remove(__instance);
                 s_wardEmissionDefaults.Remove(__instance);
+                s_wardVisualDataRevisions.Remove(__instance);
             }
         }
 
@@ -2997,7 +2966,7 @@ namespace ProtectiveWards
 
                 CacheWardDefaultRange(__instance);
                 PatchRange(__instance);
-                WardExpiration.TryReactivateFromNearbyPlayer(__instance);
+                s_wardVisualDataRevisions[__instance] = ___m_nview.GetZDO().DataRevision;
 
                 if (showAreaMarker.Value)
                     __instance.m_areaMarker.gameObject.SetActive(value: true);
@@ -3056,6 +3025,48 @@ namespace ProtectiveWards
                 RefreshWardVisuals(ward);
         }
 
+        private static bool ShouldRefreshConfiguredDefaults()
+        {
+            return !ArePerWardSettingsEnabled() || wardSettingsUseDefaultsForAllWards.Value;
+        }
+
+        private static void RefreshLoadedWardsUsingDefaultBool(int key)
+        {
+            RefreshLoadedWardsUsingDefault(zdo => !HasZdoBool(zdo, key));
+        }
+
+        private static void RefreshLoadedWardsUsingDefaultFloat(int key)
+        {
+            RefreshLoadedWardsUsingDefault(zdo => !HasZdoFloat(zdo, key));
+        }
+
+        private static void RefreshLoadedWardsUsingDefaultVec3(int key)
+        {
+            RefreshLoadedWardsUsingDefault(zdo => !HasZdoVec3(zdo, key));
+        }
+
+        private static void RefreshLoadedWardsUsingDefault(Func<ZDO, bool> usesDefault)
+        {
+            if (!ShouldRefreshConfiguredDefaults())
+                return;
+
+            foreach (PrivateArea ward in PrivateArea.m_allAreas)
+            {
+                if (!IsPlayerWardPrefab(ward) || ward.m_nview == null || !ward.m_nview.IsValid())
+                    continue;
+
+                ZDO zdo = ward.m_nview.GetZDO();
+                if (!ArePerWardSettingsEnabled() || (zdo != null && usesDefault(zdo)))
+                    RefreshWardVisuals(ward);
+            }
+        }
+
+        internal static void NotifyWardZdoSynchronized(ZDO zdo)
+        {
+            if (ZNet.instance?.IsServer() == false && WardZdoUtils.IsWard(zdo))
+                s_dirtyWardVisuals.Add(zdo.m_uid);
+        }
+
         public static void RefreshWardVisuals(PrivateArea ward)
         {
             if (!IsPlayerWardPrefab(ward) || ward.m_nview == null || !ward.m_nview.IsValid())
@@ -3066,6 +3077,28 @@ namespace ProtectiveWards
             InitBubbleState(ward, EnsureWardBubble(ward), ward.m_nview);
             InitDemisterState(ward, EnsureWardDemister(ward), ward.m_nview);
             InitCircleProjectorState(ward.m_areaMarker, ward.m_nview);
+
+            ZDO zdo = ward.m_nview.GetZDO();
+            s_wardVisualDataRevisions[ward] = zdo.DataRevision;
+            s_dirtyWardVisuals.Remove(zdo.m_uid);
+        }
+
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.UpdateStatus))]
+        private static class PrivateArea_UpdateStatus_RefreshSyncedWardVisuals
+        {
+            private static void Postfix(PrivateArea __instance)
+            {
+                if (!IsPlayerWardPrefab(__instance) || __instance.m_nview == null || !__instance.m_nview.IsValid())
+                    return;
+
+                ZDO zdo = __instance.m_nview.GetZDO();
+                uint revision = zdo.DataRevision;
+                bool synchronized = s_dirtyWardVisuals.Contains(zdo.m_uid);
+                if (!synchronized && s_wardVisualDataRevisions.TryGetValue(__instance, out uint previousRevision) && previousRevision == revision)
+                    return;
+
+                RefreshWardVisuals(__instance);
+            }
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.RPC_FlashShield))]
@@ -3113,6 +3146,10 @@ namespace ProtectiveWards
                 forceFieldDemister = null;
                 lightningAOE = null;
                 preLightning = null;
+                s_wardVisualDataRevisions.Clear();
+                s_dirtyWardVisuals.Clear();
+                s_wardDefaultRanges.Clear();
+                s_wardEmissionDefaults.Clear();
             }
         }
 
@@ -3137,18 +3174,10 @@ namespace ProtectiveWards
                     return;
 
                 CacheWardDefaultRange(__instance);
-                PatchRange(__instance);
-
-                InitEmissionColor(__instance);
-
-                InitBubbleState(__instance, __instance.transform.Find(forceFieldName)?.gameObject, ___m_nview);
-
-                InitDemisterState(__instance, __instance.transform.Find(forceFieldDemisterName)?.gameObject, ___m_nview);
-
-                InitCircleProjectorState(__instance.m_areaMarker, ___m_nview);
+                RefreshWardVisuals(__instance);
 
                 if (__instance.IsEnabled())
-                    ActivateConnectedLoadedWards(__instance, playerID, Player.GetPlayer(playerID)?.GetPlayerName() ?? "");
+                    WardExpiration.RequestConnectedActivation(___m_nview.GetZDO().m_uid, playerID);
             }
         }
     }

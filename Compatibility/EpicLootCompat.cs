@@ -11,7 +11,7 @@ namespace ProtectiveWards.Compatibility
     internal static class EpicLootCompat
     {
         internal const string PluginGuid = "randyknapp.mods.epicloot";
-        private const string UnityLibAssemblyName = "EpicLoot-UnityLib";
+        private const string LegacyUnityLibAssemblyName = "EpicLoot-UnityLib";
         private const string EnchantingTableTypeName = "EpicLoot_UnityLib.EnchantingTable";
 
         private static MethodInfo s_enchantingTableInteract;
@@ -21,24 +21,33 @@ namespace ProtectiveWards.Compatibility
         internal static void CheckForCompatibility()
         {
             IsEnabled = false;
+            s_enchantingTableInteract = null;
 
-            if (!Chainloader.PluginInfos.ContainsKey(PluginGuid))
+            if (!Chainloader.PluginInfos.TryGetValue(PluginGuid, out BepInEx.PluginInfo pluginInfo))
                 return;
 
-            Assembly unityLibAssembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly =>
-                string.Equals(assembly.GetName().Name, UnityLibAssemblyName, StringComparison.OrdinalIgnoreCase));
-            if (unityLibAssembly == null)
+            Type enchantingTableType;
+            Assembly legacyUnityLibAssembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly =>
+                string.Equals(assembly.GetName().Name, LegacyUnityLibAssemblyName, StringComparison.OrdinalIgnoreCase));
+
+            if (legacyUnityLibAssembly != null)
             {
-                LogInfo($"EpicLoot is loaded but assembly {UnityLibAssemblyName} was not found");
-                return;
+                enchantingTableType = legacyUnityLibAssembly.GetType(
+                    EnchantingTableTypeName,
+                    throwOnError: false,
+                    ignoreCase: false);
+            }
+            else
+            {
+                Assembly epicLootAssembly = pluginInfo.Instance?.GetType().Assembly;
+                enchantingTableType = epicLootAssembly?.GetType(
+                    EnchantingTableTypeName,
+                    throwOnError: false,
+                    ignoreCase: false);
             }
 
-            Type enchantingTableType = unityLibAssembly.GetType(EnchantingTableTypeName, throwOnError: false, ignoreCase: false);
             if (enchantingTableType == null)
-            {
-                LogInfo($"EpicLoot assembly {UnityLibAssemblyName} is loaded but {EnchantingTableTypeName} was not found");
                 return;
-            }
 
             s_enchantingTableInteract = AccessTools.Method(
                 enchantingTableType,
@@ -46,10 +55,7 @@ namespace ProtectiveWards.Compatibility
                 new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
 
             if (s_enchantingTableInteract == null)
-            {
-                LogInfo($"EpicLoot is loaded but {EnchantingTableTypeName}.Interact(Humanoid, bool, bool) was not found");
                 return;
-            }
 
             FullProtection.ExcludeInteractableType(enchantingTableType);
             IsEnabled = true;

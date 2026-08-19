@@ -1,3 +1,9 @@
+# 2.0.7
+* refactored multiplayer ward state handling and synchronization for more consistent behavior
+* improved ward settings UI and runtime visual refresh behavior
+* general code cleanup and maintenance
+* EpicLoot 0.13+ compatibility
+
 # 2.0.6
 * fixed dedicated-server ward management and access updates for distant or unloaded wards by validating and modifying their tracked ZDO data instead of requiring a loaded `PrivateArea`
 * changed background protection and connected automatic reactivation to use the server's tracked ward ZDO collection, so they no longer depend on ward instances being loaded around their centres

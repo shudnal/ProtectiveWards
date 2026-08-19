@@ -282,15 +282,15 @@ Restrictions:
 
 Some messages and captions use suitable vanilla localization lines. The rest is localized by the mod.
 
-To add your own localization, create a file named `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` anywhere inside the BepInEx folder. For example, to add French translations you can create `Protective Wards.French.yml` inside the config folder.
+To add your own localization, create a file named `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` inside the `BepInEx/config` folder. For example, to add French translations you can create `BepInEx/config/Protective Wards.French.yml`.
 
-Localization files are loaded on game launch or language change.
+Localization files from the config folder are loaded on game launch or language change. If no matching external file is found, the embedded localization is used.
 
 You can send localization files through [GitHub](https://github.com/shudnal/ProtectiveWards/issues) or [Nexus](https://www.nexusmods.com/valheim/mods/2450?tab=posts).
 
 [Language list](https://valheim-modding.github.io/Jotunn/data/localization/language-list.html)
 
-English localization example is located in `Protective Wards.English.json` next to the plugin DLL.
+`Protective Wards.English.json` included with the package is an example file; copy it to `BepInEx/config` if you want to use it as an external override.
 
 ## Installation
 

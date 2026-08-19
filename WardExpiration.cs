@@ -16,9 +16,37 @@ namespace ProtectiveWards
         internal static readonly int s_expirationExpiredUnix = "pw_expiration_expired_unix".GetStableHashCode();
         internal static readonly int s_expirationExpiredReason = "pw_expiration_expired_reason".GetStableHashCode();
 
+        private const string RPC_ReactivateExpiredWard = "PW_ReactivateExpiredWard";
+        private const string RPC_ReactivateExpiredWardResult = "PW_ReactivateExpiredWardResult";
+        private const string RPC_ActivateConnectedWards = "PW_ActivateConnectedWards";
         private static float s_nextCheckTime;
+        private static bool s_rpcRegistered;
+
+        private enum ReactivationResult
+        {
+            Success,
+            NotAuthorized,
+            Unavailable
+        }
 
         internal static void ResetNextCheckTime() => s_nextCheckTime = 0f;
+
+        private static void RegisterRPCs()
+        {
+            if (s_rpcRegistered || ZRoutedRpc.instance == null)
+                return;
+
+            ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWardResult, RPC_ReactivateExpiredWardResultClient);
+            if (ZNet.instance?.IsServer() == true)
+            {
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWard, RPC_ReactivateExpiredWardServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_ActivateConnectedWards, RPC_ActivateConnectedWardsServer);
+            }
+
+            s_rpcRegistered = true;
+        }
+
+        private static void ResetRPCRegistration() => s_rpcRegistered = false;
 
         internal static void SetExpired(ZDO zdo, bool expired, long playerID, string playerName)
         {
@@ -174,13 +202,6 @@ namespace ProtectiveWards
                    && !IsExpired(zdo);
         }
 
-        private static void RefreshActivity(ZDO zdo, Player player, long now)
-        {
-            zdo.Set(s_expirationLastActiveUnix, now);
-            zdo.Set(s_expirationLastPlayerId, player.GetPlayerID());
-            zdo.Set(s_expirationLastPlayerName, player.GetPlayerName());
-        }
-
         private static void RefreshActivity(ZDO zdo, RefreshingPlayer player, long now)
         {
             zdo.Set(s_expirationLastActiveUnix, now);
@@ -193,12 +214,6 @@ namespace ProtectiveWards
             zdo.Set(s_expirationExpired, true);
             zdo.Set(s_expirationExpiredUnix, now);
             zdo.Set(s_expirationExpiredReason, "inactivity");
-        }
-
-        private static void Reactivate(ZDO zdo, Player player, long now)
-        {
-            zdo.Set(s_expirationExpired, false);
-            RefreshActivity(zdo, player, now);
         }
 
         private static void Reactivate(ZDO zdo, RefreshingPlayer player, long now)
@@ -220,42 +235,121 @@ namespace ProtectiveWards
             return zdo != null && zdo.GetBool(s_expirationExpired, false);
         }
 
-        private static bool CanReactivate(PrivateArea ward, Player player)
+        private static bool CanReactivate(ZDO zdo, long playerID)
         {
-            if (ward == null || player == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (!WardZdoUtils.IsWard(zdo) || playerID == 0L)
                 return false;
 
-            ZDO zdo = ward.m_nview.GetZDO();
-            long playerID = player.GetPlayerID();
             WardConnectedAccessMode mode = wardExpirationConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
-
             return wardExpirationRefreshMode.Value == WardExpirationRefreshMode.DirectPermitted
                 ? zdo.HasDirectWardAccess(playerID)
                 : zdo.HasConnectedWardAccess(playerID, mode, IsActiveForExpirationConnectedAccess);
         }
 
-        internal static void TryReactivateFromNearbyPlayer(PrivateArea ward)
+        private static void RequestManualReactivation(ZDOID wardID, long playerID)
         {
-            if (wardExpirationMinutes.Value <= 0 || IsPermitEveryone(ward) || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.AutomaticOnLogin)
+            if (wardID.IsNone() || playerID == 0L)
                 return;
 
-            if (!IsExpired(ward))
+            ZPackage package = new();
+            package.Write(wardID);
+            package.Write(playerID);
+
+            if (ZNet.instance?.IsServer() == true)
+                RPC_ReactivateExpiredWardServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ReactivateExpiredWard, package);
+        }
+
+        internal static void RequestConnectedActivation(ZDOID wardID, long playerID)
+        {
+            if (wardID.IsNone() || playerID == 0L || (wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off) == WardConnectedAccessMode.Off)
                 return;
 
-            if (ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            ZPackage package = new();
+            package.Write(wardID);
+            package.Write(playerID);
+
+            if (ZNet.instance?.IsServer() == true)
+                RPC_ActivateConnectedWardsServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ActivateConnectedWards, package);
+        }
+
+        private static void RPC_ReactivateExpiredWardServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long claimedPlayerID = package.ReadLong();
+            if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
 
-            List<Player> players = new();
-            Player.GetPlayersInRange(ward.transform.position, Math.Max(ward.m_radius, 0f), players);
-            foreach (Player player in players)
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null
+                || wardExpirationMinutes.Value <= 0
+                || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.ManualInteraction
+                || IsPermitEveryone(zdo)
+                || !IsExpired(zdo))
             {
-                if (!CanReactivate(ward, player))
-                    continue;
-
-                Reactivate(ward.m_nview.GetZDO(), player, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                ActivateConnectedLoadedWards(ward, player.GetPlayerID(), player.GetPlayerName());
+                SendReactivationResult(sender, wardID, ReactivationResult.Unavailable);
                 return;
             }
+
+            if (!CanReactivate(zdo, requester.PlayerID))
+            {
+                SendReactivationResult(sender, wardID, ReactivationResult.NotAuthorized);
+                return;
+            }
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            zdo.Set(s_expirationExpired, false);
+            zdo.Set(s_expirationLastActiveUnix, now);
+            zdo.Set(s_expirationLastPlayerId, requester.PlayerID);
+            zdo.Set(s_expirationLastPlayerName, requester.PlayerName ?? "");
+            ActivateConnectedWardZdos(zdo, requester.PlayerID, requester.PlayerName);
+            SendReactivationResult(sender, wardID, ReactivationResult.Success);
+        }
+
+        private static void RPC_ActivateConnectedWardsServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long claimedPlayerID = package.ReadLong();
+            if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
+                return;
+
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null)
+                return;
+
+            if (!zdo.GetBool(ZDOVars.s_enabled, false))
+                zdo.Set(ZDOVars.s_enabled, true);
+
+            ActivateConnectedWardZdos(zdo, requester.PlayerID, requester.PlayerName);
+        }
+
+        private static void SendReactivationResult(long peerID, ZDOID wardID, ReactivationResult result)
+        {
+            ZPackage response = new();
+            response.Write(wardID);
+            response.Write((int)result);
+
+            if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
+                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_ReactivateExpiredWardResult, response);
+            else
+                RPC_ReactivateExpiredWardResultClient(0L, new ZPackage(response.GetArray()));
+        }
+
+        private static void RPC_ReactivateExpiredWardResultClient(long _, ZPackage package)
+        {
+            package.ReadZDOID();
+            ReactivationResult result = (ReactivationResult)package.ReadInt();
+            Player player = Player.m_localPlayer;
+            if (player == null)
+                return;
+
+            if (result == ReactivationResult.Success)
+                player.Message(MessageHud.MessageType.Center, "$pw_ward_expiration_reactivated");
+            else if (result == ReactivationResult.NotAuthorized)
+                player.Message(MessageHud.MessageType.Center, "$msg_privatezone");
         }
 
         private sealed class RefreshingPlayer
@@ -277,13 +371,21 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
         private static class ZoneSystem_Start_ResetExpirationCheckTime
         {
-            private static void Postfix() => ResetNextCheckTime();
+            private static void Postfix()
+            {
+                ResetNextCheckTime();
+                RegisterRPCs();
+            }
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
         private static class ZoneSystem_OnDestroy_ResetExpirationCheckTime
         {
-            private static void Postfix() => ResetNextCheckTime();
+            private static void Postfix()
+            {
+                ResetNextCheckTime();
+                ResetRPCRegistration();
+            }
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsEnabled))]
@@ -311,13 +413,11 @@ namespace ProtectiveWards
                     return true;
 
                 Player player = human as Player;
-                if (!CanReactivate(__instance, player))
+                ZDO zdo = __instance.m_nview?.GetZDO();
+                if (player == null || zdo == null || !CanReactivate(zdo, player.GetPlayerID()))
                     return true;
 
-                ZDO zdo = __instance.m_nview.GetZDO();
-                Reactivate(zdo, player, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-                ActivateConnectedLoadedWards(__instance, player.GetPlayerID(), player.GetPlayerName());
-                player.Message(MessageHud.MessageType.Center, "$pw_ward_expiration_reactivated");
+                RequestManualReactivation(zdo.m_uid, player.GetPlayerID());
                 __result = true;
                 return false;
             }

@@ -61,8 +61,7 @@ namespace ProtectiveWards.Compatibility
             Success,
             NotAuthorized,
             Unavailable,
-            NoGuild,
-            TooFar
+            NoGuild
         }
 
         private sealed class CachedGuildIdentity
@@ -359,10 +358,6 @@ namespace ProtectiveWards.Compatibility
             bool enabled = package.ReadBool();
             int guildId = package.ReadInt();
             string guildName = package.ReadString() ?? "";
-
-            ZDO zdo = ZDOMan.instance?.GetZDO(wardID);
-            if (zdo != null)
-                SetBoundGuildState(zdo, enabled, guildId, guildName);
 
             WardSettingsUI.OnGuildBindingResult(wardID, result, enabled, guildId, guildName);
         }

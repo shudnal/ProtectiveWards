@@ -14,6 +14,8 @@ namespace ProtectiveWards
     {
         internal static int moderPowerHash = "GP_Moder".GetStableHashCode();
         private static readonly WaitForSeconds wait1sec = new(1);
+        private const string RPC_GrowPlant = "PW_GrowPlant";
+        private const string RPC_AugmentStructure = "PW_AugmentStructure";
 
         public static IEnumerator PassiveHealingEffect(PrivateArea ward, float amount, int seconds)
         {
@@ -80,13 +82,10 @@ namespace ProtectiveWards
 
             foreach (Plant plant in plants.ToHashSet())
             {
-                if (!plant || plant.m_nview == null || !plant.m_nview.IsValid() || !plant.m_nview.IsOwner())
+                if (!plant || plant.m_nview == null || !plant.m_nview.IsValid())
                     continue;
 
-                if (plant.m_status != 0)
-                    plant.UpdateHealth(0);
-
-                plant.Grow();
+                plant.m_nview.InvokeRPC(RPC_GrowPlant);
                 yield return new WaitForSeconds(0.25f);
             }
 
@@ -113,14 +112,14 @@ namespace ProtectiveWards
                     piece.m_placeEffect.Create(piece.transform.position, piece.transform.rotation);
                 }
 
-                if (augment && component.m_nview != null && component.m_nview.IsValid() && component.m_nview.IsOwner())
+                if (augment && component.m_nview != null && component.m_nview.IsValid())
                 {
-                    if (component.m_nview.GetZDO().GetFloat(ZDOVars.s_health, component.m_health) < component.m_health * 2f)
+                    float augmentedHealth = component.m_health * 2f;
+                    if (component.m_nview.GetZDO().GetFloat(ZDOVars.s_health, component.m_health) < augmentedHealth)
                     {
-                        component.m_nview.GetZDO().Set(ZDOVars.s_health, component.m_health * 2f);
-                        component.m_nview.InvokeRPC(ZNetView.Everybody, "WNTHealthChanged", component.m_health * 2f);
+                        component.m_nview.InvokeRPC(RPC_AugmentStructure, augmentedHealth);
                         augmented++;
-                    };
+                    }
                 }
             }
 
@@ -158,11 +157,55 @@ namespace ProtectiveWards
                 if (!su_plant.TryGetComponent(out Plant plant))
                     continue;
 
-                if (plant.m_nview == null || !plant.m_nview.IsValid() || !plant.m_nview.IsOwner())
+                if (plant.m_nview == null || !plant.m_nview.IsValid())
                     continue;
 
                 if (Utils.DistanceSqr(su_plant.transform.position, point) < num && (!growableOnly || plant.m_status == 0))
                     plants.Add(plant);
+            }
+        }
+
+        private static void GrowPlant(Plant plant)
+        {
+            if (!plant || plant.m_nview == null || !plant.m_nview.IsValid() || !plant.m_nview.IsOwner())
+                return;
+
+            if (plant.m_status != Plant.Status.Healthy)
+                plant.UpdateHealth(0);
+
+            plant.Grow();
+        }
+
+        private static void AugmentStructure(WearNTear component, float health)
+        {
+            if (!component || component.m_nview == null || !component.m_nview.IsValid() || !component.m_nview.IsOwner())
+                return;
+
+            ZDO zdo = component.m_nview.GetZDO();
+            if (zdo == null || zdo.GetFloat(ZDOVars.s_health, component.m_health) >= health)
+                return;
+
+            zdo.Set(ZDOVars.s_health, health);
+            component.m_nview.InvokeRPC(ZNetView.Everybody, "RPC_HealthChanged", health);
+        }
+
+        [HarmonyPatch(typeof(Plant), nameof(Plant.Awake))]
+        private static class Plant_Awake_RegisterGrowthOfferingRPC
+        {
+            private static void Postfix(Plant __instance)
+            {
+                if (__instance?.m_nview?.IsValid() == true)
+                    __instance.m_nview.Register(RPC_GrowPlant, _ => GrowPlant(__instance));
+            }
+        }
+
+        [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.Awake))]
+        private static class WearNTear_Awake_RegisterAugmentOfferingRPC
+        {
+            private static void Postfix(WearNTear __instance)
+            {
+                if (__instance?.m_nview?.IsValid() == true)
+                    __instance.m_nview.Register<float>(RPC_AugmentStructure, (_, health) => AugmentStructure(__instance, health));
             }
         }
 

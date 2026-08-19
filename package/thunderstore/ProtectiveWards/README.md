@@ -187,7 +187,7 @@ Expiration is disabled by default, works server-side in multiplayer and is ignor
 | Mode | Meaning |
 |---|---|
 | `ManualInteraction` | Default. An access player must interact with the expired ward. |
-| `AutomaticOnLogin` | The server may reactivate the ward when an access player is nearby during a check or when the loaded ward wakes up. |
+| `AutomaticOnLogin` | The server may reactivate the ward when an access player is nearby during a periodic check. |
 
 Old wards receive a current timestamp when expiration is enabled, so existing worlds do not immediately lose every ward. Expiration is skipped independently for every ward whose effective `Permit everyone` value is enabled.
 
@@ -299,7 +299,7 @@ Server-synchronized settings are admin-only in configuration managers.
 
 ## Localization
 
-Create `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` anywhere under the BepInEx directory. Files are loaded on game launch and language changes. The English example is included next to the DLL as `Protective Wards.English.json`.
+Create `Protective Wards.LanguageName.yml` or `Protective Wards.LanguageName.json` inside `BepInEx/config`. Files from the config folder are loaded on game launch and language changes; otherwise the embedded localization is used. The packaged `Protective Wards.English.json` is an example that can be copied to the config folder for use as an external override.
 
 - [Jotunn language list](https://valheim-modding.github.io/Jotunn/data/localization/language-list.html)
 

@@ -217,12 +217,14 @@ namespace ProtectiveWards
 
             if (ZNetScene.instance != null)
             {
-                PrivateArea prefabWard = ZNetScene.instance?.GetPrefab(WardPrefabName)?.GetComponent<PrivateArea>();
+                PrivateArea prefabWard = ZNetScene.instance.GetPrefab(WardPrefabName)?.GetComponent<PrivateArea>();
                 if (prefabWard != null)
+                {
                     s_wardDefaultRadius = prefabWard.m_radius;
+                    s_wardDefaultRadiusCached = true;
+                }
             }
 
-            s_wardDefaultRadiusCached = true;
             return s_wardDefaultRadius;
         }
 
@@ -433,7 +435,11 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(ZDO), nameof(ZDO.Deserialize))]
         private static class ZDO_Deserialize_WardListAdd
         {
-            private static void Postfix(ZDO __instance) => AddIfWard(__instance);
+            private static void Postfix(ZDO __instance)
+            {
+                AddIfWard(__instance);
+                NotifyWardZdoSynchronized(__instance);
+            }
         }
 
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
@@ -443,6 +449,8 @@ namespace ProtectiveWards
             {
                 s_wardObjects.Clear();
                 s_wardObjectsInitialized = false;
+                s_wardDefaultRadius = 32f;
+                s_wardDefaultRadiusCached = false;
             }
         }
     }

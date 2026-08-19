@@ -36,8 +36,7 @@ namespace ProtectiveWards
             Success,
             IncorrectPassword,
             Unavailable,
-            AlreadyPermitted,
-            TooFar
+            AlreadyPermitted
         }
 
         internal enum PasswordSettingsResult
@@ -46,7 +45,6 @@ namespace ProtectiveWards
             MissingPassword,
             NotAuthorized,
             Unavailable,
-            TooFar,
             PasswordTooLong
         }
 
@@ -414,10 +412,6 @@ namespace ProtectiveWards
                     break;
                 case PasswordEntryResult.AlreadyPermitted:
                     player.Message(MessageHud.MessageType.Center, "$pw_ward_password_already_permitted");
-                    ClosePrompt();
-                    break;
-                case PasswordEntryResult.TooFar:
-                    player.Message(MessageHud.MessageType.Center, "$pw_ward_password_too_far");
                     ClosePrompt();
                     break;
                 default:
