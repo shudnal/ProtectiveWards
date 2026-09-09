@@ -685,6 +685,7 @@ namespace ProtectiveWards
             wardDemisterEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             setWardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customRange);
             wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);
+            supressSpawnInRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customColor);
             wardEmissionColor.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultVec3(s_color);
             wardEmissionColorMultiplier.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_colorMultiplier);
@@ -2935,10 +2936,9 @@ namespace ProtectiveWards
                 return;
 
             defaultRange = WardRangeSettings.Clamp(defaultRange);
-            if (Math.Abs(ward.m_radius - defaultRange) < 0.001f)
-                return;
+            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - defaultRange) >= 0.001f)
+                SetWardRange(ward, defaultRange);
 
-            SetWardRange(ward, defaultRange);
             SetWardPlayerBase(ward, defaultRange);
         }
 
@@ -2964,8 +2964,8 @@ namespace ProtectiveWards
             if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);
-                SetWardPlayerBase(ward, range);
             }
+            SetWardPlayerBase(ward, range);
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Awake))]
