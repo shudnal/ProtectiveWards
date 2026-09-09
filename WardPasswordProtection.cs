@@ -390,6 +390,9 @@ namespace ProtectiveWards
 
         private static void HandlePasswordEntryResult(ZDOID wardID, PasswordEntryResult result)
         {
+            if (s_panel == null || !s_promptWardID.Equals(wardID))
+                return;
+
             Player player = Player.m_localPlayer;
             if (player == null)
                 return;
@@ -628,9 +631,9 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Player), nameof(Player.Update))]
         private static class Player_Update_ClosePasswordPrompt
         {
-            private static void Postfix()
+            private static void Postfix(Player __instance)
             {
-                if (s_panel == null)
+                if (__instance != Player.m_localPlayer || s_panel == null)
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))

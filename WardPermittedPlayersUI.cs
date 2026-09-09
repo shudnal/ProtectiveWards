@@ -28,6 +28,7 @@ namespace ProtectiveWards
         private static bool s_rpcRegistered;
         private static bool s_inputBlocked;
         private static bool s_updatePending;
+        private static ZDOID s_pendingWardID = ZDOID.None;
 
         internal static bool IsRequestPending => s_updatePending;
 
@@ -88,6 +89,7 @@ namespace ProtectiveWards
             s_page = 0;
             s_permittedPlayers.Clear();
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             SetInputBlocked(false);
         }
 
@@ -315,6 +317,7 @@ namespace ProtectiveWards
             package.Write(query ?? "");
 
             s_updatePending = true;
+            s_pendingWardID = wardID;
             if (ZNet.instance?.IsServer() == true)
             {
                 RPC_UpdatePermittedPlayersServer(0L, new ZPackage(package.GetArray()));
@@ -328,6 +331,7 @@ namespace ProtectiveWards
             }
 
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
             Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_permitted_unavailable");
             return false;
@@ -462,11 +466,15 @@ namespace ProtectiveWards
         private static void RPC_UpdatePermittedPlayersResultClient(long _, ZPackage package)
         {
             ZDOID wardID = package.ReadZDOID();
+            if (!s_updatePending || !s_pendingWardID.Equals(wardID))
+                return;
+
             PermittedPlayerAction action = (PermittedPlayerAction)package.ReadInt();
             PermittedPlayerResult result = (PermittedPlayerResult)package.ReadInt();
             string detail = package.ReadString();
             int count = package.ReadInt();
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
 
             List<KeyValuePair<long, string>> permitted = new(count);
@@ -545,9 +553,9 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Player), nameof(Player.Update))]
         private static class Player_Update_ClosePermittedPlayersUI
         {
-            private static void Postfix()
+            private static void Postfix(Player __instance)
             {
-                if (s_panel == null)
+                if (__instance != Player.m_localPlayer || s_panel == null)
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))
