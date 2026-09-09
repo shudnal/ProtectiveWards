@@ -141,9 +141,7 @@ namespace ProtectiveWards
 
         private static bool IsActiveBackgroundWard(ZDO zdo)
         {
-            return WardZdoUtils.IsWard(zdo)
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !WardExpiration.IsExpired(zdo);
+            return WardExpiration.IsWardActive(zdo);
         }
 
         internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)

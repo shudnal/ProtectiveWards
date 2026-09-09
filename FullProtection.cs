@@ -259,12 +259,7 @@ namespace ProtectiveWards
             return true;
         }
 
-        private static bool IsActiveWardZdo(ZDO zdo)
-        {
-            return zdo.IsWard()
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
-        }
+        private static bool IsActiveWardZdo(ZDO zdo) => WardExpiration.IsWardActive(zdo);
 
         private static void RegisterSaddleUserRPC()
         {

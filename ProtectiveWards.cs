@@ -1697,12 +1697,7 @@ namespace ProtectiveWards
             return zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings);
         }
 
-        private static bool IsActiveWardZdoForSettings(ZDO zdo)
-        {
-            return zdo.IsWard()
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
-        }
+        private static bool IsActiveWardZdoForSettings(ZDO zdo) => WardExpiration.IsWardActive(zdo);
 
         internal readonly struct RoutedPlayerContext
         {
@@ -2208,8 +2203,7 @@ namespace ProtectiveWards
                 || s_activatingConnectedWardZdos
                 || !WardZdoUtils.IsWard(rootWard)
                 || requesterID == 0L
-                || !rootWard.GetBool(ZDOVars.s_enabled, false)
-                || WardExpiration.IsExpired(rootWard))
+                || !WardExpiration.IsWardActive(rootWard))
                 return;
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;

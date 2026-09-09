@@ -195,12 +195,7 @@ namespace ProtectiveWards
             return false;
         }
 
-        private static bool IsActiveForExpirationConnectedAccess(ZDO zdo)
-        {
-            return zdo.IsWard()
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !IsExpired(zdo);
-        }
+        private static bool IsActiveForExpirationConnectedAccess(ZDO zdo) => WardExpiration.IsWardActive(zdo);
 
         private static void RefreshActivity(ZDO zdo, RefreshingPlayer player, long now)
         {
@@ -233,6 +228,16 @@ namespace ProtectiveWards
         internal static bool IsExpired(ZDO zdo)
         {
             return zdo != null && zdo.GetBool(s_expirationExpired, false);
+        }
+
+        internal static bool IsEffectivelyExpired(ZDO zdo)
+        {
+            return wardExpirationMinutes.Value > 0 && !ZNet.IsSinglePlayer && !IsPermitEveryone(zdo) && IsExpired(zdo);
+        }
+
+        internal static bool IsWardActive(ZDO zdo)
+        {
+            return zdo.IsWard() && zdo.GetBool(ZDOVars.s_enabled, false) && !IsEffectivelyExpired(zdo);
         }
 
         private static bool CanReactivate(ZDO zdo, long playerID)
@@ -317,9 +322,10 @@ namespace ProtectiveWards
                 return;
 
             ZDO zdo = WardZdoUtils.GetWard(wardID);
-            if (zdo == null)
+            if (zdo == null || !zdo.HasDirectWardAccess(requester.PlayerID) || IsEffectivelyExpired(zdo))
                 return;
 
+            // The owner notification can arrive before the enabled ZDO value reaches the server.
             if (!zdo.GetBool(ZDOVars.s_enabled, false))
                 zdo.Set(ZDOVars.s_enabled, true);
 
@@ -393,7 +399,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, ref bool __result)
             {
-                if (wardExpirationMinutes.Value <= 0 || IsPermitEveryone(__instance) || !IsExpired(__instance))
+                if (!IsEffectivelyExpired(__instance.GetWardZDO()))
                     return true;
 
                 __result = false;
@@ -406,7 +412,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(PrivateArea __instance, Humanoid human, bool hold, ref bool __result)
             {
-                if (hold || wardExpirationMinutes.Value <= 0 || IsPermitEveryone(__instance) || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.ManualInteraction)
+                if (hold || !IsEffectivelyExpired(__instance.GetWardZDO()) || wardExpirationReactivationMode.Value != WardExpirationReactivationMode.ManualInteraction)
                     return true;
 
                 if (!IsExpired(__instance))
@@ -428,7 +434,7 @@ namespace ProtectiveWards
         {
             private static void Postfix(PrivateArea __instance, StringBuilder text)
             {
-                if (wardExpirationMinutes.Value <= 0 || IsPermitEveryone(__instance) || !IsExpired(__instance))
+                if (!IsEffectivelyExpired(__instance.GetWardZDO()))
                     return;
 
                 text.Append("\n<color=orange>$pw_ward_expiration_expired</color>");
