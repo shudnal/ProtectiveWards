@@ -1,0 +1,68 @@
+name: Apply Valheim 1.0.7 compatibility fix
+on:
+  push:
+    branches: [fix/2.0.8-release-fixes]
+    paths: [.github/workflows/apply-valheim-1.0.7-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply exact compatibility fix and validate syntax
+        shell: python
+        run: |
+          import os, pathlib, subprocess
+
+          def git(*args, **kwargs):
+              return subprocess.run(['git', *args], check=True, **kwargs)
+
+          parent = git('rev-parse', 'HEAD^', capture_output=True, text=True).stdout.strip()
+          assert parent == '303c0d1f1eca9e2a163f0ad8f201e6f5a8c7bf85', 'Unexpected branch baseline'
+
+          path = pathlib.Path('FullProtection.cs')
+          text = path.read_text(encoding='utf-8')
+          before = '''        [HarmonyPatch(typeof(Character), nameof(Character.AddFireDamage))]
+        public static class Character_AddFireDamage_IndirectFireDamageProtection
+        {
+            private static void Prefix(Character __instance, ref float damage)
+'''
+          after = '''        [HarmonyPatch]
+        public static class Character_AddFireDamage_IndirectFireDamageProtection
+        {
+            private static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(typeof(Character), nameof(Character.AddFireDamage), new[] { typeof(float), typeof(short) })
+                       ?? AccessTools.Method(typeof(Character), nameof(Character.AddFireDamage), new[] { typeof(float) });
+            }
+
+            private static void Prefix(Character __instance, ref float damage)
+'''
+          assert text.count(before) == 1, 'Expected Character.AddFireDamage patch block not found exactly once'
+          text = text.replace(before, after)
+          path.write_text(text, encoding='utf-8')
+
+          git('diff', '--check')
+          assert 'typeof(float), typeof(short)' in text
+          assert '?? AccessTools.Method(typeof(Character), nameof(Character.AddFireDamage), new[] { typeof(float) })' in text
+
+          check = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pw-syntax-validation'
+          check.mkdir(exist_ok=True)
+          major = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
+          project = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net' + major + '.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference><Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference></ItemGroup></Project>'
+          (check / 'Syntax.csproj').write_text(project)
+          program = 'using Microsoft.CodeAnalysis; using Microsoft.CodeAnalysis.CSharp; var files=Directory.GetFiles(args[0],"*.cs",SearchOption.AllDirectories).Where(p=>!p.Contains(Path.DirectorySeparatorChar+".git"+Path.DirectorySeparatorChar)).ToArray(); int errors=0; foreach(var f in files){var t=CSharpSyntaxTree.ParseText(File.ReadAllText(f),new CSharpParseOptions(LanguageVersion.CSharp11),f); foreach(var d in t.GetDiagnostics().Where(d=>d.Severity==DiagnosticSeverity.Error)){Console.WriteLine(d); errors++;}} Console.WriteLine($"C# 11 syntax validation: {files.Length} files, {errors} errors."); return errors==0?0:1;'
+          (check / 'Program.cs').write_text(program)
+          subprocess.run(['dotnet', 'run', '--project', str(check / 'Syntax.csproj'), '--configuration', 'Release', '--', str(pathlib.Path.cwd())], check=True)
+
+          git('add', 'FullProtection.cs')
+          git('diff', '--cached', '--check')
+          git('config', 'user.name', 'shudnal')
+          git('config', 'user.email', '20457922+shudnal@users.noreply.github.com')
+          git('commit', '-m', 'Support Valheim 1.0.7 fire damage signature')
+          git('push', 'origin', 'HEAD:refs/heads/fix/2.0.8-release-fixes')
