@@ -210,7 +210,7 @@ namespace ProtectiveWards
 
         internal static void Open(PrivateArea ward)
         {
-            if (s_applyPending || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (HasPendingUserOperation() || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
             WardPermittedPlayersUI.Close();
@@ -313,6 +313,26 @@ namespace ProtectiveWards
 
             GUIManager.BlockInput(blocked);
             s_inputBlocked = blocked;
+        }
+
+        private static bool HasPendingUserOperation()
+        {
+            return s_applyPending
+                   || s_passwordSettingsPending
+                   || s_guildBindingPending
+                   || WardPermittedPlayersUI.IsRequestPending;
+        }
+
+        private static void TryClose()
+        {
+            if (!HasPendingUserOperation())
+                Close();
+        }
+
+        private static void UpdateCloseControls()
+        {
+            if (s_cancelButton != null)
+                s_cancelButton.interactable = !HasPendingUserOperation();
         }
 
         private static void CaptureCurrentRows()
@@ -766,7 +786,7 @@ namespace ProtectiveWards
                     width: 170f,
                     height: 50f);
                 s_cancelButton = cancelButton.GetComponent<Button>();
-                s_cancelButton.onClick.AddListener(Close);
+                s_cancelButton.onClick.AddListener(TryClose);
                 UpdateApplyControls();
             }
         }
@@ -850,8 +870,7 @@ namespace ProtectiveWards
             }
             if (s_applyButton != null)
                 s_applyButton.interactable = interactable;
-            if (s_cancelButton != null)
-                s_cancelButton.interactable = interactable;
+            UpdateCloseControls();
 
             UpdateGuildControls();
             UpdatePasswordStatusControls();
@@ -1051,6 +1070,8 @@ namespace ProtectiveWards
                 if (buttonText != null)
                     buttonText.text = GetGuildBindingButtonText();
             }
+
+            UpdateCloseControls();
         }
 
         private static void SetNewPassword()
@@ -1192,6 +1213,8 @@ namespace ProtectiveWards
                 s_setPasswordButton.interactable = interactable;
             if (s_removePasswordButton != null)
                 s_removePasswordButton.interactable = interactable && s_passwordExists;
+
+            UpdateCloseControls();
         }
 
         private static ZPackage CreateApplyPackage()
@@ -1709,6 +1732,8 @@ namespace ProtectiveWards
         {
             if (s_addPermittedPlayerButton != null)
                 s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending && !s_applyPending;
+
+            UpdateCloseControls();
         }
 
         internal static void HandlePermittedPlayerAdded(ZDOID wardID)
@@ -2137,9 +2162,9 @@ namespace ProtectiveWards
                 if (__instance != Player.m_localPlayer || s_panel == null || s_panelOpenedFrame == Time.frameCount)
                     return;
 
-                // CanvasGroup does not gate keyboard handling in Player.Update.
-                // Keep the current apply state until its responses are processed.
-                if (s_applyPending)
+                // CanvasGroup and Button.interactable do not gate keyboard handling in Player.Update.
+                // Keep every asynchronous settings operation alive until its response is processed.
+                if (HasPendingUserOperation())
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))
