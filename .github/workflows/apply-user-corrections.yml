@@ -1,0 +1,248 @@
+name: Apply release configuration corrections
+on:
+  push:
+    branches: [fix/2.0.8-release-fixes]
+    paths: [.github/workflows/apply-user-corrections.yml]
+permissions:
+  contents: write
+concurrency:
+  group: protectivewards-release-fixes-write
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'shudnal/ProtectiveWards' && github.ref == 'refs/heads/fix/2.0.8-release-fixes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply exact corrections and validate syntax
+        shell: python
+        run: |
+          import json, os, pathlib, subprocess, xml.etree.ElementTree as ET
+
+          ROOT = pathlib.Path.cwd()
+
+          def git(*args, **kwargs):
+              return subprocess.run(['git', *args], check=True, **kwargs)
+
+          def read_text(path):
+              path = pathlib.Path(path)
+              data = path.read_bytes()
+              bom = data.startswith(b'\xef\xbb\xbf')
+              if bom:
+                  data = data[3:]
+              return data.decode('utf-8'), bom
+
+          def write_text(path, text, bom=False):
+              data = text.encode('utf-8')
+              if bom:
+                  data = b'\xef\xbb\xbf' + data
+              pathlib.Path(path).write_bytes(data)
+
+          def edit(path, replacements):
+              text, bom = read_text(path)
+              for before, after, expected in replacements:
+                  actual = text.count(before)
+                  assert actual == expected, f'{path}: expected {expected}, found {actual}: {before[:120]!r}'
+                  text = text.replace(before, after)
+              write_text(path, text, bom)
+
+          parent = git('rev-parse', 'HEAD^', capture_output=True, text=True).stdout.strip()
+          assert parent == 'b5ca8743021854984ef3045af091bc5381237c84', 'Unexpected branch baseline'
+          git('config', 'user.name', 'shudnal')
+          git('config', 'user.email', '20457922+shudnal@users.noreply.github.com')
+
+          # 1. Move range limits into the existing Jotunn-synchronized configuration.
+          edit('ProtectiveWards.cs', [
+              ('    [BepInDependency(WardRangeSettings.SyncPluginGuid, BepInDependency.DependencyFlags.HardDependency)]\n', '', 1),
+              ('        public static ConfigEntry<float> wardRange;\n', '        public static ConfigEntry<float> wardRange;\n        public static ConfigEntry<Vector2> wardRangeLimits;\n', 1),
+              ('            ConfigInit();\n            WardRangeSettings.Initialize(Config);\n            CompatibilityHelper.CheckForCompatibility();', '            ConfigInit();\n            CompatibilityHelper.CheckForCompatibility();', 1),
+              ('            WardRangeSettings.Shutdown();\n', '', 1),
+              ('            wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window.");\n',
+               '            wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window.");\n'
+               '            wardRangeLimits = config("Range", "Ward range limits", new Vector2(1f, 200f), "Minimum (x) and maximum (y) effective ward radius in meters, including saved per-ward values and the default radius. This setting is server-controlled and synchronized by Jotunn. Invalid endpoints use 1 and 200 respectively; reversed limits are sorted.");\n', 1),
+              ('            wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);\n',
+               '            wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);\n            wardRangeLimits.SettingChanged += (sender, args) => RefreshWardRangeLimits();\n', 1),
+              ('WardRangeSettings.Clamp(', 'ClampWardRange(', 3),
+              ('        internal static void RefreshWardRangeLimits()\n        {',
+               '        private static readonly Vector2 DefaultWardRangeLimits = new(1f, 200f);\n\n'
+               '        internal static float ClampWardRange(float radius)\n        {\n'
+               '            Vector2 limits = wardRangeLimits?.Value ?? DefaultWardRangeLimits;\n'
+               '            float minimum = IsValidWardRangeLimit(limits.x) ? limits.x : DefaultWardRangeLimits.x;\n'
+               '            float maximum = IsValidWardRangeLimit(limits.y) ? limits.y : DefaultWardRangeLimits.y;\n'
+               '            if (minimum > maximum)\n                (minimum, maximum) = (maximum, minimum);\n\n'
+               '            if (float.IsNaN(radius))\n                radius = 32f;\n\n'
+               '            return Mathf.Clamp(radius, minimum, maximum);\n        }\n\n'
+               '        private static bool IsValidWardRangeLimit(float value) => value > 0f && !float.IsInfinity(value);\n\n'
+               '        internal static void RefreshWardRangeLimits()\n        {', 1),
+          ])
+          edit('WardSettingsUI.cs', [('WardRangeSettings.Clamp(', 'ClampWardRange(', 4)])
+          edit('WardZdoUtils.cs', [('WardRangeSettings.Clamp(', 'ClampWardRange(', 3)])
+          edit('ProtectiveWards.csproj', [
+              ('    <Reference Include="ConditionalConfigSync">\n      <HintPath>..\\Assemblies\\Managers\\ConditionalConfigSync.dll</HintPath>\n      <Private>False</Private>\n    </Reference>\n', '', 1),
+              ('    <Compile Include="WardRangeSettings.cs" />\n', '', 1),
+          ])
+          edit('package/thunderstore/ProtectiveWards/manifest.json', [
+              ('"ValheimModding-YamlDotNet-16.3.0"', '"ValheimModding-YamlDotNet-16.3.1"', 1),
+              ('    "ValheimModding-Jotunn-2.29.2",\n    "shudnal-ConditionalConfigSync-1.0.5"', '    "ValheimModding-Jotunn-2.29.2"', 1),
+          ])
+          edit('README.md', [
+              ('- Conditional Config Sync 1.0.5\n', '', 1),
+              ('This setting is server-controlled by default through Conditional Config Sync and can be reassigned by server policy. Existing settings retain their Jotunn synchronization.',
+               'This setting is server-controlled and synchronized by Jotunn, like the other server configuration entries.', 1),
+          ])
+          edit('package/thunderstore/ProtectiveWards/README.md', [
+              ('- Conditional Config Sync 1.0.5\n', '', 1),
+              ('It is server-controlled by default through Conditional Config Sync and supports server policy overrides. Other settings retain Jotunn synchronization.',
+               'It is server-controlled and synchronized by Jotunn, like the other server configuration entries.', 1),
+          ])
+          pathlib.Path('WardRangeSettings.cs').unlink()
+          git('add', '-A')
+          git('diff', '--cached', '--check')
+          git('commit', '-m', 'Keep ward range limits in Jotunn server configuration')
+
+          # 2. Use Harmony reflection helpers, always scoped to the known optional-mod assembly.
+          helper = '''using HarmonyLib;
+          using System;
+          using System.Linq;
+          using System.Reflection;
+
+          namespace ProtectiveWards.Compatibility
+          {
+              internal static class CompatibilityHelper
+              {
+                  internal static Type FindType(Assembly assembly, string fullName)
+                  {
+                      if (assembly == null || string.IsNullOrEmpty(fullName))
+                          return null;
+
+                      return AccessTools.GetTypesFromAssembly(assembly)
+                          .FirstOrDefault(type => string.Equals(type.FullName, fullName, StringComparison.Ordinal));
+                  }
+
+                  internal static void CheckForCompatibility()
+                  {
+                      GuildsCompat.CheckForCompatibility();
+                      EpicLootCompat.CheckForCompatibility();
+                  }
+
+                  internal static void ResetRuntimeState()
+                  {
+                      GuildsCompat.ResetRuntimeState();
+                  }
+              }
+          }
+          '''.replace('          ', '')
+          write_text('Compatibility/CompatibilityHelper.cs', helper)
+          edit('Compatibility/EpicLootCompat.cs', [
+              ('            Type enchantingTableType = epicLootAssembly?.GetType(EnchantingTableTypeName, throwOnError: false, ignoreCase: false);',
+               '            Type enchantingTableType = CompatibilityHelper.FindType(epicLootAssembly, EnchantingTableTypeName);', 1),
+              ('                enchantingTableType = legacyUnityLibAssembly?.GetType(EnchantingTableTypeName, throwOnError: false, ignoreCase: false);',
+               '                enchantingTableType = CompatibilityHelper.FindType(legacyUnityLibAssembly, EnchantingTableTypeName);', 1),
+              ('            s_enchantingTableInteract = enchantingTableType.GetMethod(nameof(Interactable.Interact),\n                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null,\n                new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, null);',
+               '            s_enchantingTableInteract = AccessTools.Method(\n                enchantingTableType,\n                nameof(Interactable.Interact),\n                new[] { typeof(Humanoid), typeof(bool), typeof(bool) });', 1),
+          ])
+          edit('Compatibility/GuildsCompat.cs', [
+              ('using System.Linq;\n', '', 1),
+              ('            s_apiType = s_assembly.GetType(ApiTypeName);\n            s_playerReferenceType = s_assembly.GetType(PlayerReferenceTypeName);\n            s_guildType = s_assembly.GetType(GuildTypeName);\n            s_guildGeneralType = s_assembly.GetType(GuildGeneralTypeName);',
+               '            s_apiType = CompatibilityHelper.FindType(s_assembly, ApiTypeName);\n            s_playerReferenceType = CompatibilityHelper.FindType(s_assembly, PlayerReferenceTypeName);\n            s_guildType = CompatibilityHelper.FindType(s_assembly, GuildTypeName);\n            s_guildGeneralType = CompatibilityHelper.FindType(s_assembly, GuildGeneralTypeName);', 1),
+              ('            s_getPlayerGuildByReference = s_apiType\n                .GetMethods(BindingFlags.Public | BindingFlags.Static)\n                .FirstOrDefault(method => method.Name == "GetPlayerGuild"\n                                          && method.GetParameters().Length == 1\n                                          && method.GetParameters()[0].ParameterType == s_playerReferenceType);',
+               '            s_getPlayerGuildByReference = AccessTools.Method(s_apiType, "GetPlayerGuild", new[] { s_playerReferenceType });', 1),
+          ])
+          git('add', 'Compatibility')
+          git('diff', '--cached', '--check')
+          git('commit', '-m', 'Use scoped AccessTools helpers for optional compatibility')
+
+          # 3. Restore local build/package preparation only. No Nexus or Thunderstore upload target is added.
+          targets = '''<?xml version="1.0" encoding="utf-8"?>
+          <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+            <Target Name="CopyDLLThunderstore" AfterTargets="UpdateThunderstoreManifestVersion">
+              <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)package\\thunderstore\\$(SolutionName)\\" />
+              <Message Text="Copied to thunderstore package folder." Importance="High" />
+            </Target>
+            <Target Name="UpdateTranslations" AfterTargets="CopyDLLThunderstore">
+              <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -File &quot;$(ProjectDir)UpdateTranslations.ps1&quot;" />
+              <Message Text="Updated embedded translations." Importance="High" />
+            </Target>
+            <Target Name="CopyLanguageFileThunderstore" AfterTargets="UpdateTranslations">
+              <Copy SourceFiles="$(ProjectDir)translations\\English.json" DestinationFiles="$(ProjectDir)package\\thunderstore\\$(SolutionName)\\Protective Wards.English.json" />
+              <Message Text="Copied English.json to thunderstore package folder." Importance="High" />
+            </Target>
+            <Target Name="ZipThunderstore" AfterTargets="CopyLanguageFileThunderstore">
+              <ZipDirectory
+                SourceDirectory="$(ProjectDir)package\\thunderstore\\$(SolutionName)\\"
+                DestinationFile="$(ProjectDir)package\\thunderstore\\$(SolutionName).zip"
+                Overwrite="true" />
+            </Target>
+            <Target Name="CopyDLLPlugins" AfterTargets="CopyDLLThunderstore">
+              <Copy SourceFiles="$(TargetPath)" DestinationFolder="D:\\r2modman\\Valheim\\profiles\\beta\\BepInEx\\plugins\\shudnal-$(SolutionName)\\" />
+              <Message Text="Copied to r2 folder." Importance="High" />
+            </Target>
+          </Project>
+          '''.replace('          ', '')
+          write_text('ILRepack.targets', targets)
+          edit('ProtectiveWards.csproj', [
+              ('  <ItemGroup>\n    <None Include="UpdateThunderstoreManifest.ps1" />\n  </ItemGroup>\n  <ItemGroup>\n    <PackageReference Include="YamlDotNet">',
+               '  <ItemGroup>\n    <Content Include="ILRepack.targets" />\n    <None Include="UpdateThunderstoreManifest.ps1" />\n  </ItemGroup>\n  <ItemGroup>\n    <PackageReference Include="ILRepack.Lib.MSBuild.Task">\n      <Version>2.0.18.2</Version>\n    </PackageReference>\n    <PackageReference Include="YamlDotNet">', 1),
+          ])
+          git('add', 'ILRepack.targets', 'ProtectiveWards.csproj')
+          git('diff', '--cached', '--check')
+          git('commit', '-m', 'Restore local Thunderstore package preparation')
+
+          # Final static validation.
+          git('diff', '--check')
+          assert not pathlib.Path('WardRangeSettings.cs').exists()
+          searchable = []
+          for p in ROOT.rglob('*'):
+              if p.is_file() and '.git' not in p.parts and p.suffix.lower() in {'.cs', '.csproj', '.md', '.json', '.targets', '.ps1'}:
+                  searchable.append(p.read_text(encoding='utf-8-sig', errors='ignore'))
+          all_text = '\n'.join(searchable)
+          assert 'ConditionalConfigSync' not in all_text
+          assert 'WardRangeSettings' not in all_text
+
+          manifest = json.loads(pathlib.Path('package/thunderstore/ProtectiveWards/manifest.json').read_text())
+          assert 'ValheimModding-YamlDotNet-16.3.1' in manifest['dependencies']
+          assert not any('ConditionalConfigSync' in dep for dep in manifest['dependencies'])
+          assert manifest['version_number'] == '2.0.7'
+
+          csproj = pathlib.Path('ProtectiveWards.csproj').read_text()
+          assert '<PackageReference Include="YamlDotNet">\n      <Version>16.3.0</Version>' in csproj
+          assert '<PackageReference Include="ILRepack.Lib.MSBuild.Task">' in csproj
+          assert '<Content Include="ILRepack.targets" />' in csproj
+          ET.parse('ProtectiveWards.csproj')
+          ET.parse('ILRepack.targets')
+          targets_text = pathlib.Path('ILRepack.targets').read_text()
+          for token in ('AfterTargets="UpdateThunderstoreManifestVersion"', 'AfterTargets="CopyDLLThunderstore"',
+                        'AfterTargets="UpdateTranslations"', 'AfterTargets="CopyLanguageFileThunderstore"',
+                        'DestinationFile="$(ProjectDir)package\\thunderstore\\$(SolutionName).zip"'):
+              assert token in targets_text, token
+
+          check = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pw-syntax-validation'
+          check.mkdir(exist_ok=True)
+          major = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
+          project = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net' + major + '.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference><Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference></ItemGroup></Project>'
+          (check / 'Syntax.csproj').write_text(project)
+          (check / 'Program.cs').write_text('''using Microsoft.CodeAnalysis;
+          using Microsoft.CodeAnalysis.CSharp;
+          var files = Directory.GetFiles(args[0], "*.cs", SearchOption.AllDirectories)
+              .Where(path => !path.Contains(Path.DirectorySeparatorChar + ".git" + Path.DirectorySeparatorChar)).ToArray();
+          int errors = 0;
+          foreach (var file in files) {
+              var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file), new CSharpParseOptions(LanguageVersion.CSharp11), file);
+              foreach (var diagnostic in tree.GetDiagnostics().Where(x => x.Severity == DiagnosticSeverity.Error)) {
+                  Console.WriteLine(diagnostic);
+                  errors++;
+              }
+          }
+          Console.WriteLine($"C# 11 syntax validation: {files.Length} files, {errors} errors. This is not a reference-resolved build or runtime test.");
+          return errors == 0 ? 0 : 1;
+          ''')
+          subprocess.run(['dotnet', 'run', '--project', str(check / 'Syntax.csproj'), '--configuration', 'Release', '--', str(ROOT)], check=True)
+
+          print('Final commits:')
+          git('log', '-4', '--format=%H %s')
+          git('push', 'origin', 'HEAD:refs/heads/fix/2.0.8-release-fixes')
