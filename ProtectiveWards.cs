@@ -2016,6 +2016,17 @@ namespace ProtectiveWards
             component.radius = newRadius;
         }
 
+        private static int GetWardMarkerSegmentCount(float radius, float amount)
+        {
+            if (float.IsNaN(amount) || float.IsInfinity(amount))
+                amount = 1f;
+
+            // Marker density is cosmetic and must not allocate an unbounded number of objects.
+            // Use double arithmetic so large, finite configuration values cannot overflow first.
+            double segments = 80d * Math.Max(0f, amount) * (WardRangeSettings.Clamp(radius) / 32d);
+            return (int)Math.Max(0d, Math.Min(4096d, segments));
+        }
+
         private static void SetWardRange(PrivateArea __instance, float range)
         {
             float newRadius = WardRangeSettings.Clamp(range);
@@ -2024,8 +2035,11 @@ namespace ProtectiveWards
 
             __instance.m_radius = newRadius;
             
-            __instance.m_areaMarker.m_radius = newRadius;
-            __instance.m_areaMarker.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (newRadius / 32f));
+            if (__instance.m_areaMarker != null)
+            {
+                __instance.m_areaMarker.m_radius = newRadius;
+                __instance.m_areaMarker.m_nrOfSegments = GetWardMarkerSegmentCount(newRadius, wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f);
+            }
 
             ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
         }
@@ -2256,11 +2270,12 @@ namespace ProtectiveWards
                     return;
 
                 ZDO zdo = ward.m_nview.GetZDO();
-                if (zdo == null || !GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value))
+                if (zdo == null)
                     return;
 
-                float amount = GetWardFloatSetting(zdo, s_circleAmount, wardAreaMarkerAmount.Value);
-                __instance.m_nrOfSegments = (int)(80 * amount * (__instance.m_radius / 32f));
+                float amount = GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value)
+                    ? GetWardFloatSetting(zdo, s_circleAmount, wardAreaMarkerAmount.Value) : 1f;
+                __instance.m_nrOfSegments = GetWardMarkerSegmentCount(__instance.m_radius, amount);
 
                 __state = (!__instance.m_sliceLines && __instance.m_segments.Count == __instance.m_nrOfSegments) || (__instance.m_sliceLines && __instance.m_calcStart == __instance.m_start && __instance.m_calcTurns == __instance.m_turns);
             }
