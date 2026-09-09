@@ -1,0 +1,92 @@
+name: Apply pending operation lifecycle fix
+on:
+  push:
+    branches: [fix/2.0.8-release-fixes]
+    paths: [.github/workflows/apply-pending-operation-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply fix and validate syntax
+        shell: python
+        run: |
+          import os, pathlib, subprocess
+          def git(*args, **kwargs):
+              return subprocess.run(['git', *args], check=True, **kwargs)
+          parent = git('rev-parse', 'HEAD^', capture_output=True, text=True).stdout.strip()
+          assert parent == '516290637955b00d5b2370d828fd8b298a1fbf3a', 'Unexpected branch baseline'
+          path = pathlib.Path('WardSettingsUI.cs')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              ('            if (s_applyPending || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())',
+               '            if (HasPendingUserOperation() || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())'),
+              ('            s_cancelButton.onClick.AddListener(Close);', '            s_cancelButton.onClick.AddListener(TryClose);'),
+              ('            if (s_cancelButton != null)\n                s_cancelButton.interactable = interactable;\n\n            UpdateGuildControls();',
+               '            UpdateCloseControls();\n\n            UpdateGuildControls();'),
+              ('        private static void UpdatePermittedPlayerControls()\n        {\n            if (s_addPermittedPlayerButton != null)\n                s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending && !s_applyPending;\n        }',
+               '        private static void UpdatePermittedPlayerControls()\n        {\n            if (s_addPermittedPlayerButton != null)\n                s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending && !s_applyPending;\n\n            UpdateCloseControls();\n        }'),
+              ('                if (buttonText != null)\n                    buttonText.text = GetGuildBindingButtonText();\n            }\n        }\n\n        private static void SetNewPassword()',
+               '                if (buttonText != null)\n                    buttonText.text = GetGuildBindingButtonText();\n            }\n\n            UpdateCloseControls();\n        }\n\n        private static void SetNewPassword()'),
+              ('            if (s_removePasswordButton != null)\n                s_removePasswordButton.interactable = interactable && s_passwordExists;\n        }\n\n        private static ZPackage CreateApplyPackage()',
+               '            if (s_removePasswordButton != null)\n                s_removePasswordButton.interactable = interactable && s_passwordExists;\n\n            UpdateCloseControls();\n        }\n\n        private static ZPackage CreateApplyPackage()'),
+              ('                // CanvasGroup does not gate keyboard handling in Player.Update.\n                // Keep the current apply state until its responses are processed.\n                if (s_applyPending)\n                    return;',
+               '                // CanvasGroup and Button.interactable do not gate keyboard handling in Player.Update.\n                // Keep every asynchronous settings operation alive until its response is processed.\n                if (HasPendingUserOperation())\n                    return;'),
+          ]
+          for before, after in replacements:
+              assert text.count(before) == 1, before[:100]
+              text = text.replace(before, after)
+          anchor = '''        private static void SetInputBlocked(bool blocked)
+        {
+            if (s_inputBlocked == blocked)
+                return;
+
+            GUIManager.BlockInput(blocked);
+            s_inputBlocked = blocked;
+        }
+'''
+          addition = anchor + '''
+        private static bool HasPendingUserOperation()
+        {
+            return s_applyPending
+                   || s_passwordSettingsPending
+                   || s_guildBindingPending
+                   || WardPermittedPlayersUI.IsRequestPending;
+        }
+
+        private static void TryClose()
+        {
+            if (!HasPendingUserOperation())
+                Close();
+        }
+
+        private static void UpdateCloseControls()
+        {
+            if (s_cancelButton != null)
+                s_cancelButton.interactable = !HasPendingUserOperation();
+        }
+'''
+          assert text.count(anchor) == 1
+          text = text.replace(anchor, addition)
+          path.write_text(text, encoding='utf-8')
+          git('diff', '--check')
+          git('add', 'WardSettingsUI.cs')
+          git('diff', '--cached', '--check')
+          git('config', 'user.name', 'shudnal')
+          git('config', 'user.email', '20457922+shudnal@users.noreply.github.com')
+          git('commit', '-m', 'Keep settings context during standalone async operations')
+
+          check = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pw-syntax-validation'
+          check.mkdir(exist_ok=True)
+          major = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
+          project = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net' + major + '.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference><Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference></ItemGroup></Project>'
+          (check / 'Syntax.csproj').write_text(project)
+          (check / 'Program.cs').write_text('''using Microsoft.CodeAnalysis; using Microsoft.CodeAnalysis.CSharp; var files=Directory.GetFiles(args[0],"*.cs",SearchOption.AllDirectories).Where(p=>!p.Contains(Path.DirectorySeparatorChar+".git"+Path.DirectorySeparatorChar)).ToArray(); int errors=0; foreach(var f in files){var t=CSharpSyntaxTree.ParseText(File.ReadAllText(f),new CSharpParseOptions(LanguageVersion.CSharp11),f); foreach(var d in t.GetDiagnostics().Where(d=>d.Severity==DiagnosticSeverity.Error)){Console.WriteLine(d); errors++;}} Console.WriteLine($"C# 11 syntax validation: {files.Length} files, {errors} errors."); return errors==0?0:1;''')
+          subprocess.run(['dotnet','run','--project',str(check/'Syntax.csproj'),'--configuration','Release','--',str(pathlib.Path.cwd())],check=True)
+          git('push','origin','HEAD:refs/heads/fix/2.0.8-release-fixes')
