@@ -210,7 +210,7 @@ namespace ProtectiveWards
 
         internal static void Open(PrivateArea ward)
         {
-            if (!ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (s_applyPending || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
             WardPermittedPlayersUI.Close();
@@ -881,7 +881,8 @@ namespace ProtectiveWards
 
         private static void OnApplySettingsResult(ZDOID wardID, ApplySettingsResult result)
         {
-            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply)
+            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply
+                || s_waitingPasswordApply || s_pendingGeneralPackage != null)
                 return;
 
             if (result == ApplySettingsResult.Success)
@@ -1687,7 +1688,7 @@ namespace ProtectiveWards
 
         private static void RequestAddOnlinePlayer()
         {
-            if (s_zdo == null || WardPermittedPlayersUI.IsRequestPending)
+            if (s_zdo == null || s_applyPending || WardPermittedPlayersUI.IsRequestPending)
                 return;
 
             string query = s_permittedPlayerInput != null
@@ -2134,6 +2135,11 @@ namespace ProtectiveWards
             private static void Postfix(Player __instance)
             {
                 if (__instance != Player.m_localPlayer || s_panel == null || s_panelOpenedFrame == Time.frameCount)
+                    return;
+
+                // CanvasGroup does not gate keyboard handling in Player.Update.
+                // Keep the current apply state until its responses are processed.
+                if (s_applyPending)
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))
