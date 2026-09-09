@@ -268,6 +268,7 @@ namespace ProtectiveWards
         public static readonly int s_permitEveryone = "pw_permit_everyone".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
+        private static Material s_forceFieldMaterial;
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
         private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
         private static readonly Dictionary<PrivateArea, uint> s_wardVisualDataRevisions = new();
@@ -2085,7 +2086,10 @@ namespace ProtectiveWards
                     yield break;
 
                 if (Game.IsPaused())
-                    yield return new WaitForSeconds(2.0f);
+                {
+                    yield return new WaitForSecondsRealtime(2f);
+                    continue;
+                }
 
                 List<Piece> pieces = new();
 
@@ -2134,7 +2138,10 @@ namespace ProtectiveWards
                     yield break;
 
                 if (Game.IsPaused())
-                    yield return new WaitForSeconds(2.0f);
+                {
+                    yield return new WaitForSecondsRealtime(2f);
+                    continue;
+                }
 
                 if (!wardIsClosing.TryGetValue(ward, out int secondsToClose))
                     yield break;
@@ -2906,7 +2913,7 @@ namespace ProtectiveWards
                         return false;
 
                     LogInfo($"Passive repairing begins");
-                    instance.StartCoroutine(PassiveRepairEffect(__instance, player));
+                    __instance.StartCoroutine(PassiveRepairEffect(__instance, player));
                     return false;
                 }
                 else if (!__instance.IsEnabled()
@@ -3147,14 +3154,24 @@ namespace ProtectiveWards
                     return;
 
                 haldor.m_prefab.Load();
-                forceField = Instantiate(haldor.m_prefab.Asset.transform.Find(forceFieldName)?.gameObject);
-                forceField.name = "ProtectiveWards_bubble";
+                try
+                {
+                    GameObject source = haldor.m_prefab.Asset?.transform.Find(forceFieldName)?.gameObject;
+                    MeshRenderer sourceRenderer = source?.GetComponent<MeshRenderer>();
+                    if (sourceRenderer == null || sourceRenderer.sharedMaterial == null)
+                        return;
 
-                MeshRenderer fieldRenderer = forceField.GetComponent<MeshRenderer>();
-                fieldRenderer.sharedMaterial = new Material(fieldRenderer.sharedMaterial);
-                fieldRenderer.sharedMaterial.renderQueue++;
-
-                haldor.m_prefab.Release();
+                    forceField = Instantiate(source);
+                    forceField.SetActive(false);
+                    forceField.name = "ProtectiveWards_bubble";
+                    s_forceFieldMaterial = new Material(sourceRenderer.sharedMaterial);
+                    s_forceFieldMaterial.renderQueue++;
+                    forceField.GetComponent<MeshRenderer>().sharedMaterial = s_forceFieldMaterial;
+                }
+                finally
+                {
+                    haldor.m_prefab.Release();
+                }
 
                 RefreshAllLoadedWardVisuals();
             }
@@ -3166,6 +3183,8 @@ namespace ProtectiveWards
             private static void Postfix()
             {
                 UnityEngine.Object.Destroy(forceField);
+                UnityEngine.Object.Destroy(s_forceFieldMaterial);
+                s_forceFieldMaterial = null;
                 forceField = null;
                 forceFieldDemister = null;
                 lightningAOE = null;
