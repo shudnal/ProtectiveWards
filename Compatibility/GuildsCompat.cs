@@ -3,7 +3,6 @@ using BepInEx.Bootstrap;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using static ProtectiveWards.ProtectiveWards;
@@ -79,10 +78,10 @@ namespace ProtectiveWards.Compatibility
                 return;
 
             s_assembly = s_plugin.Instance.GetType().Assembly;
-            s_apiType = s_assembly.GetType(ApiTypeName);
-            s_playerReferenceType = s_assembly.GetType(PlayerReferenceTypeName);
-            s_guildType = s_assembly.GetType(GuildTypeName);
-            s_guildGeneralType = s_assembly.GetType(GuildGeneralTypeName);
+            s_apiType = CompatibilityHelper.FindType(s_assembly, ApiTypeName);
+            s_playerReferenceType = CompatibilityHelper.FindType(s_assembly, PlayerReferenceTypeName);
+            s_guildType = CompatibilityHelper.FindType(s_assembly, GuildTypeName);
+            s_guildGeneralType = CompatibilityHelper.FindType(s_assembly, GuildGeneralTypeName);
 
             if (s_apiType == null
                 || s_playerReferenceType == null
@@ -94,11 +93,7 @@ namespace ProtectiveWards.Compatibility
             }
 
             s_getPlayerGuildByPlayer = AccessTools.Method(s_apiType, "GetPlayerGuild", new[] { typeof(Player) });
-            s_getPlayerGuildByReference = s_apiType
-                .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .FirstOrDefault(method => method.Name == "GetPlayerGuild"
-                                          && method.GetParameters().Length == 1
-                                          && method.GetParameters()[0].ParameterType == s_playerReferenceType);
+            s_getPlayerGuildByReference = AccessTools.Method(s_apiType, "GetPlayerGuild", new[] { s_playerReferenceType });
             s_playerReferenceFromPlayerInfo = AccessTools.Method(s_playerReferenceType, "fromPlayerInfo", new[] { typeof(ZNet.PlayerInfo) });
             s_guildNameField = AccessTools.Field(s_guildType, "Name");
             s_guildGeneralField = AccessTools.Field(s_guildType, "General");

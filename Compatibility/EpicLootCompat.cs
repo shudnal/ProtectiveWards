@@ -29,22 +29,23 @@ namespace ProtectiveWards.Compatibility
             // EpicLoot 0.13+ owns the live table type in the plugin assembly. Prefer it even
             // when an obsolete EpicLoot-UnityLib.dll was left behind during an upgrade.
             Assembly epicLootAssembly = pluginInfo.Instance?.GetType().Assembly;
-            Type enchantingTableType = epicLootAssembly?.GetType(EnchantingTableTypeName, throwOnError: false, ignoreCase: false);
+            Type enchantingTableType = CompatibilityHelper.FindType(epicLootAssembly, EnchantingTableTypeName);
             if (enchantingTableType == null)
             {
                 // Before 0.13 the table lives in a separate Unity library.
                 Assembly legacyUnityLibAssembly = AppDomain.CurrentDomain.GetAssemblies().FirstOrDefault(assembly =>
                     string.Equals(assembly.GetName().Name, LegacyUnityLibAssemblyName, StringComparison.OrdinalIgnoreCase));
-                enchantingTableType = legacyUnityLibAssembly?.GetType(EnchantingTableTypeName, throwOnError: false, ignoreCase: false);
+                enchantingTableType = CompatibilityHelper.FindType(legacyUnityLibAssembly, EnchantingTableTypeName);
             }
 
             if (enchantingTableType == null)
                 return;
 
             // Optional compatibility discovery must stay silent when the API is absent.
-            s_enchantingTableInteract = enchantingTableType.GetMethod(nameof(Interactable.Interact),
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null,
-                new[] { typeof(Humanoid), typeof(bool), typeof(bool) }, null);
+            s_enchantingTableInteract = AccessTools.Method(
+                enchantingTableType,
+                nameof(Interactable.Interact),
+                new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
             if (s_enchantingTableInteract == null || s_enchantingTableInteract.ReturnType != typeof(bool))
                 return;
 
