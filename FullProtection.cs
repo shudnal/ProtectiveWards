@@ -1711,7 +1711,6 @@ namespace ProtectiveWards
                     || method.DeclaringType == null
                     || method.DeclaringType == typeof(Interactable)
                     || method.IsAbstract
-                    || method.IsVirtual
                     || ExcludedInteractableTypes.Contains(method.DeclaringType))
                     return false;
 
