@@ -1,0 +1,93 @@
+name: Apply ward settings input fix
+on:
+  push:
+    branches: [fix/2.0.8-release-fixes]
+    paths: [.github/workflows/apply-settings-input-fix.yml]
+permissions:
+  contents: write
+concurrency:
+  group: protectivewards-release-fixes-write
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'shudnal/ProtectiveWards' && github.ref == 'refs/heads/fix/2.0.8-release-fixes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Apply exact edits and validate CSharp syntax
+        shell: python
+        run: |
+          import hashlib, os, pathlib, subprocess
+
+          def git(*args, **kwargs):
+              return subprocess.run(['git', *args], check=True, **kwargs)
+
+          parent = git('rev-parse', 'HEAD^', capture_output=True, text=True).stdout.strip()
+          assert parent == '648e031677619207b186561078721863423e39be', 'Unexpected branch baseline'
+          path = pathlib.Path('WardSettingsUI.cs')
+          original = path.read_bytes()
+          blob = hashlib.sha1(b'blob ' + str(len(original)).encode() + b'\0' + original).hexdigest()
+          assert blob == 'e597958ec0c9f7b7e46199c64e23eef0be1a7548', 'Unexpected source content'
+          content = original.decode('utf-8')
+          edits = [
+              (
+                  'if (!ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())',
+                  'if (s_applyPending || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())'
+              ),
+              (
+                  'if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply)',
+                  'if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply\n'
+                  '                || s_waitingPasswordApply || s_pendingGeneralPackage != null)'
+              ),
+              (
+                  'if (s_zdo == null || WardPermittedPlayersUI.IsRequestPending)',
+                  'if (s_zdo == null || s_applyPending || WardPermittedPlayersUI.IsRequestPending)'
+              ),
+              (
+                  '                if (ZInput.GetKeyDown(KeyCode.Escape))\n',
+                  '                // CanvasGroup does not gate keyboard handling in Player.Update.\n'
+                  '                // Keep the current apply state until its responses are processed.\n'
+                  '                if (s_applyPending)\n'
+                  '                    return;\n\n'
+                  '                if (ZInput.GetKeyDown(KeyCode.Escape))\n'
+              )
+          ]
+          for before, after in edits:
+              assert content.count(before) == 1, 'Expected one exact replacement: ' + before
+              content = content.replace(before, after)
+          path.write_bytes(content.encode('utf-8'))
+          git('diff', '--check')
+          git('diff', '--', 'WardSettingsUI.cs')
+          assert set(git('diff', '--name-only', capture_output=True, text=True).stdout.splitlines()) == {'WardSettingsUI.cs'}
+
+          check = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pw-syntax-validation'
+          check.mkdir(exist_ok=True)
+          major = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
+          project = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net' + major + '.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference><Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference></ItemGroup></Project>'
+          (check / 'Syntax.csproj').write_text(project)
+          (check / 'Program.cs').write_text('''using Microsoft.CodeAnalysis;
+          using Microsoft.CodeAnalysis.CSharp;
+          var files = Directory.GetFiles(args[0], "*.cs", SearchOption.AllDirectories);
+          int errors = 0;
+          foreach (var file in files) {
+              var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file), new CSharpParseOptions(LanguageVersion.CSharp11), file);
+              foreach (var diagnostic in tree.GetDiagnostics().Where(x => x.Severity == DiagnosticSeverity.Error)) {
+                  Console.WriteLine(diagnostic);
+                  errors++;
+              }
+          }
+          Console.WriteLine($"C# 11 syntax validation: {files.Length} files, {errors} errors. This is not a reference-resolved build or runtime test.");
+          return errors == 0 ? 0 : 1;
+          ''')
+          subprocess.run(['dotnet', 'run', '--project', str(check / 'Syntax.csproj'), '--configuration', 'Release', '--', str(pathlib.Path.cwd())], check=True)
+          assert not any('\u0400' <= ch <= '\u04ff' for ch in content), 'Unexpected Cyrillic in source'
+          git('add', '--', 'WardSettingsUI.cs')
+          git('diff', '--cached', '--check')
+          git('config', 'user.name', 'shudnal')
+          git('config', 'user.email', '20457922+shudnal@users.noreply.github.com')
+          git('commit', '-m', 'Prevent keyboard input from abandoning pending ward settings')
+          git('push', 'origin', 'HEAD:refs/heads/fix/2.0.8-release-fixes')
