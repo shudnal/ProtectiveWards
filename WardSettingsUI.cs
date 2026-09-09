@@ -1297,8 +1297,11 @@ namespace ProtectiveWards
                 RPC_ApplyWardSettingsResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_ApplyWardSettingsResultClient(long _, ZPackage package)
+        private static void RPC_ApplyWardSettingsResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             ApplySettingsResult result = (ApplySettingsResult)package.ReadInt();
             OnApplySettingsResult(wardID, result);

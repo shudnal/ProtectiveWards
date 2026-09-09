@@ -351,8 +351,11 @@ namespace ProtectiveWards.Compatibility
                 RPC_UpdateGuildBindingResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_UpdateGuildBindingResultClient(long _, ZPackage package)
+        private static void RPC_UpdateGuildBindingResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             GuildBindingResult result = (GuildBindingResult)package.ReadInt();
             bool enabled = package.ReadBool();

@@ -1767,6 +1767,18 @@ namespace ProtectiveWards
                    && ZNet.instance.PlayerIsAdmin(playerInfo.m_userInfo.m_id);
         }
 
+        internal static bool IsServerRpcSender(long sender)
+        {
+            if (ZNet.instance == null || ZRoutedRpc.instance == null)
+                return false;
+
+            if (ZNet.instance.IsServer())
+                return sender == 0L || sender == ZRoutedRpc.instance.m_id;
+
+            ZNetPeer server = ZNet.instance.GetServerPeer();
+            return server != null && sender == server.m_uid;
+        }
+
         internal static bool TryGetRoutedPlayer(long sender, long claimedPlayerID, out RoutedPlayerContext player)
         {
             player = default;

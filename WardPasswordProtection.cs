@@ -381,8 +381,11 @@ namespace ProtectiveWards
                 RPC_SubmitWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_SubmitWardPasswordResultClient(long _, ZPackage package)
+        private static void RPC_SubmitWardPasswordResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             PasswordEntryResult result = (PasswordEntryResult)package.ReadInt();
             HandlePasswordEntryResult(wardID, result);
@@ -508,8 +511,11 @@ namespace ProtectiveWards
                 RPC_UpdateWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_UpdateWardPasswordResultClient(long _, ZPackage package)
+        private static void RPC_UpdateWardPasswordResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             PasswordSettingsResult result = (PasswordSettingsResult)package.ReadInt();
             bool enabled = package.ReadBool();

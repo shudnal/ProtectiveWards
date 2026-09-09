@@ -612,6 +612,9 @@ namespace ProtectiveWards
 
         private static void RPC_DestroyWardForBuildLimitClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             int current = package.ReadInt();
             int limit = package.ReadInt();

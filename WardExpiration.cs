@@ -344,8 +344,11 @@ namespace ProtectiveWards
                 RPC_ReactivateExpiredWardResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_ReactivateExpiredWardResultClient(long _, ZPackage package)
+        private static void RPC_ReactivateExpiredWardResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             package.ReadZDOID();
             ReactivationResult result = (ReactivationResult)package.ReadInt();
             Player player = Player.m_localPlayer;

@@ -470,8 +470,11 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.InvokeRoutedRPC(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
         }
 
-        private static void RPC_UpdatePermittedPlayersResultClient(long _, ZPackage package)
+        private static void RPC_UpdatePermittedPlayersResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             if (!s_updatePending || !s_pendingWardID.Equals(wardID))
                 return;
