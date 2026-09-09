@@ -9,22 +9,22 @@ namespace ProtectiveWards.Compatibility
     {
         internal static Type FindType(Assembly assembly, string fullName)
         {
-  if (assembly == null || string.IsNullOrEmpty(fullName))
-      return null;
+            if (assembly == null || string.IsNullOrEmpty(fullName))
+                return null;
 
-  return AccessTools.GetTypesFromAssembly(assembly)
-      .FirstOrDefault(type => string.Equals(type.FullName, fullName, StringComparison.Ordinal));
+            return AccessTools.GetTypesFromAssembly(assembly)
+                .FirstOrDefault(type => string.Equals(type.FullName, fullName, StringComparison.Ordinal));
         }
 
         internal static void CheckForCompatibility()
         {
-  GuildsCompat.CheckForCompatibility();
-  EpicLootCompat.CheckForCompatibility();
+            GuildsCompat.CheckForCompatibility();
+            EpicLootCompat.CheckForCompatibility();
         }
 
         internal static void ResetRuntimeState()
         {
-  GuildsCompat.ResetRuntimeState();
+            GuildsCompat.ResetRuntimeState();
         }
     }
 }
