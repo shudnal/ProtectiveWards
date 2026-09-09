@@ -374,8 +374,6 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (s_wardObjects.Count == 0 && zdoMan.m_objectsByID.Count > 0)
-                RebuildWardObjects(zdoMan);
         }
 
         private static void RebuildWardObjects(ZDOMan zdoMan)
@@ -430,6 +428,21 @@ namespace ProtectiveWards
                     return;
 
                 RemoveIfWard(__instance.GetZDO(uid));
+            }
+        }
+
+        [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetPrefab))]
+        private static class ZDO_SetPrefab_WardListUpdate
+        {
+            private static void Postfix(ZDO __instance)
+            {
+                if (!ShouldTrackServerWards())
+                    return;
+
+                if (IsWard(__instance))
+                    s_wardObjects.Add(__instance);
+                else
+                    s_wardObjects.Remove(__instance);
             }
         }
 
