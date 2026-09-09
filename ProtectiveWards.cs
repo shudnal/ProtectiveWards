@@ -17,12 +17,13 @@ namespace ProtectiveWards
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(GuildsCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.7";
+        public const string pluginVersion = "2.0.8";
 
         private static Harmony _harmony;
 
@@ -110,6 +111,7 @@ namespace ProtectiveWards
 
         public static ConfigEntry<bool> setWardRange;
         public static ConfigEntry<float> wardRange;
+        public static ConfigEntry<Vector2> wardRangeLimits;
         public static ConfigEntry<WardAreaShape> wardAreaShape;
         public static ConfigEntry<bool> wardProtectDungeonInteriors;
         public static ConfigEntry<bool> supressSpawnInRange;
@@ -266,6 +268,7 @@ namespace ProtectiveWards
         public static readonly int s_permitEveryone = "pw_permit_everyone".GetStableHashCode();
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
+        private static Material s_forceFieldMaterial;
         private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
         private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
         private static readonly Dictionary<PrivateArea, uint> s_wardVisualDataRevisions = new();
@@ -549,6 +552,7 @@ namespace ProtectiveWards
 
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
             wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window.");
+            wardRangeLimits = config("Range", "Ward range limits", new Vector2(1f, 200f), "Minimum (x) and maximum (y) effective ward radius in meters, including saved per-ward values and the default radius. This setting is server-controlled and synchronized by Jotunn. Invalid endpoints use 1 and 200 respectively; reversed limits are sorted.");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Default bubble color for wards without per-ward bubble color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection to change color [Not Synced with Server]", false);
@@ -682,6 +686,8 @@ namespace ProtectiveWards
             wardDemisterEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             setWardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customRange);
             wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);
+            wardRangeLimits.SettingChanged += (sender, args) => RefreshWardRangeLimits();
+            supressSpawnInRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customColor);
             wardEmissionColor.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultVec3(s_color);
             wardEmissionColorMultiplier.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_colorMultiplier);
@@ -1694,12 +1700,7 @@ namespace ProtectiveWards
             return zdo.HasConnectedWardAccess(playerID, mode, IsActiveWardZdoForSettings);
         }
 
-        private static bool IsActiveWardZdoForSettings(ZDO zdo)
-        {
-            return zdo.IsWard()
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
-        }
+        private static bool IsActiveWardZdoForSettings(ZDO zdo) => WardExpiration.IsWardActive(zdo);
 
         internal readonly struct RoutedPlayerContext
         {
@@ -1764,6 +1765,18 @@ namespace ProtectiveWards
             return TryFindPlayerInfo(playerID, out ZNet.PlayerInfo playerInfo)
                    && playerInfo.m_userInfo.m_id.IsValid
                    && ZNet.instance.PlayerIsAdmin(playerInfo.m_userInfo.m_id);
+        }
+
+        internal static bool IsServerRpcSender(long sender)
+        {
+            if (ZNet.instance == null || ZRoutedRpc.instance == null)
+                return false;
+
+            if (ZNet.instance.IsServer())
+                return sender == 0L || sender == ZRoutedRpc.instance.m_id;
+
+            ZNetPeer server = ZNet.instance.GetServerPeer();
+            return server != null && sender == server.m_uid;
         }
 
         internal static bool TryGetRoutedPlayer(long sender, long claimedPlayerID, out RoutedPlayerContext player)
@@ -2013,14 +2026,30 @@ namespace ProtectiveWards
             component.radius = newRadius;
         }
 
+        private static int GetWardMarkerSegmentCount(float radius, float amount)
+        {
+            if (float.IsNaN(amount) || float.IsInfinity(amount))
+                amount = 1f;
+
+            // Marker density is cosmetic and must not allocate an unbounded number of objects.
+            // Use double arithmetic so large, finite configuration values cannot overflow first.
+            double segments = 80d * Math.Max(0f, amount) * (ClampWardRange(radius) / 32d);
+            return (int)Math.Max(0d, Math.Min(4096d, segments));
+        }
+
         private static void SetWardRange(PrivateArea __instance, float range)
         {
-            float newRadius = Math.Max(range, 0);
+            float newRadius = ClampWardRange(range);
+            areaCache.Clear();
+            BackgroundProtection.ResetCache();
 
             __instance.m_radius = newRadius;
             
-            __instance.m_areaMarker.m_radius = newRadius;
-            __instance.m_areaMarker.m_nrOfSegments = (int)(80 * (wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f) * (newRadius / 32f));
+            if (__instance.m_areaMarker != null)
+            {
+                __instance.m_areaMarker.m_radius = newRadius;
+                __instance.m_areaMarker.m_nrOfSegments = GetWardMarkerSegmentCount(newRadius, wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f);
+            }
 
             ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
         }
@@ -2069,7 +2098,10 @@ namespace ProtectiveWards
                     yield break;
 
                 if (Game.IsPaused())
-                    yield return new WaitForSeconds(2.0f);
+                {
+                    yield return new WaitForSecondsRealtime(2f);
+                    continue;
+                }
 
                 List<Piece> pieces = new();
 
@@ -2118,7 +2150,10 @@ namespace ProtectiveWards
                     yield break;
 
                 if (Game.IsPaused())
-                    yield return new WaitForSeconds(2.0f);
+                {
+                    yield return new WaitForSecondsRealtime(2f);
+                    continue;
+                }
 
                 if (!wardIsClosing.TryGetValue(ward, out int secondsToClose))
                     yield break;
@@ -2189,8 +2224,7 @@ namespace ProtectiveWards
                 || s_activatingConnectedWardZdos
                 || !WardZdoUtils.IsWard(rootWard)
                 || requesterID == 0L
-                || !rootWard.GetBool(ZDOVars.s_enabled, false)
-                || WardExpiration.IsExpired(rootWard))
+                || !WardExpiration.IsWardActive(rootWard))
                 return;
 
             WardConnectedAccessMode mode = wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
@@ -2251,11 +2285,12 @@ namespace ProtectiveWards
                     return;
 
                 ZDO zdo = ward.m_nview.GetZDO();
-                if (zdo == null || !GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value))
+                if (zdo == null)
                     return;
 
-                float amount = GetWardFloatSetting(zdo, s_circleAmount, wardAreaMarkerAmount.Value);
-                __instance.m_nrOfSegments = (int)(80 * amount * (__instance.m_radius / 32f));
+                float amount = GetWardBoolSetting(zdo, s_circleEnabled, wardAreaMarkerPatch.Value)
+                    ? GetWardFloatSetting(zdo, s_circleAmount, wardAreaMarkerAmount.Value) : 1f;
+                __instance.m_nrOfSegments = GetWardMarkerSegmentCount(__instance.m_radius, amount);
 
                 __state = (!__instance.m_sliceLines && __instance.m_segments.Count == __instance.m_nrOfSegments) || (__instance.m_sliceLines && __instance.m_calcStart == __instance.m_start && __instance.m_calcTurns == __instance.m_turns);
             }
@@ -2890,7 +2925,7 @@ namespace ProtectiveWards
                         return false;
 
                     LogInfo($"Passive repairing begins");
-                    instance.StartCoroutine(PassiveRepairEffect(__instance, player));
+                    __instance.StartCoroutine(PassiveRepairEffect(__instance, player));
                     return false;
                 }
                 else if (!__instance.IsEnabled()
@@ -2920,10 +2955,10 @@ namespace ProtectiveWards
             if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
                 return;
 
-            if (Math.Abs(ward.m_radius - defaultRange) < 0.001f)
-                return;
+            defaultRange = ClampWardRange(defaultRange);
+            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - defaultRange) >= 0.001f)
+                SetWardRange(ward, defaultRange);
 
-            SetWardRange(ward, defaultRange);
             SetWardPlayerBase(ward, defaultRange);
         }
 
@@ -2946,11 +2981,11 @@ namespace ProtectiveWards
             }
 
             float range = WardZdoUtils.GetConfiguredWardRange(zdo);
-            if (Math.Abs(ward.m_radius - range) >= 0.001f)
+            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);
-                SetWardPlayerBase(ward, range);
             }
+            SetWardPlayerBase(ward, range);
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Awake))]
@@ -3023,6 +3058,32 @@ namespace ProtectiveWards
         {
             foreach (PrivateArea ward in PrivateArea.m_allAreas)
                 RefreshWardVisuals(ward);
+        }
+
+        private static readonly Vector2 DefaultWardRangeLimits = new(1f, 200f);
+
+        internal static float ClampWardRange(float radius)
+        {
+            Vector2 limits = wardRangeLimits?.Value ?? DefaultWardRangeLimits;
+            float minimum = IsValidWardRangeLimit(limits.x) ? limits.x : DefaultWardRangeLimits.x;
+            float maximum = IsValidWardRangeLimit(limits.y) ? limits.y : DefaultWardRangeLimits.y;
+            if (minimum > maximum)
+                (minimum, maximum) = (maximum, minimum);
+
+            if (float.IsNaN(radius))
+                radius = 32f;
+
+            return Mathf.Clamp(radius, minimum, maximum);
+        }
+
+        private static bool IsValidWardRangeLimit(float value) => value > 0f && !float.IsInfinity(value);
+
+        internal static void RefreshWardRangeLimits()
+        {
+            areaCache.Clear();
+            BackgroundProtection.ResetCache();
+            RefreshAllLoadedWardVisuals();
+            WardSettingsUI.RefreshRangeLimits();
         }
 
         private static bool ShouldRefreshConfiguredDefaults()
@@ -3123,14 +3184,24 @@ namespace ProtectiveWards
                     return;
 
                 haldor.m_prefab.Load();
-                forceField = Instantiate(haldor.m_prefab.Asset.transform.Find(forceFieldName)?.gameObject);
-                forceField.name = "ProtectiveWards_bubble";
+                try
+                {
+                    GameObject source = haldor.m_prefab.Asset?.transform.Find(forceFieldName)?.gameObject;
+                    MeshRenderer sourceRenderer = source?.GetComponent<MeshRenderer>();
+                    if (sourceRenderer == null || sourceRenderer.sharedMaterial == null)
+                        return;
 
-                MeshRenderer fieldRenderer = forceField.GetComponent<MeshRenderer>();
-                fieldRenderer.sharedMaterial = new Material(fieldRenderer.sharedMaterial);
-                fieldRenderer.sharedMaterial.renderQueue++;
-
-                haldor.m_prefab.Release();
+                    forceField = Instantiate(source);
+                    forceField.SetActive(false);
+                    forceField.name = "ProtectiveWards_bubble";
+                    s_forceFieldMaterial = new Material(sourceRenderer.sharedMaterial);
+                    s_forceFieldMaterial.renderQueue++;
+                    forceField.GetComponent<MeshRenderer>().sharedMaterial = s_forceFieldMaterial;
+                }
+                finally
+                {
+                    haldor.m_prefab.Release();
+                }
 
                 RefreshAllLoadedWardVisuals();
             }
@@ -3142,6 +3213,8 @@ namespace ProtectiveWards
             private static void Postfix()
             {
                 UnityEngine.Object.Destroy(forceField);
+                UnityEngine.Object.Destroy(s_forceFieldMaterial);
+                s_forceFieldMaterial = null;
                 forceField = null;
                 forceFieldDemister = null;
                 lightningAOE = null;

@@ -25,7 +25,10 @@ namespace ProtectiveWards
                     yield break;
 
                 if (Game.IsPaused())
-                    yield return new WaitForSeconds(2.0f);
+                {
+                    yield return new WaitForSecondsRealtime(2f);
+                    continue;
+                }
 
                 if (!wardIsHealing.TryGetValue(ward, out int secondsLeft))
                     yield break;
@@ -62,8 +65,11 @@ namespace ProtectiveWards
 
             yield return new WaitForSeconds(UnityEngine.Random.Range(5f, 7f));
 
-            if (Game.IsPaused())
-                yield return wait1sec;
+            while (Game.IsPaused())
+                yield return new WaitForSecondsRealtime(1f);
+
+            if (ward == null || ZNetScene.instance == null || lightningAOE == null)
+                yield break;
 
             List<Character> characters = new();
             ConnectedAreas(ward).Do(area => Character.GetCharactersInRange(area.transform.position, area.m_radius, characters));
@@ -343,12 +349,17 @@ namespace ProtectiveWards
             if (!lightningAOE)
             {
                 Incinerator incinerator = Resources.FindObjectsOfTypeAll<Incinerator>().FirstOrDefault();
+                if (incinerator == null || incinerator.m_lightingAOEs == null)
+                {
+                    initiator.Message(MessageHud.MessageType.Center, "$msg_cantoffer".Localize());
+                    return;
+                }
 
                 lightningAOE = incinerator.m_lightingAOEs;
                 preLightning = incinerator.m_leverEffects;
             }
 
-            instance.StartCoroutine(LightningStrikeEffect(ward));
+            ward.StartCoroutine(LightningStrikeEffect(ward));
 
             initiator.GetInventory().RemoveOneItem(item);
             initiator.Message(MessageHud.MessageType.Center, "$piece_incinerator_conversion".Localize());
@@ -366,7 +377,7 @@ namespace ProtectiveWards
 
                 wardIsHealing.Add(ward, 180);
 
-                instance.StartCoroutine(PassiveHealingEffect(ward, amount: item.m_shared.m_foodRegen / 2, seconds: 1));
+                ward.StartCoroutine(PassiveHealingEffect(ward, amount: item.m_shared.m_foodRegen / 2, seconds: 1));
                 LogInfo("Passive healing begins");
 
                 initiator.Message(MessageHud.MessageType.Center, $"{"$msg_consumed".Localize()}: {item.m_shared.m_name}");
@@ -475,7 +486,7 @@ namespace ProtectiveWards
 
         public static bool IsTeleportable(Player player)
         {
-            if (player.IsTeleportable())
+            if (player.IsTeleportable(false))
             {
                 return true;
             }

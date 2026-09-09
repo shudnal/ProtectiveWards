@@ -1,5 +1,6 @@
 using HarmonyLib;
 using System;
+using System.Collections.Generic;
 using static ProtectiveWards.ProtectiveWards;
 
 namespace ProtectiveWards
@@ -31,7 +32,7 @@ namespace ProtectiveWards
                 if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, out PrivateArea ward))
                     return;
 
-                if (hit.HaveAttacker() && hit.GetAttacker().IsBoss())
+                if (hit.GetAttacker()?.IsBoss() == true)
                     return;
 
                 if (__instance.IsPlayer())
@@ -43,7 +44,7 @@ namespace ProtectiveWards
                     ModifyHitDamage(ref hit, tamedDamageTakenMultiplier.Value);
                     if (boarsHensProtection.Value && _boarsHensProtectionGroupList.Contains(__instance.m_group.ToLower()))
                     {
-                        if (!(hit.HaveAttacker() && hit.GetAttacker().IsPlayer()))
+                        if (hit.GetAttacker()?.IsPlayer() != true)
                         {
                             if (hit.GetTotalDamage() != hit.m_damage.m_fire)
                                 ward.FlashShield(false);
@@ -81,7 +82,7 @@ namespace ProtectiveWards
                 }
                 else if (__instance.GetComponent<Piece>() != null)
                 {
-                    if (hit.HaveAttacker() && hit.GetAttacker().IsBoss())
+                    if (hit.GetAttacker()?.IsBoss() == true)
                         return;
 
                     ModifyHitDamage(ref hit, structureDamageTakenMultiplier.Value);
@@ -100,7 +101,7 @@ namespace ProtectiveWards
                 if (__instance == null)
                     return;
 
-                if (!(dt + __instance.m_foodUpdateTimer >= 1f || forceUpdate))
+                if (!(dt * Game.m_foodRate + __instance.m_foodUpdateTimer >= 1f || forceUpdate))
                     return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position))
@@ -129,68 +130,56 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(Player), nameof(Player.UpdatePlacement))]
-        public static class Player_UseStamina_HammerDurabilityDrainMultiplier
+        private sealed class DurabilityDrainState
         {
-            private static void Prefix(Player __instance, ref float __state)
+            internal ItemDrop.ItemData.SharedData Shared;
+            internal float OriginalDrain;
+        }
+
+        private static readonly HashSet<ItemDrop.ItemData.SharedData> s_adjustedTools = new();
+
+        private static DurabilityDrainState BeginDurabilityDrain(Player player, ItemDrop.ItemData tool)
+        {
+            if (player == null || tool?.m_shared == null || hammerDurabilityDrainMultiplier.Value == 1f
+                || !player.InPlaceMode() || !InsideEnabledPlayersArea(player.transform.position)
+                || !s_adjustedTools.Add(tool.m_shared))
+                return null;
+
+            // UpdatePlacement can call Repair with the same shared data. Apply the factor once.
+            DurabilityDrainState state = new() { Shared = tool.m_shared, OriginalDrain = tool.m_shared.m_useDurabilityDrain };
+            state.Shared.m_useDurabilityDrain *= Math.Max(0f, hammerDurabilityDrainMultiplier.Value);
+            return state;
+        }
+
+        private static void EndDurabilityDrain(DurabilityDrainState state)
+        {
+            if (state == null)
+                return;
+
+            state.Shared.m_useDurabilityDrain = state.OriginalDrain;
+            s_adjustedTools.Remove(state.Shared);
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.UpdatePlacement))]
+        public static class Player_UpdatePlacement_HammerDurabilityDrainMultiplier
+        {
+            private static void Prefix(Player __instance, ref DurabilityDrainState __state)
             {
-                if (hammerDurabilityDrainMultiplier.Value == 1.0f)
-                    return;
-
-                if (__instance == null)
-                    return;
-
-                if (!__instance.InPlaceMode())
-                    return;
-
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
-                    return;
-
-                ItemDrop.ItemData rightItem = __instance.GetRightItem();
-
-                __state = rightItem.m_shared.m_useDurabilityDrain;
-                rightItem.m_shared.m_useDurabilityDrain *= Math.Max(0f, hammerDurabilityDrainMultiplier.Value);
+                __state = BeginDurabilityDrain(__instance, __instance?.GetRightItem());
             }
 
-            private static void Postfix(Player __instance, float __state)
-            {
-                if (__state == 0f)
-                    return;
-
-                ItemDrop.ItemData rightItem = __instance.GetRightItem();
-
-                rightItem.m_shared.m_useDurabilityDrain = __state;
-            }
+            private static void Finalizer(DurabilityDrainState __state) => EndDurabilityDrain(__state);
         }
 
         [HarmonyPatch(typeof(Player), nameof(Player.Repair))]
         public static class Player_Repair_HammerDurabilityDrainMultiplier
         {
-            private static void Prefix(Player __instance, ItemDrop.ItemData toolItem, ref float __state)
+            private static void Prefix(Player __instance, ItemDrop.ItemData toolItem, ref DurabilityDrainState __state)
             {
-                if (hammerDurabilityDrainMultiplier.Value == 1.0f)
-                    return;
-
-                if (__instance == null)
-                    return;
-
-                if (!__instance.InPlaceMode())
-                    return;
-
-                if (!InsideEnabledPlayersArea(__instance.transform.position))
-                    return;
-
-                __state = toolItem.m_shared.m_useDurabilityDrain;
-                toolItem.m_shared.m_useDurabilityDrain *= Math.Max(0f, hammerDurabilityDrainMultiplier.Value);
+                __state = BeginDurabilityDrain(__instance, toolItem);
             }
 
-            private static void Postfix(Player __instance, ItemDrop.ItemData toolItem, float __state)
-            {
-                if (__state == 0f)
-                    return;
-
-                toolItem.m_shared.m_useDurabilityDrain = __state;
-            }
+            private static void Finalizer(DurabilityDrainState __state) => EndDurabilityDrain(__state);
         }
 
         [HarmonyPatch(typeof(Skills), nameof(Skills.LowerAllSkills))]
@@ -243,7 +232,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.GetDeltaTime))]
         static class CookingStation_GetDeltaTime_CookingSpeedMultiplier
         {
-            private static void Postfix(Smelter __instance, ref float __result)
+            private static void Postfix(CookingStation __instance, ref float __result)
             {
                 if (cookingSpeedMultiplier.Value == 1.0f)
                     return;
@@ -258,7 +247,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(CookingStation), nameof(CookingStation.UpdateFuel))]
         static class CookingStation_UpdateFuel_FireplaceDrainMultiplier
         {
-            private static void Prefix(Smelter __instance, ref float dt, ref float __state)
+            private static void Prefix(CookingStation __instance, ref float dt, ref float __state)
             {
                 if ((fireplaceDrainMultiplier.Value == 1.0f) && (cookingSpeedMultiplier.Value == 1.0f))
                     return;
@@ -273,7 +262,7 @@ namespace ProtectiveWards
                     dt /= cookingSpeedMultiplier.Value;
             }
 
-            private static void Postfix(Smelter __instance, ref float dt, float __state)
+            private static void Postfix(CookingStation __instance, ref float dt, float __state)
             {
                 if (__state == 0f)
                     return;

@@ -195,6 +195,9 @@ namespace ProtectiveWards
 
         private static void RPC_StartTaxiClient(long sender, ZPackage pkg)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             int requestId = pkg.ReadInt();
             if (requestId <= 0 || requestId != s_pendingLocationRequestId)
                 return;

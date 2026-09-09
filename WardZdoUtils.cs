@@ -204,16 +204,17 @@ namespace ProtectiveWards
 
         internal static float GetConfiguredWardRange(ZDO zdo)
         {
-            if (!ArePerWardSettingsEnabled())
-                return wardRange.Value;
+            float range = wardRange.Value;
+            if (ArePerWardSettingsEnabled() && zdo != null)
+                range = zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? range : GetWardDefaultRadius());
 
-            return zdo != null ? zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? wardRange.Value : GetWardDefaultRadius()) : wardRange.Value;
+            return ClampWardRange(range);
         }
 
         internal static float GetWardDefaultRadius()
         {
             if (s_wardDefaultRadiusCached)
-                return s_wardDefaultRadius;
+                return ClampWardRange(s_wardDefaultRadius);
 
             if (ZNetScene.instance != null)
             {
@@ -225,7 +226,7 @@ namespace ProtectiveWards
                 }
             }
 
-            return s_wardDefaultRadius;
+            return ClampWardRange(s_wardDefaultRadius);
         }
 
         internal static float GetWardRadius(ZDO zdo)
@@ -373,8 +374,6 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (s_wardObjects.Count == 0 && zdoMan.m_objectsByID.Count > 0)
-                RebuildWardObjects(zdoMan);
         }
 
         private static void RebuildWardObjects(ZDOMan zdoMan)
@@ -393,9 +392,15 @@ namespace ProtectiveWards
                 AddIfWard(pair.Value);
         }
 
-        [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
+        [HarmonyPatch]
         private static class ZDOMan_Load_WardListInit
         {
+            private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+            {
+                yield return AccessTools.Method(typeof(ZDOMan), nameof(ZDOMan.Load));
+                yield return AccessTools.Method(typeof(ZDOMan), nameof(ZDOMan.LoadChunks));
+            }
+
             private static void Postfix(ZDOMan __instance) => RebuildWardObjects(__instance);
         }
 
@@ -429,6 +434,21 @@ namespace ProtectiveWards
                     return;
 
                 RemoveIfWard(__instance.GetZDO(uid));
+            }
+        }
+
+        [HarmonyPatch(typeof(ZDO), nameof(ZDO.SetPrefab))]
+        private static class ZDO_SetPrefab_WardListUpdate
+        {
+            private static void Postfix(ZDO __instance)
+            {
+                if (!ShouldTrackServerWards())
+                    return;
+
+                if (IsWard(__instance))
+                    s_wardObjects.Add(__instance);
+                else
+                    s_wardObjects.Remove(__instance);
             }
         }
 

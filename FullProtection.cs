@@ -210,6 +210,9 @@ namespace ProtectiveWards
 
         private static void RPC_TeleportTargetAccessResponseClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID sourceZdoID = package.ReadZDOID();
             bool granted = package.ReadBool();
             string blockingOwnerName = package.ReadString();
@@ -220,7 +223,11 @@ namespace ProtectiveWards
 
             GameObject instance = ZNetScene.instance.FindInstance(sourceZdoID);
             TeleportWorld teleport = instance?.GetComponent<TeleportWorld>();
-            if (teleport == null)
+            if (teleport == null || !teleport.TargetFound() || player.IsDead() || player.IsTeleporting())
+                return;
+
+            float maxDistance = Math.Max(portalSourceValidationDistance, teleport.m_activationRange + 2f);
+            if (Vector3.Distance(player.transform.position, teleport.transform.position) > maxDistance)
                 return;
 
             if (!granted)
@@ -259,12 +266,7 @@ namespace ProtectiveWards
             return true;
         }
 
-        private static bool IsActiveWardZdo(ZDO zdo)
-        {
-            return zdo.IsWard()
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !zdo.GetBool(WardExpiration.s_expirationExpired, false);
-        }
+        private static bool IsActiveWardZdo(ZDO zdo) => WardExpiration.IsWardActive(zdo);
 
         private static void RegisterSaddleUserRPC()
         {
@@ -1711,7 +1713,6 @@ namespace ProtectiveWards
                     || method.DeclaringType == null
                     || method.DeclaringType == typeof(Interactable)
                     || method.IsAbstract
-                    || method.IsVirtual
                     || ExcludedInteractableTypes.Contains(method.DeclaringType))
                     return false;
 

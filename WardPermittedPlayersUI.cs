@@ -28,6 +28,7 @@ namespace ProtectiveWards
         private static bool s_rpcRegistered;
         private static bool s_inputBlocked;
         private static bool s_updatePending;
+        private static ZDOID s_pendingWardID = ZDOID.None;
 
         internal static bool IsRequestPending => s_updatePending;
 
@@ -88,6 +89,7 @@ namespace ProtectiveWards
             s_page = 0;
             s_permittedPlayers.Clear();
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             SetInputBlocked(false);
         }
 
@@ -315,6 +317,7 @@ namespace ProtectiveWards
             package.Write(query ?? "");
 
             s_updatePending = true;
+            s_pendingWardID = wardID;
             if (ZNet.instance?.IsServer() == true)
             {
                 RPC_UpdatePermittedPlayersServer(0L, new ZPackage(package.GetArray()));
@@ -328,6 +331,7 @@ namespace ProtectiveWards
             }
 
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
             Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_permitted_unavailable");
             return false;
@@ -381,7 +385,7 @@ namespace ProtectiveWards
                 result = PermittedPlayerResult.Unavailable;
             else if (action == PermittedPlayerAction.Add)
             {
-                List<Player> matches = FindOnlinePlayers(query);
+                List<KeyValuePair<long, string>> matches = FindOnlinePlayers(query);
                 if (matches.Count == 0)
                 {
                     result = PermittedPlayerResult.NoMatch;
@@ -390,13 +394,13 @@ namespace ProtectiveWards
                 else if (matches.Count > 1)
                 {
                     result = PermittedPlayerResult.MultipleMatches;
-                    detail = string.Join(", ", matches.Select(player => player.GetPlayerName()).ToArray());
+                    detail = string.Join(", ", matches.Select(player => player.Value).ToArray());
                 }
                 else
                 {
-                    Player target = matches[0];
-                    targetPlayerID = target.GetPlayerID();
-                    detail = target.GetPlayerName();
+                    KeyValuePair<long, string> target = matches[0];
+                    targetPlayerID = target.Key;
+                    detail = target.Value;
                     if (WardZdoUtils.IsExplicitlyPermitted(zdo, targetPlayerID))
                         result = PermittedPlayerResult.AlreadyPermitted;
                     else
@@ -417,21 +421,28 @@ namespace ProtectiveWards
             SendResult(sender, wardID, action, result, detail, zdo);
         }
 
-        private static List<Player> FindOnlinePlayers(string query)
+        private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)
         {
             string normalized = (query ?? "").Trim();
-            if (normalized.Length == 0)
-                return new List<Player>();
+            Dictionary<long, string> players = new();
+            if (normalized.Length == 0 || ZNet.instance == null)
+                return players.ToList();
 
-            List<Player> players = Player.GetAllPlayers().Where(player => player != null).ToList();
-            List<Player> exact = players
-                .Where(player => string.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase))
+            foreach (ZDO character in ZNet.instance.GetAllCharacterZDOS())
+            {
+                if (character == null)
+                    continue;
+
+                long playerID = character.GetLong(ZDOVars.s_playerID, 0L);
+                if (playerID != 0L)
+                    players[playerID] = character.GetString(ZDOVars.s_playerName, "");
+            }
+
+            List<KeyValuePair<long, string>> exact = players
+                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            if (exact.Count > 0)
-                return exact;
-
-            return players
-                .Where(player => player.GetPlayerName().IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
+            return exact.Count > 0 ? exact : players
+                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
                 .ToList();
         }
 
@@ -459,14 +470,21 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.InvokeRoutedRPC(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
         }
 
-        private static void RPC_UpdatePermittedPlayersResultClient(long _, ZPackage package)
+        private static void RPC_UpdatePermittedPlayersResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
+            if (!s_updatePending || !s_pendingWardID.Equals(wardID))
+                return;
+
             PermittedPlayerAction action = (PermittedPlayerAction)package.ReadInt();
             PermittedPlayerResult result = (PermittedPlayerResult)package.ReadInt();
             string detail = package.ReadString();
             int count = package.ReadInt();
             s_updatePending = false;
+            s_pendingWardID = ZDOID.None;
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
 
             List<KeyValuePair<long, string>> permitted = new(count);
@@ -545,9 +563,9 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Player), nameof(Player.Update))]
         private static class Player_Update_ClosePermittedPlayersUI
         {
-            private static void Postfix()
+            private static void Postfix(Player __instance)
             {
-                if (s_panel == null)
+                if (__instance != Player.m_localPlayer || s_panel == null)
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))

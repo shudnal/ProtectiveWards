@@ -3,7 +3,6 @@ using BepInEx.Bootstrap;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using static ProtectiveWards.ProtectiveWards;
@@ -12,7 +11,7 @@ namespace ProtectiveWards.Compatibility
 {
     internal static class GuildsCompat
     {
-        private const string PluginGuid = "org.bepinex.plugins.guilds";
+        internal const string PluginGuid = "org.bepinex.plugins.guilds";
         private const string ApiTypeName = "Guilds.API";
         private const string PlayerReferenceTypeName = "Guilds.PlayerReference";
         private const string GuildTypeName = "Guilds.Guild";
@@ -75,14 +74,14 @@ namespace ProtectiveWards.Compatibility
         {
             IsEnabled = false;
 
-            if (!Chainloader.PluginInfos.TryGetValue(PluginGuid, out s_plugin))
+            if (!Chainloader.PluginInfos.TryGetValue(PluginGuid, out s_plugin) || s_plugin.Instance == null)
                 return;
 
             s_assembly = s_plugin.Instance.GetType().Assembly;
-            s_apiType = s_assembly.GetType(ApiTypeName);
-            s_playerReferenceType = s_assembly.GetType(PlayerReferenceTypeName);
-            s_guildType = s_assembly.GetType(GuildTypeName);
-            s_guildGeneralType = s_assembly.GetType(GuildGeneralTypeName);
+            s_apiType = CompatibilityHelper.FindType(s_assembly, ApiTypeName);
+            s_playerReferenceType = CompatibilityHelper.FindType(s_assembly, PlayerReferenceTypeName);
+            s_guildType = CompatibilityHelper.FindType(s_assembly, GuildTypeName);
+            s_guildGeneralType = CompatibilityHelper.FindType(s_assembly, GuildGeneralTypeName);
 
             if (s_apiType == null
                 || s_playerReferenceType == null
@@ -94,11 +93,7 @@ namespace ProtectiveWards.Compatibility
             }
 
             s_getPlayerGuildByPlayer = AccessTools.Method(s_apiType, "GetPlayerGuild", new[] { typeof(Player) });
-            s_getPlayerGuildByReference = s_apiType
-                .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .FirstOrDefault(method => method.Name == "GetPlayerGuild"
-                                          && method.GetParameters().Length == 1
-                                          && method.GetParameters()[0].ParameterType == s_playerReferenceType);
+            s_getPlayerGuildByReference = AccessTools.Method(s_apiType, "GetPlayerGuild", new[] { s_playerReferenceType });
             s_playerReferenceFromPlayerInfo = AccessTools.Method(s_playerReferenceType, "fromPlayerInfo", new[] { typeof(ZNet.PlayerInfo) });
             s_guildNameField = AccessTools.Field(s_guildType, "Name");
             s_guildGeneralField = AccessTools.Field(s_guildType, "General");
@@ -351,8 +346,11 @@ namespace ProtectiveWards.Compatibility
                 RPC_UpdateGuildBindingResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_UpdateGuildBindingResultClient(long _, ZPackage package)
+        private static void RPC_UpdateGuildBindingResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             GuildBindingResult result = (GuildBindingResult)package.ReadInt();
             bool enabled = package.ReadBool();

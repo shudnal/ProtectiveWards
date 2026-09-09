@@ -381,8 +381,11 @@ namespace ProtectiveWards
                 RPC_SubmitWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_SubmitWardPasswordResultClient(long _, ZPackage package)
+        private static void RPC_SubmitWardPasswordResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             PasswordEntryResult result = (PasswordEntryResult)package.ReadInt();
             HandlePasswordEntryResult(wardID, result);
@@ -390,6 +393,9 @@ namespace ProtectiveWards
 
         private static void HandlePasswordEntryResult(ZDOID wardID, PasswordEntryResult result)
         {
+            if (s_panel == null || !s_promptWardID.Equals(wardID))
+                return;
+
             Player player = Player.m_localPlayer;
             if (player == null)
                 return;
@@ -505,8 +511,11 @@ namespace ProtectiveWards
                 RPC_UpdateWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_UpdateWardPasswordResultClient(long _, ZPackage package)
+        private static void RPC_UpdateWardPasswordResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             PasswordSettingsResult result = (PasswordSettingsResult)package.ReadInt();
             bool enabled = package.ReadBool();
@@ -628,9 +637,9 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Player), nameof(Player.Update))]
         private static class Player_Update_ClosePasswordPrompt
         {
-            private static void Postfix()
+            private static void Postfix(Player __instance)
             {
-                if (s_panel == null)
+                if (__instance != Player.m_localPlayer || s_panel == null)
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))

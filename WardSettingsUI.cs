@@ -74,6 +74,9 @@ namespace ProtectiveWards
         private static bool s_passwordSettingsPending;
         private static bool s_guildBindingPending;
         private static bool s_passwordEnabled;
+        private static bool s_appliedPasswordEnabled;
+        private static ZPackage s_pendingGeneralPackage;
+        private static int s_panelOpenedFrame;
         private static bool s_passwordExists;
         private static string s_passwordValue = "";
         private static bool s_passwordValueChanged;
@@ -190,7 +193,11 @@ namespace ProtectiveWards
             s_rpcRegistered = true;
         }
 
-        internal static void ResetRPCRegistration() => s_rpcRegistered = false;
+        internal static void ResetRPCRegistration()
+        {
+            s_rpcRegistered = false;
+            Close();
+        }
 
         internal static void HandleSettingsModeChanged()
         {
@@ -203,7 +210,7 @@ namespace ProtectiveWards
 
         internal static void Open(PrivateArea ward)
         {
-            if (!ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
+            if (HasPendingUserOperation() || !ArePerWardSettingsEnabled() || ward == null || ward.m_nview == null || !ward.m_nview.IsValid())
                 return;
 
             WardPermittedPlayersUI.Close();
@@ -260,6 +267,8 @@ namespace ProtectiveWards
             s_guildBindingPending = false;
             s_suspendedForPermittedPlayers = false;
             s_passwordEnabled = false;
+            s_appliedPasswordEnabled = false;
+            s_pendingGeneralPackage = null;
             s_passwordExists = false;
             s_passwordValue = "";
             s_passwordValueChanged = false;
@@ -306,6 +315,26 @@ namespace ProtectiveWards
             s_inputBlocked = blocked;
         }
 
+        private static bool HasPendingUserOperation()
+        {
+            return s_applyPending
+                   || s_passwordSettingsPending
+                   || s_guildBindingPending
+                   || WardPermittedPlayersUI.IsRequestPending;
+        }
+
+        private static void TryClose()
+        {
+            if (!HasPendingUserOperation())
+                Close();
+        }
+
+        private static void UpdateCloseControls()
+        {
+            if (s_cancelButton != null)
+                s_cancelButton.interactable = !HasPendingUserOperation();
+        }
+
         private static void CaptureCurrentRows()
         {
             foreach (WardSettingRow row in s_rows)
@@ -330,6 +359,7 @@ namespace ProtectiveWards
             DestroyPanel();
             s_currentPage = page;
             CreatePanel(page);
+            s_panelOpenedFrame = Time.frameCount;
             SetInputBlocked(true);
         }
 
@@ -439,8 +469,7 @@ namespace ProtectiveWards
             float halfHeight = PanelHeight * 0.5f;
             CreateText(title.Localize(), new Vector2(0f, halfHeight - 35f), TitleFontSize, s_panelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            bool showColumnHeaders = page != SettingsPage.Access || s_canEditGeneralSettings;
-            if (showColumnHeaders)
+            if (page != SettingsPage.Access)
                 CreateColumnHeaders(halfHeight - 72f);
 
             float y = halfHeight - 96f;
@@ -757,7 +786,7 @@ namespace ProtectiveWards
                     width: 170f,
                     height: 50f);
                 s_cancelButton = cancelButton.GetComponent<Button>();
-                s_cancelButton.onClick.AddListener(Close);
+                s_cancelButton.onClick.AddListener(TryClose);
                 UpdateApplyControls();
             }
         }
@@ -775,15 +804,12 @@ namespace ProtectiveWards
 
             CaptureCurrentRows();
 
-            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault && range.FloatValue < 0f)
-            {
-                Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_settings_range_nonnegative");
-                return;
-            }
+            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault)
+                range.FloatValue = ClampWardRange(range.FloatValue);
 
             bool replacePassword = false;
             if (s_canChangePassword && wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword)
-                replacePassword = s_passwordValueChanged || !s_passwordExists;
+                replacePassword = s_passwordValueChanged;
 
             bool effectiveHasPassword = replacePassword ? !string.IsNullOrEmpty(s_passwordValue) : s_passwordExists;
             if (s_canChangePassword && s_passwordEnabled && !effectiveHasPassword)
@@ -794,29 +820,35 @@ namespace ProtectiveWards
 
             s_applyPending = true;
             s_waitingGeneralApply = s_canEditGeneralSettings;
-            s_waitingPasswordApply = s_canChangePassword;
+            s_waitingPasswordApply = s_canChangePassword && (replacePassword || s_passwordEnabled != s_appliedPasswordEnabled);
             s_applyReplacePassword = replacePassword;
             s_passwordApplyRequestSent = false;
+            s_pendingGeneralPackage = s_waitingGeneralApply ? CreateApplyPackage() : null;
             UpdateApplyControls();
 
-            if (s_canEditGeneralSettings)
-            {
-                ZPackage package = CreateApplyPackage();
-                if (ZNet.instance != null && ZNet.instance.IsServer())
-                    RPC_ApplyWardSettingsServer(0L, new ZPackage(package.GetArray()));
-                else if (ZRoutedRpc.instance != null)
-                    ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ApplyWardSettings, package);
-                else
-                    OnApplySettingsResult(s_zdo.m_uid, ApplySettingsResult.Unavailable);
-
-                if (!s_applyPending)
-                    return;
-            }
-
-            if (!s_canEditGeneralSettings)
+            // Password changes use the current permissions. General access changes may revoke
+            // the editor's own Permit everyone or guild access, so they must be sent last.
+            if (s_waitingPasswordApply)
                 SendApplyPasswordRequest();
+            else
+                SendApplyGeneralRequest();
 
             TryCompleteApply();
+        }
+
+        private static void SendApplyGeneralRequest()
+        {
+            if (!s_applyPending || !s_waitingGeneralApply || s_pendingGeneralPackage == null || s_zdo == null)
+                return;
+
+            ZPackage package = s_pendingGeneralPackage;
+            s_pendingGeneralPackage = null;
+            if (ZNet.instance?.IsServer() == true)
+                RPC_ApplyWardSettingsServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ApplyWardSettings, package);
+            else
+                OnApplySettingsResult(s_zdo.m_uid, ApplySettingsResult.Unavailable);
         }
 
         private static void SendApplyPasswordRequest()
@@ -831,10 +863,14 @@ namespace ProtectiveWards
         private static void UpdateApplyControls()
         {
             bool interactable = !s_applyPending;
+            if (s_panel != null)
+            {
+                CanvasGroup group = s_panel.GetComponent<CanvasGroup>() ?? s_panel.AddComponent<CanvasGroup>();
+                group.interactable = interactable;
+            }
             if (s_applyButton != null)
                 s_applyButton.interactable = interactable;
-            if (s_cancelButton != null)
-                s_cancelButton.interactable = interactable;
+            UpdateCloseControls();
 
             UpdateGuildControls();
             UpdatePasswordStatusControls();
@@ -858,18 +894,19 @@ namespace ProtectiveWards
             s_waitingPasswordApply = false;
             s_applyReplacePassword = false;
             s_passwordApplyRequestSent = false;
+            s_pendingGeneralPackage = null;
             UpdateApplyControls();
         }
 
         private static void OnApplySettingsResult(ZDOID wardID, ApplySettingsResult result)
         {
-            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply)
+            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID) || !s_applyPending || !s_waitingGeneralApply
+                || s_waitingPasswordApply || s_pendingGeneralPackage != null)
                 return;
 
             if (result == ApplySettingsResult.Success)
             {
                 s_waitingGeneralApply = false;
-                SendApplyPasswordRequest();
                 TryCompleteApply();
                 return;
             }
@@ -1033,6 +1070,8 @@ namespace ProtectiveWards
                 if (buttonText != null)
                     buttonText.text = GetGuildBindingButtonText();
             }
+
+            UpdateCloseControls();
         }
 
         private static void SetNewPassword()
@@ -1070,6 +1109,7 @@ namespace ProtectiveWards
         private static void LoadPasswordValuesFromZDO()
         {
             s_passwordEnabled = s_zdo != null && s_zdo.GetBool(WardPasswordProtection.s_passwordProtectionEnabled, false);
+            s_appliedPasswordEnabled = s_passwordEnabled;
             s_passwordExists = WardPasswordProtection.HasPassword(s_zdo);
             s_passwordValue = WardPasswordProtection.GetEditablePassword(s_zdo);
             s_passwordValueChanged = false;
@@ -1078,11 +1118,16 @@ namespace ProtectiveWards
         internal static void OnPasswordSettingsResult(ZDOID wardID, WardPasswordProtection.PasswordSettingsResult result, bool enabled, bool hasPassword)
         {
             bool currentWard = s_zdo != null && s_zdo.m_uid.Equals(wardID);
-            bool applyResponse = currentWard && s_applyPending && s_waitingPasswordApply;
+            if (!currentWard || (!s_passwordSettingsPending && !(s_applyPending && s_waitingPasswordApply)))
+                return;
+
+            bool applyResponse = s_applyPending && s_waitingPasswordApply && s_passwordApplyRequestSent;
 
             if (currentWard && result == WardPasswordProtection.PasswordSettingsResult.Success)
             {
                 s_passwordEnabled = enabled;
+                s_appliedPasswordEnabled = enabled;
+                s_passwordValueChanged = false;
                 s_passwordExists = hasPassword;
                 if (!hasPassword)
                     s_passwordValue = "";
@@ -1104,6 +1149,7 @@ namespace ProtectiveWards
                 {
                     s_waitingPasswordApply = false;
                     UpdatePasswordStatusControls();
+                    SendApplyGeneralRequest();
                     TryCompleteApply();
                 }
                 else
@@ -1167,6 +1213,8 @@ namespace ProtectiveWards
                 s_setPasswordButton.interactable = interactable;
             if (s_removePasswordButton != null)
                 s_removePasswordButton.interactable = interactable && s_passwordExists;
+
+            UpdateCloseControls();
         }
 
         private static ZPackage CreateApplyPackage()
@@ -1273,8 +1321,11 @@ namespace ProtectiveWards
                 RPC_ApplyWardSettingsResultClient(0L, new ZPackage(response.GetArray()));
         }
 
-        private static void RPC_ApplyWardSettingsResultClient(long _, ZPackage package)
+        private static void RPC_ApplyWardSettingsResultClient(long sender, ZPackage package)
         {
+            if (!IsServerRpcSender(sender))
+                return;
+
             ZDOID wardID = package.ReadZDOID();
             ApplySettingsResult result = (ApplySettingsResult)package.ReadInt();
             OnApplySettingsResult(wardID, result);
@@ -1390,7 +1441,7 @@ namespace ProtectiveWards
             }
 
             float value = package.ReadSingle();
-            zdo.Set(key, value);
+            zdo.Set(key, key == s_range ? ClampWardRange(value) : value);
         }
 
         private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, bool useDefault, ZPackage package, bool writeAlpha = true)
@@ -1427,6 +1478,7 @@ namespace ProtectiveWards
 
             StoreBool(FieldId.CustomRange, s_customRange, setWardRange.Value);
             StoreFloat(FieldId.Range, s_range, wardRange.Value);
+            s_values[FieldId.Range].FloatValue = WardZdoUtils.GetConfiguredWardRange(s_zdo);
             StoreBool(FieldId.CustomColor, s_customColor, wardEmissionColorEnabled.Value);
             StoreEmissionColor();
             StoreFloat(FieldId.EmissionColorMultiplier, s_colorMultiplier, wardEmissionColorMultiplier.Value);
@@ -1448,7 +1500,18 @@ namespace ProtectiveWards
             StoreFloat(FieldId.CircleWidth, s_circleWidth, wardAreaMarkerWidth.Value);
             StoreFloat(FieldId.CircleAmount, s_circleAmount, wardAreaMarkerAmount.Value);
 
-            StoreBool(FieldId.PermitEveryone, s_permitEveryone, permitEveryone.Value);
+            StoreBool(FieldId.PermitEveryone, s_permitEveryone, IsPermitEveryone(s_zdo));
+            s_values[FieldId.PermitEveryone].UseDefault = false;
+        }
+
+        internal static void RefreshRangeLimits()
+        {
+            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range))
+                range.FloatValue = ClampWardRange(range.FloatValue);
+
+            foreach (WardSettingRow row in s_rows)
+                if (row is FloatRow floatRow && row.FieldId == FieldId.Range)
+                    floatRow.ClampRangeInput();
         }
 
         private static void StoreBool(FieldId field, int key, bool defaultValue)
@@ -1559,8 +1622,11 @@ namespace ProtectiveWards
 
         private static void AddAccessBool(FieldId field, string labelToken, ref float y)
         {
-            AddBool(field, labelToken, ref y);
-            y += RowStep - AccessRowStep;
+            WardSettingValue value = GetValue(field);
+            BoolRow row = new(field, labelToken, true, value.BoolValue, allowDefault: false);
+            row.Create(s_panel.transform, y);
+            s_rows.Add(row);
+            y -= AccessRowStep;
         }
 
         private static void AddAccessSection(string labelToken, ref float y)
@@ -1645,7 +1711,7 @@ namespace ProtectiveWards
 
         private static void RequestAddOnlinePlayer()
         {
-            if (s_zdo == null || WardPermittedPlayersUI.IsRequestPending)
+            if (s_zdo == null || s_applyPending || WardPermittedPlayersUI.IsRequestPending)
                 return;
 
             string query = s_permittedPlayerInput != null
@@ -1666,6 +1732,8 @@ namespace ProtectiveWards
         {
             if (s_addPermittedPlayerButton != null)
                 s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending && !s_applyPending;
+
+            UpdateCloseControls();
         }
 
         internal static void HandlePermittedPlayerAdded(ZDOID wardID)
@@ -1810,13 +1878,15 @@ namespace ProtectiveWards
         {
             protected readonly FieldId Field;
             private readonly string m_labelToken;
+            private readonly bool m_allowDefault;
             protected Toggle UseDefaultToggle;
 
-            protected WardSettingRow(FieldId field, string labelToken, bool hasOverride)
+            protected WardSettingRow(FieldId field, string labelToken, bool hasOverride, bool allowDefault = true)
             {
                 Field = field;
                 m_labelToken = labelToken;
-                UseDefault = !hasOverride;
+                m_allowDefault = allowDefault;
+                UseDefault = allowDefault && !hasOverride;
             }
 
             public FieldId FieldId => Field;
@@ -1834,15 +1904,18 @@ namespace ProtectiveWards
             {
                 CreateRowText(parent, m_labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
 
-                GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
-                SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
-                UseDefaultToggle = useDefaultObject.GetComponent<Toggle>();
-                UseDefaultToggle.isOn = UseDefault;
-                UseDefaultToggle.onValueChanged.AddListener(value =>
+                if (m_allowDefault)
                 {
-                    UseDefault = value;
-                    SetValueInteractable(!value);
-                });
+                    GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
+                    SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
+                    UseDefaultToggle = useDefaultObject.GetComponent<Toggle>();
+                    UseDefaultToggle.isOn = UseDefault;
+                    UseDefaultToggle.onValueChanged.AddListener(value =>
+                    {
+                        UseDefault = value;
+                        SetValueInteractable(!value);
+                    });
+                }
 
                 CreateValueControl(parent, y);
                 SetValueInteractable(!UseDefault);
@@ -1867,7 +1940,8 @@ namespace ProtectiveWards
             private readonly bool m_initialValue;
             private Toggle m_valueToggle;
 
-            public BoolRow(FieldId field, string labelToken, bool hasOverride, bool initialValue) : base(field, labelToken, hasOverride)
+            public BoolRow(FieldId field, string labelToken, bool hasOverride, bool initialValue, bool allowDefault = true)
+                : base(field, labelToken, hasOverride, allowDefault)
             {
                 m_initialValue = initialValue;
             }
@@ -1921,6 +1995,11 @@ namespace ProtectiveWards
                     height: 30f);
                 m_input = obj.GetComponent<InputField>();
                 m_input.text = m_initialValue.ToString(CultureInfo.InvariantCulture);
+                if (Field == FieldId.Range)
+                {
+                    m_input.onEndEdit.AddListener(_ => ClampRangeInput());
+                    ClampRangeInput();
+                }
                 if (m_input.textComponent != null)
                     m_input.textComponent.alignment = TextAnchor.MiddleLeft;
             }
@@ -1931,14 +2010,27 @@ namespace ProtectiveWards
                     m_input.interactable = interactable;
             }
 
+            public void ClampRangeInput()
+            {
+                if (Field != FieldId.Range || m_input == null)
+                    return;
+
+                if (!float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+                    value = m_initialValue;
+
+                m_input.text = ClampWardRange(value).ToString(CultureInfo.InvariantCulture);
+            }
+
             protected override void CaptureValue(WardSettingValue value)
             {
+                ClampRangeInput();
                 if (m_input == null || !float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out value.FloatValue))
                     value.FloatValue = 0f;
             }
 
             protected override void WriteValue(ZPackage package)
             {
+                ClampRangeInput();
                 if (!float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
                     value = 0f;
 
@@ -2065,9 +2157,14 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(Player), nameof(Player.Update))]
         private static class Player_Update_CloseWardSettingsUI
         {
-            private static void Postfix()
+            private static void Postfix(Player __instance)
             {
-                if (s_panel == null)
+                if (__instance != Player.m_localPlayer || s_panel == null || s_panelOpenedFrame == Time.frameCount)
+                    return;
+
+                // CanvasGroup and Button.interactable do not gate keyboard handling in Player.Update.
+                // Keep every asynchronous settings operation alive until its response is processed.
+                if (HasPendingUserOperation())
                     return;
 
                 if (ZInput.GetKeyDown(KeyCode.Escape))

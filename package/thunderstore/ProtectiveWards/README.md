@@ -10,7 +10,7 @@ Protective Wards is designed primarily for public PvE servers. It helps prevent 
 
 - BepInExPack Valheim
 - Jotunn 2.29.1 or a newer compatible 2.x version
-- YamlDotNet
+- YamlDotNet 16.3.0
 
 The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer it must be installed on the server and every client. Gameplay settings are server-synchronized; client-only visual settings are marked `[Not Synced with Server]`.
 
@@ -59,7 +59,9 @@ Each ward can store its own range, visual and access overrides in its ZDO while 
 | `Ward settings / Only creator can edit ward settings` | Only the creator may edit the ward instead of any player with access. Ignored in `ServerControlled` mode. |
 | `Ward settings / Admins can edit ward settings` | Players accepted by `Ward admin access`, or by the ward's effective `Permit everyone` value, may edit any ward. Ignored in `ServerControlled` mode. |
 
-The **Access settings** page contains a per-ward `Permit everyone` value with the same **Use default** behavior as the visual settings. Its inline note explains that enabling the effective value treats every player as permitted. This allows a public ward while the global default is private, or a private ward while the global default is public. When effective for a ward, all players pass its access checks and that ward is excluded from inactive expiration. The global default is now `Ward access / Permit everyone`; values previously enabled under `Ward admin` must be enabled again in the new group. Per-ward access overrides are ignored in `ServerControlled` mode.
+The **Access settings** page shows a single explicit `Permit everyone` toggle initialized from the ward's current effective value. There is no `Use default` control on this page. Applying settings saves the displayed value as a per-ward override. A ward without a saved override still uses `Ward access / Permit everyone`. When enabled, all players pass the ward's access checks and it is excluded from inactive expiration. Per-ward access overrides are ignored in `ServerControlled` mode.
+
+`Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, defaulting to 1 and 200. It is server-controlled and synchronized by Jotunn, like the other server configuration entries. Limits apply to UI input, server-side writes, existing saved values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
 The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester identity, target ward ZDO and edit permission before changing the list.
 
@@ -313,8 +315,10 @@ Optional integrations are detected at runtime without bundling their API assembl
 - **EpicLoot**: the enchanting table follows `Ward access from non-permitted players / Crafting stations`.
 
 ## Links
+[GitHub](https://github.com/shudnal/ProtectiveWards)
 
-- [GitHub](https://github.com/shudnal/ProtectiveWards)
-- [Nexus](https://www.nexusmods.com/valheim/mods/2450)
-- [Discord](https://discord.gg/e3UtQB8GFK)
-- [Buy Me a Coffee](https://buymeacoffee.com/shudnal)
+## Donation
+[Buy Me a Coffee](https://buymeacoffee.com/shudnal)
+
+## Discord
+[Join server](https://discord.gg/e3UtQB8GFK)
