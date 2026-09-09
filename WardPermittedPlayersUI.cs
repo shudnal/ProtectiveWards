@@ -385,7 +385,7 @@ namespace ProtectiveWards
                 result = PermittedPlayerResult.Unavailable;
             else if (action == PermittedPlayerAction.Add)
             {
-                List<Player> matches = FindOnlinePlayers(query);
+                List<KeyValuePair<long, string>> matches = FindOnlinePlayers(query);
                 if (matches.Count == 0)
                 {
                     result = PermittedPlayerResult.NoMatch;
@@ -394,13 +394,13 @@ namespace ProtectiveWards
                 else if (matches.Count > 1)
                 {
                     result = PermittedPlayerResult.MultipleMatches;
-                    detail = string.Join(", ", matches.Select(player => player.GetPlayerName()).ToArray());
+                    detail = string.Join(", ", matches.Select(player => player.Value).ToArray());
                 }
                 else
                 {
-                    Player target = matches[0];
-                    targetPlayerID = target.GetPlayerID();
-                    detail = target.GetPlayerName();
+                    KeyValuePair<long, string> target = matches[0];
+                    targetPlayerID = target.Key;
+                    detail = target.Value;
                     if (WardZdoUtils.IsExplicitlyPermitted(zdo, targetPlayerID))
                         result = PermittedPlayerResult.AlreadyPermitted;
                     else
@@ -421,21 +421,28 @@ namespace ProtectiveWards
             SendResult(sender, wardID, action, result, detail, zdo);
         }
 
-        private static List<Player> FindOnlinePlayers(string query)
+        private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)
         {
             string normalized = (query ?? "").Trim();
-            if (normalized.Length == 0)
-                return new List<Player>();
+            Dictionary<long, string> players = new();
+            if (normalized.Length == 0 || ZNet.instance == null)
+                return players.ToList();
 
-            List<Player> players = Player.GetAllPlayers().Where(player => player != null).ToList();
-            List<Player> exact = players
-                .Where(player => string.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase))
+            foreach (ZDO character in ZNet.instance.GetAllCharacterZDOS())
+            {
+                if (character == null)
+                    continue;
+
+                long playerID = character.GetLong(ZDOVars.s_playerID, 0L);
+                if (playerID != 0L)
+                    players[playerID] = character.GetString(ZDOVars.s_playerName, "");
+            }
+
+            List<KeyValuePair<long, string>> exact = players
+                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            if (exact.Count > 0)
-                return exact;
-
-            return players
-                .Where(player => player.GetPlayerName().IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
+            return exact.Count > 0 ? exact : players
+                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
                 .ToList();
         }
 
