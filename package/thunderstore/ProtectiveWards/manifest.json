@@ -5,7 +5,8 @@
   "description": "Server-synced ward access control and PvE base protection: per-ward settings, permitted-player management and password access, connected ward networks, protected interactions, expiration, passive protection and offerings.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
-    "ValheimModding-YamlDotNet-16.3.1",
-    "ValheimModding-Jotunn-2.29.2"
+    "ValheimModding-YamlDotNet-16.3.0",
+    "ValheimModding-Jotunn-2.29.2",
+    "shudnal-ConditionalConfigSync-1.0.5"
   ]
 }

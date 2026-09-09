@@ -439,8 +439,7 @@ namespace ProtectiveWards
             float halfHeight = PanelHeight * 0.5f;
             CreateText(title.Localize(), new Vector2(0f, halfHeight - 35f), TitleFontSize, s_panelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            bool showColumnHeaders = page != SettingsPage.Access || s_canEditGeneralSettings;
-            if (showColumnHeaders)
+            if (page != SettingsPage.Access)
                 CreateColumnHeaders(halfHeight - 72f);
 
             float y = halfHeight - 96f;
@@ -775,11 +774,8 @@ namespace ProtectiveWards
 
             CaptureCurrentRows();
 
-            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault && range.FloatValue < 0f)
-            {
-                Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_settings_range_nonnegative");
-                return;
-            }
+            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault)
+                range.FloatValue = WardRangeSettings.Clamp(range.FloatValue);
 
             bool replacePassword = false;
             if (s_canChangePassword && wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword)
@@ -1390,7 +1386,7 @@ namespace ProtectiveWards
             }
 
             float value = package.ReadSingle();
-            zdo.Set(key, value);
+            zdo.Set(key, key == s_range ? WardRangeSettings.Clamp(value) : value);
         }
 
         private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, bool useDefault, ZPackage package, bool writeAlpha = true)
@@ -1427,6 +1423,7 @@ namespace ProtectiveWards
 
             StoreBool(FieldId.CustomRange, s_customRange, setWardRange.Value);
             StoreFloat(FieldId.Range, s_range, wardRange.Value);
+            s_values[FieldId.Range].FloatValue = WardZdoUtils.GetConfiguredWardRange(s_zdo);
             StoreBool(FieldId.CustomColor, s_customColor, wardEmissionColorEnabled.Value);
             StoreEmissionColor();
             StoreFloat(FieldId.EmissionColorMultiplier, s_colorMultiplier, wardEmissionColorMultiplier.Value);
@@ -1448,7 +1445,18 @@ namespace ProtectiveWards
             StoreFloat(FieldId.CircleWidth, s_circleWidth, wardAreaMarkerWidth.Value);
             StoreFloat(FieldId.CircleAmount, s_circleAmount, wardAreaMarkerAmount.Value);
 
-            StoreBool(FieldId.PermitEveryone, s_permitEveryone, permitEveryone.Value);
+            StoreBool(FieldId.PermitEveryone, s_permitEveryone, IsPermitEveryone(s_zdo));
+            s_values[FieldId.PermitEveryone].UseDefault = false;
+        }
+
+        internal static void RefreshRangeLimits()
+        {
+            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range))
+                range.FloatValue = WardRangeSettings.Clamp(range.FloatValue);
+
+            foreach (WardSettingRow row in s_rows)
+                if (row is FloatRow floatRow && row.FieldId == FieldId.Range)
+                    floatRow.ClampRangeInput();
         }
 
         private static void StoreBool(FieldId field, int key, bool defaultValue)
@@ -1559,8 +1567,11 @@ namespace ProtectiveWards
 
         private static void AddAccessBool(FieldId field, string labelToken, ref float y)
         {
-            AddBool(field, labelToken, ref y);
-            y += RowStep - AccessRowStep;
+            WardSettingValue value = GetValue(field);
+            BoolRow row = new(field, labelToken, true, value.BoolValue, allowDefault: false);
+            row.Create(s_panel.transform, y);
+            s_rows.Add(row);
+            y -= AccessRowStep;
         }
 
         private static void AddAccessSection(string labelToken, ref float y)
@@ -1810,13 +1821,15 @@ namespace ProtectiveWards
         {
             protected readonly FieldId Field;
             private readonly string m_labelToken;
+            private readonly bool m_allowDefault;
             protected Toggle UseDefaultToggle;
 
-            protected WardSettingRow(FieldId field, string labelToken, bool hasOverride)
+            protected WardSettingRow(FieldId field, string labelToken, bool hasOverride, bool allowDefault = true)
             {
                 Field = field;
                 m_labelToken = labelToken;
-                UseDefault = !hasOverride;
+                m_allowDefault = allowDefault;
+                UseDefault = allowDefault && !hasOverride;
             }
 
             public FieldId FieldId => Field;
@@ -1834,15 +1847,18 @@ namespace ProtectiveWards
             {
                 CreateRowText(parent, m_labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
 
-                GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
-                SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
-                UseDefaultToggle = useDefaultObject.GetComponent<Toggle>();
-                UseDefaultToggle.isOn = UseDefault;
-                UseDefaultToggle.onValueChanged.AddListener(value =>
+                if (m_allowDefault)
                 {
-                    UseDefault = value;
-                    SetValueInteractable(!value);
-                });
+                    GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
+                    SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
+                    UseDefaultToggle = useDefaultObject.GetComponent<Toggle>();
+                    UseDefaultToggle.isOn = UseDefault;
+                    UseDefaultToggle.onValueChanged.AddListener(value =>
+                    {
+                        UseDefault = value;
+                        SetValueInteractable(!value);
+                    });
+                }
 
                 CreateValueControl(parent, y);
                 SetValueInteractable(!UseDefault);
@@ -1867,7 +1883,8 @@ namespace ProtectiveWards
             private readonly bool m_initialValue;
             private Toggle m_valueToggle;
 
-            public BoolRow(FieldId field, string labelToken, bool hasOverride, bool initialValue) : base(field, labelToken, hasOverride)
+            public BoolRow(FieldId field, string labelToken, bool hasOverride, bool initialValue, bool allowDefault = true)
+                : base(field, labelToken, hasOverride, allowDefault)
             {
                 m_initialValue = initialValue;
             }
@@ -1921,6 +1938,11 @@ namespace ProtectiveWards
                     height: 30f);
                 m_input = obj.GetComponent<InputField>();
                 m_input.text = m_initialValue.ToString(CultureInfo.InvariantCulture);
+                if (Field == FieldId.Range)
+                {
+                    m_input.onEndEdit.AddListener(_ => ClampRangeInput());
+                    ClampRangeInput();
+                }
                 if (m_input.textComponent != null)
                     m_input.textComponent.alignment = TextAnchor.MiddleLeft;
             }
@@ -1931,14 +1953,27 @@ namespace ProtectiveWards
                     m_input.interactable = interactable;
             }
 
+            public void ClampRangeInput()
+            {
+                if (Field != FieldId.Range || m_input == null)
+                    return;
+
+                if (!float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+                    value = m_initialValue;
+
+                m_input.text = WardRangeSettings.Clamp(value).ToString(CultureInfo.InvariantCulture);
+            }
+
             protected override void CaptureValue(WardSettingValue value)
             {
+                ClampRangeInput();
                 if (m_input == null || !float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out value.FloatValue))
                     value.FloatValue = 0f;
             }
 
             protected override void WriteValue(ZPackage package)
             {
+                ClampRangeInput();
                 if (!float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
                     value = 0f;
 

@@ -17,7 +17,7 @@ namespace ProtectiveWards
             public bool Value;
         }
 
-        private static void ResetCache() => s_qualifiedBaseCache.Clear();
+        internal static void ResetCache() => s_qualifiedBaseCache.Clear();
 
         internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out ZDO ward)
         {

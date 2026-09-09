@@ -16,6 +16,7 @@ namespace ProtectiveWards
 {
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
+    [BepInDependency(WardRangeSettings.SyncPluginGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
@@ -388,6 +389,7 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
+            WardRangeSettings.Initialize(Config);
             CompatibilityHelper.CheckForCompatibility();
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
@@ -410,6 +412,7 @@ namespace ProtectiveWards
 
         private void OnDestroy()
         {
+            WardRangeSettings.Shutdown();
             Config.Save();
             _harmony?.UnpatchSelf();
             FullProtection.ResetDynamicPatchState();
@@ -2015,7 +2018,9 @@ namespace ProtectiveWards
 
         private static void SetWardRange(PrivateArea __instance, float range)
         {
-            float newRadius = Math.Max(range, 0);
+            float newRadius = WardRangeSettings.Clamp(range);
+            areaCache.Clear();
+            BackgroundProtection.ResetCache();
 
             __instance.m_radius = newRadius;
             
@@ -2920,6 +2925,7 @@ namespace ProtectiveWards
             if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
                 return;
 
+            defaultRange = WardRangeSettings.Clamp(defaultRange);
             if (Math.Abs(ward.m_radius - defaultRange) < 0.001f)
                 return;
 
@@ -2946,7 +2952,7 @@ namespace ProtectiveWards
             }
 
             float range = WardZdoUtils.GetConfiguredWardRange(zdo);
-            if (Math.Abs(ward.m_radius - range) >= 0.001f)
+            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - range) >= 0.001f)
             {
                 SetWardRange(ward, range);
                 SetWardPlayerBase(ward, range);
@@ -3023,6 +3029,14 @@ namespace ProtectiveWards
         {
             foreach (PrivateArea ward in PrivateArea.m_allAreas)
                 RefreshWardVisuals(ward);
+        }
+
+        internal static void RefreshWardRangeLimits()
+        {
+            areaCache.Clear();
+            BackgroundProtection.ResetCache();
+            RefreshAllLoadedWardVisuals();
+            WardSettingsUI.RefreshRangeLimits();
         }
 
         private static bool ShouldRefreshConfiguredDefaults()
