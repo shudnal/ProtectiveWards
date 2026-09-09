@@ -471,15 +471,9 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch]
+        [HarmonyPatch(typeof(Character), nameof(Character.AddFireDamage))]
         public static class Character_AddFireDamage_IndirectFireDamageProtection
         {
-            private static MethodBase TargetMethod()
-            {
-                return AccessTools.Method(typeof(Character), nameof(Character.AddFireDamage), new[] { typeof(float), typeof(short) })
-                       ?? AccessTools.Method(typeof(Character), nameof(Character.AddFireDamage), new[] { typeof(float) });
-            }
-
             private static void Prefix(Character __instance, ref float damage)
             {
                 if (boarsHensProtection.Value && __instance.IsTamed() && _boarsHensProtectionGroupList.Contains(__instance.m_group.ToLower()) && InsideEnabledPlayersArea(__instance.transform.position))
