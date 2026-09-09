@@ -11,7 +11,6 @@ Protective Wards is aimed at public PvE servers: it helps keep non-permitted pla
 - BepInExPack Valheim
 - Jotunn 2.29.1 or newer compatible 2.x version
 - YamlDotNet 16.3.0
-- Conditional Config Sync 1.0.5
 
 The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-synced configuration. In client-server mode, the mod is required on both the server and all clients.
 
@@ -49,7 +48,7 @@ You can customize:
 
 Most per-ward values can inherit their corresponding global config. Access settings use explicit toggles instead: `Permit everyone` displays the ward's current effective value and has no `Use default` control. Applying settings saves that displayed value as the ward's own access policy. A ward without a saved override still starts from `Ward access / Permit everyone`. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
 
-`Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, with defaults of 1 and 200. This setting is server-controlled by default through Conditional Config Sync and can be reassigned by server policy. Existing settings retain their Jotunn synchronization. The limits apply to UI input, server-side settings writes, saved ward values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
+`Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, with defaults of 1 and 200. This setting is server-controlled and synchronized by Jotunn, like the other server configuration entries. The limits apply to UI input, server-side settings writes, saved ward values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
 The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the tracked ward ZDO, requester identity and edit permission.
 

@@ -51,10 +51,6 @@
     <Reference Include="assembly_valheim_publicized">
       <HintPath>F:\Steam\steamapps\common\Valheim\valheim_Data\Managed\publicized_assemblies\assembly_valheim_publicized.dll</HintPath>
     </Reference>
-    <Reference Include="ConditionalConfigSync">
-      <HintPath>..\Assemblies\Managers\ConditionalConfigSync.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="BepInEx">
       <HintPath>F:\Steam\steamapps\common\Valheim\BepInEx\core\BepInEx.dll</HintPath>
     </Reference>
@@ -108,7 +104,6 @@
     <Compile Include="ItemNameTokens.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="WardZdoUtils.cs" />
-    <Compile Include="WardRangeSettings.cs" />
     <Compile Include="BackgroundProtection.cs" />
     <Compile Include="FullProtection.cs" />
     <Compile Include="LocalizationManager.cs" />

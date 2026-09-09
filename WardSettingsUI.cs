@@ -785,7 +785,7 @@ namespace ProtectiveWards
             CaptureCurrentRows();
 
             if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault)
-                range.FloatValue = WardRangeSettings.Clamp(range.FloatValue);
+                range.FloatValue = ClampWardRange(range.FloatValue);
 
             bool replacePassword = false;
             if (s_canChangePassword && wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword)
@@ -1418,7 +1418,7 @@ namespace ProtectiveWards
             }
 
             float value = package.ReadSingle();
-            zdo.Set(key, key == s_range ? WardRangeSettings.Clamp(value) : value);
+            zdo.Set(key, key == s_range ? ClampWardRange(value) : value);
         }
 
         private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, bool useDefault, ZPackage package, bool writeAlpha = true)
@@ -1484,7 +1484,7 @@ namespace ProtectiveWards
         internal static void RefreshRangeLimits()
         {
             if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range))
-                range.FloatValue = WardRangeSettings.Clamp(range.FloatValue);
+                range.FloatValue = ClampWardRange(range.FloatValue);
 
             foreach (WardSettingRow row in s_rows)
                 if (row is FloatRow floatRow && row.FieldId == FieldId.Range)
@@ -1993,7 +1993,7 @@ namespace ProtectiveWards
                 if (!float.TryParse(m_input.text, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
                     value = m_initialValue;
 
-                m_input.text = WardRangeSettings.Clamp(value).ToString(CultureInfo.InvariantCulture);
+                m_input.text = ClampWardRange(value).ToString(CultureInfo.InvariantCulture);
             }
 
             protected override void CaptureValue(WardSettingValue value)

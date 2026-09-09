@@ -208,13 +208,13 @@ namespace ProtectiveWards
             if (ArePerWardSettingsEnabled() && zdo != null)
                 range = zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? range : GetWardDefaultRadius());
 
-            return WardRangeSettings.Clamp(range);
+            return ClampWardRange(range);
         }
 
         internal static float GetWardDefaultRadius()
         {
             if (s_wardDefaultRadiusCached)
-                return WardRangeSettings.Clamp(s_wardDefaultRadius);
+                return ClampWardRange(s_wardDefaultRadius);
 
             if (ZNetScene.instance != null)
             {
@@ -226,7 +226,7 @@ namespace ProtectiveWards
                 }
             }
 
-            return WardRangeSettings.Clamp(s_wardDefaultRadius);
+            return ClampWardRange(s_wardDefaultRadius);
         }
 
         internal static float GetWardRadius(ZDO zdo)

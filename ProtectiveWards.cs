@@ -16,7 +16,6 @@ namespace ProtectiveWards
 {
     [BepInPlugin(pluginID, pluginName, pluginVersion)]
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
-    [BepInDependency(WardRangeSettings.SyncPluginGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(GuildsCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
@@ -112,6 +111,7 @@ namespace ProtectiveWards
 
         public static ConfigEntry<bool> setWardRange;
         public static ConfigEntry<float> wardRange;
+        public static ConfigEntry<Vector2> wardRangeLimits;
         public static ConfigEntry<WardAreaShape> wardAreaShape;
         public static ConfigEntry<bool> wardProtectDungeonInteriors;
         public static ConfigEntry<bool> supressSpawnInRange;
@@ -391,7 +391,6 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
-            WardRangeSettings.Initialize(Config);
             CompatibilityHelper.CheckForCompatibility();
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
@@ -414,7 +413,6 @@ namespace ProtectiveWards
 
         private void OnDestroy()
         {
-            WardRangeSettings.Shutdown();
             Config.Save();
             _harmony?.UnpatchSelf();
             FullProtection.ResetDynamicPatchState();
@@ -554,6 +552,7 @@ namespace ProtectiveWards
 
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Default value for whether wards without per-ward range override should use a custom range. Each disabled ward can be configured separately from its settings window.");
             wardRange = config("Range", "Ward range", defaultValue: 32f, "Default ward range used for wards without per-ward range override. Each disabled ward can be configured separately from its settings window.");
+            wardRangeLimits = config("Range", "Ward range limits", new Vector2(1f, 200f), "Minimum (x) and maximum (y) effective ward radius in meters, including saved per-ward values and the default radius. This setting is server-controlled and synchronized by Jotunn. Invalid endpoints use 1 and 200 respectively; reversed limits are sorted.");
             supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Default value for wards without per-ward bubble override. Each disabled ward can be configured separately from its settings window. Show ward bubble like trader's one [Not Synced with Server]", false);
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Default bubble color for wards without per-ward bubble color override. Each disabled ward can be configured separately from its settings window. Toggle ward protection to change color [Not Synced with Server]", false);
@@ -687,6 +686,7 @@ namespace ProtectiveWards
             wardDemisterEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             setWardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customRange);
             wardRange.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultFloat(s_range);
+            wardRangeLimits.SettingChanged += (sender, args) => RefreshWardRangeLimits();
             supressSpawnInRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultBool(s_customColor);
             wardEmissionColor.SettingChanged += (sender, args) => RefreshLoadedWardsUsingDefaultVec3(s_color);
@@ -2033,13 +2033,13 @@ namespace ProtectiveWards
 
             // Marker density is cosmetic and must not allocate an unbounded number of objects.
             // Use double arithmetic so large, finite configuration values cannot overflow first.
-            double segments = 80d * Math.Max(0f, amount) * (WardRangeSettings.Clamp(radius) / 32d);
+            double segments = 80d * Math.Max(0f, amount) * (ClampWardRange(radius) / 32d);
             return (int)Math.Max(0d, Math.Min(4096d, segments));
         }
 
         private static void SetWardRange(PrivateArea __instance, float range)
         {
-            float newRadius = WardRangeSettings.Clamp(range);
+            float newRadius = ClampWardRange(range);
             areaCache.Clear();
             BackgroundProtection.ResetCache();
 
@@ -2955,7 +2955,7 @@ namespace ProtectiveWards
             if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
                 return;
 
-            defaultRange = WardRangeSettings.Clamp(defaultRange);
+            defaultRange = ClampWardRange(defaultRange);
             if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - defaultRange) >= 0.001f)
                 SetWardRange(ward, defaultRange);
 
@@ -3059,6 +3059,24 @@ namespace ProtectiveWards
             foreach (PrivateArea ward in PrivateArea.m_allAreas)
                 RefreshWardVisuals(ward);
         }
+
+        private static readonly Vector2 DefaultWardRangeLimits = new(1f, 200f);
+
+        internal static float ClampWardRange(float radius)
+        {
+            Vector2 limits = wardRangeLimits?.Value ?? DefaultWardRangeLimits;
+            float minimum = IsValidWardRangeLimit(limits.x) ? limits.x : DefaultWardRangeLimits.x;
+            float maximum = IsValidWardRangeLimit(limits.y) ? limits.y : DefaultWardRangeLimits.y;
+            if (minimum > maximum)
+                (minimum, maximum) = (maximum, minimum);
+
+            if (float.IsNaN(radius))
+                radius = 32f;
+
+            return Mathf.Clamp(radius, minimum, maximum);
+        }
+
+        private static bool IsValidWardRangeLimit(float value) => value > 0f && !float.IsInfinity(value);
 
         internal static void RefreshWardRangeLimits()
         {
