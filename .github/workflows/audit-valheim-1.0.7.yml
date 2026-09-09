@@ -1,0 +1,94 @@
+name: Audit Valheim 1.0.7 compatibility
+on:
+  push:
+    branches: [fix/2.0.8-release-fixes]
+    paths: [.github/workflows/audit-valheim-1.0.7.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          path: mod
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: shudnal/assemblies_combined
+          ref: game/1.0.7
+          fetch-depth: 2
+          path: game
+      - name: Compare Harmony targets and changed referenced game types
+        shell: python
+        run: |
+          import pathlib, re, subprocess
+
+          mod = pathlib.Path('mod')
+          game = pathlib.Path('game')
+          game_head = subprocess.check_output(['git', '-C', str(game), 'rev-parse', 'HEAD'], text=True).strip()
+          game_parent = subprocess.check_output(['git', '-C', str(game), 'rev-parse', 'HEAD^'], text=True).strip()
+          print(f'GAME_HEAD={game_head}')
+          print(f'GAME_PARENT={game_parent}')
+          assert game_head == 'a2426aa56eded090abaee0d3316c86a25b395ac2'
+          assert game_parent == 'cf2cda3a4c5c05e62cb8052a61753e5dcaecc28e'
+
+          sources = []
+          for path in mod.rglob('*.cs'):
+              if '.git' not in path.parts:
+                  sources.append((path, path.read_text(encoding='utf-8-sig', errors='ignore')))
+          all_mod = '\n'.join(text for _, text in sources)
+
+          changed_paths = subprocess.check_output(
+              ['git', '-C', str(game), 'diff', '--name-only', game_parent, game_head], text=True).splitlines()
+          changed_types = sorted({pathlib.PurePosixPath(p).stem for p in changed_paths if p.endswith('.cs')})
+          referenced_changed = [t for t in changed_types if re.search(r'(?<![A-Za-z0-9_])' + re.escape(t) + r'(?![A-Za-z0-9_])', all_mod)]
+          print('\nCHANGED GAME TYPES REFERENCED BY MOD:')
+          for name in referenced_changed:
+              print(name)
+
+          patch_re = re.compile(r'\[HarmonyPatch\(typeof\((?P<type>[A-Za-z0-9_.]+)\),\s*nameof\([^)]*\.(?P<method>[A-Za-z0-9_]+)\)(?P<rest>[^\]]*)\)\]')
+          patches = []
+          for path, text in sources:
+              for match in patch_re.finditer(text):
+                  patches.append((str(path.relative_to(mod)), match.group('type').split('.')[-1], match.group('method'), match.group('rest').strip()))
+
+          def game_file_for(type_name):
+              matches = list(game.rglob(type_name + '.cs'))
+              matches = [p for p in matches if '.git' not in p.parts]
+              return matches[0] if len(matches) == 1 else None
+
+          def method_sigs(text, method):
+              # Decompiler output keeps declarations on one line. Capture declarations, not invocations.
+              pattern = re.compile(r'^[\t ]*(?:public|private|protected|internal)(?:[\t ]+(?:static|virtual|override|abstract|sealed|new|extern|unsafe|async))*[\t ]+[A-Za-z0-9_<>.,\[\]?]+[\t ]+' + re.escape(method) + r'\(([^)]*)\)', re.MULTILINE)
+              return sorted({re.sub(r'\s+', ' ', m.group(1).strip()) for m in pattern.finditer(text)})
+
+          print('\nHARMONY TARGET AUDIT:')
+          missing = []
+          changed_targets = []
+          for source, type_name, method, rest in sorted(set(patches)):
+              path = game_file_for(type_name)
+              if path is None:
+                  print(f'UNRESOLVED_TYPE {source}: {type_name}.{method}')
+                  continue
+              rel = path.relative_to(game).as_posix()
+              new_text = path.read_text(encoding='utf-8-sig', errors='ignore')
+              try:
+                  old_text = subprocess.check_output(['git', '-C', str(game), 'show', f'{game_parent}:{rel}'], text=True)
+              except subprocess.CalledProcessError:
+                  old_text = ''
+              new_sigs = method_sigs(new_text, method)
+              old_sigs = method_sigs(old_text, method)
+              if not new_sigs:
+                  missing.append((source, type_name, method, rest))
+                  print(f'MISSING {source}: {type_name}.{method} {rest}')
+              elif old_sigs != new_sigs:
+                  changed_targets.append((source, type_name, method, old_sigs, new_sigs, rest))
+                  print(f'CHANGED {source}: {type_name}.{method} {rest}')
+                  print(f'  OLD {old_sigs}')
+                  print(f'  NEW {new_sigs}')
+
+          print(f'\nSUMMARY patches={len(patches)} missing={len(missing)} changed_signatures={len(changed_targets)} referenced_changed_types={len(referenced_changed)}')
+          if missing:
+              raise SystemExit('One or more Harmony target methods are absent in Valheim 1.0.7')
