@@ -315,14 +315,8 @@ The mod tries to keep patches focused and non-invasive. Broad generic interactio
 
 Optional compatibility includes server-validated one-guild-per-ward access for Guilds and dedicated crafting-station access protection for the EpicLoot enchanting table.
 
-## Mirrors
-
-[Nexus](https://www.nexusmods.com/valheim/mods/2450)
-
 ## Donation
-
 [Buy Me a Coffee](https://buymeacoffee.com/shudnal)
 
 ## Discord
-
 [Join server](https://discord.gg/e3UtQB8GFK)

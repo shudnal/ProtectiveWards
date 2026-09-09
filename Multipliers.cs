@@ -101,7 +101,7 @@ namespace ProtectiveWards
                 if (__instance == null)
                     return;
 
-                if (!(dt + __instance.m_foodUpdateTimer >= 1f || forceUpdate))
+                if (!(dt * Game.m_foodRate + __instance.m_foodUpdateTimer >= 1f || forceUpdate))
                     return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position))

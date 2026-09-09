@@ -392,9 +392,15 @@ namespace ProtectiveWards
                 AddIfWard(pair.Value);
         }
 
-        [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.Load))]
+        [HarmonyPatch]
         private static class ZDOMan_Load_WardListInit
         {
+            private static IEnumerable<System.Reflection.MethodBase> TargetMethods()
+            {
+                yield return AccessTools.Method(typeof(ZDOMan), nameof(ZDOMan.Load));
+                yield return AccessTools.Method(typeof(ZDOMan), nameof(ZDOMan.LoadChunks));
+            }
+
             private static void Postfix(ZDOMan __instance) => RebuildWardObjects(__instance);
         }
 

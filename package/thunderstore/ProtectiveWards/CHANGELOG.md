@@ -1,3 +1,9 @@
+# 2.0.8
+* Updated for the Valheim 1.0.7 release.
+* Updated required dependencies to BepInExPack Valheim 5.4.2350
+* Restore ward indexes when loading worlds saved in the new chunk format.
+* Account for the world food-rate modifier when applying ward food-drain adjustments.
+
 # 2.0.7
 * refactored multiplayer ward state handling and synchronization for more consistent behavior
 * improved ward settings UI and runtime visual refresh behavior

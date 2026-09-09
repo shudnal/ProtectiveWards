@@ -486,7 +486,7 @@ namespace ProtectiveWards
 
         public static bool IsTeleportable(Player player)
         {
-            if (player.IsTeleportable())
+            if (player.IsTeleportable(false))
             {
                 return true;
             }

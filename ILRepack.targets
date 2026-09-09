@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
+  <Target Name="UpdateThunderstoreManifestVersion" AfterTargets="Build">
+    <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -File &quot;$(ProjectDir)UpdateThunderstoreManifest.ps1&quot; -AssemblyPath &quot;$(TargetPath)&quot; -ManifestPath &quot;$(ProjectDir)package\thunderstore\ProtectiveWards\manifest.json&quot;" />
+  </Target>
+
   <Target Name="CopyDLLThunderstore" AfterTargets="UpdateThunderstoreManifestVersion">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)package\thunderstore\$(SolutionName)\" />
     <Message Text="Copied to thunderstore package folder." Importance="High" />
   </Target>
-  <Target Name="UpdateTranslations" AfterTargets="CopyDLLThunderstore">
+  <Target Name="UpdateTranslations" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
     <Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -File &quot;$(ProjectDir)UpdateTranslations.ps1&quot;" />
     <Message Text="Updated embedded translations." Importance="High" />
   </Target>
-  <Target Name="CopyLanguageFileThunderstore" AfterTargets="UpdateTranslations">
+  <Target Name="CopyLanguageFileThunderstore" AfterTargets="CopyDLLThunderstore" DependsOnTargets="UpdateTranslations">
     <Copy SourceFiles="$(ProjectDir)translations\English.json" DestinationFiles="$(ProjectDir)package\thunderstore\$(SolutionName)\Protective Wards.English.json" />
     <Message Text="Copied English.json to thunderstore package folder." Importance="High" />
   </Target>

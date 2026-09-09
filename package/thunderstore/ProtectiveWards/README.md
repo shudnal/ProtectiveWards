@@ -315,8 +315,10 @@ Optional integrations are detected at runtime without bundling their API assembl
 - **EpicLoot**: the enchanting table follows `Ward access from non-permitted players / Crafting stations`.
 
 ## Links
+[GitHub](https://github.com/shudnal/ProtectiveWards)
 
-- [GitHub](https://github.com/shudnal/ProtectiveWards)
-- [Nexus](https://www.nexusmods.com/valheim/mods/2450)
-- [Discord](https://discord.gg/e3UtQB8GFK)
-- [Buy Me a Coffee](https://buymeacoffee.com/shudnal)
+## Donation
+[Buy Me a Coffee](https://buymeacoffee.com/shudnal)
+
+## Discord
+[Join server](https://discord.gg/e3UtQB8GFK)
