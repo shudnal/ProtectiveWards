@@ -12,7 +12,7 @@ namespace ProtectiveWards.Compatibility
 {
     internal static class GuildsCompat
     {
-        private const string PluginGuid = "org.bepinex.plugins.guilds";
+        internal const string PluginGuid = "org.bepinex.plugins.guilds";
         private const string ApiTypeName = "Guilds.API";
         private const string PlayerReferenceTypeName = "Guilds.PlayerReference";
         private const string GuildTypeName = "Guilds.Guild";
@@ -75,7 +75,7 @@ namespace ProtectiveWards.Compatibility
         {
             IsEnabled = false;
 
-            if (!Chainloader.PluginInfos.TryGetValue(PluginGuid, out s_plugin))
+            if (!Chainloader.PluginInfos.TryGetValue(PluginGuid, out s_plugin) || s_plugin.Instance == null)
                 return;
 
             s_assembly = s_plugin.Instance.GetType().Assembly;

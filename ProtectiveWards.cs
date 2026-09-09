@@ -18,6 +18,7 @@ namespace ProtectiveWards
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(WardRangeSettings.SyncPluginGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency(GuildsCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
