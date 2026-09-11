@@ -23,7 +23,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.8";
+        public const string pluginVersion = "2.0.9";
 
         private static Harmony _harmony;
 
@@ -218,6 +218,8 @@ namespace ProtectiveWards
 
         internal static ProtectiveWards instance;
         internal static long startTimeCached;
+        private static int cacheMaintenanceFrame = -1;
+        private static ZNet cacheMaintenanceNetwork;
         internal static Dictionary<Vector3, PrivateArea> areaCache = new();
         private static readonly Dictionary<Location, Teleport> dungeonEntranceCache = new();
         internal static Dictionary<PrivateArea, int> wardIsRepairing = new();
@@ -721,7 +723,14 @@ namespace ProtectiveWards
 
         internal static void UpdateCache()
         {
-            DateTime time = ZNet.instance.GetTime();
+            ZNet network = ZNet.instance;
+            if (!network)
+                return;
+            if (cacheMaintenanceFrame == Time.frameCount && cacheMaintenanceNetwork == network && startTimeCached != 0)
+                return;
+            cacheMaintenanceFrame = Time.frameCount;
+            cacheMaintenanceNetwork = network;
+            DateTime time = network.GetTime();
 
             if (startTimeCached == 0)
                 startTimeCached = time.Ticks;
@@ -748,15 +757,18 @@ namespace ProtectiveWards
 
                 if (areaCache.TryGetValue(wardCheckPoint, out area))
                 {
-                    if (area && area.isActiveAndEnabled && area.IsEnabled())
+                    if (area && area.isActiveAndEnabled && area.m_ownerFaction == Character.Faction.Players && area.IsEnabled()
+                        && IsWorldPointInsideWardArea(area.transform.position, area.m_radius, wardCheckPoint))
                         return true;
 
                     areaCache.Remove(wardCheckPoint);
+                    area = null;
                 }
             }
 
             foreach (PrivateArea allArea in PrivateArea.m_allAreas)
-                if (allArea.IsEnabled() && allArea.m_ownerFaction == Character.Faction.Players && IsWorldPointInsideWardArea(allArea.transform.position, allArea.m_radius, wardCheckPoint))
+                if (allArea && allArea.isActiveAndEnabled && allArea.m_ownerFaction == Character.Faction.Players && allArea.IsEnabled()
+                    && IsWorldPointInsideWardArea(allArea.transform.position, allArea.m_radius, wardCheckPoint))
                 {
                     area = allArea;
 
@@ -766,9 +778,7 @@ namespace ProtectiveWards
                     return true;
                 }
 
-            if (checkCache)
-                areaCache.Add(wardCheckPoint, area);
-            
+            // Do not cache misses: a newly enabled/loaded ward must protect its area immediately.
             return false;
         }
 

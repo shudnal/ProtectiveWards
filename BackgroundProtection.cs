@@ -10,6 +10,7 @@ namespace ProtectiveWards
     {
         private static readonly Dictionary<ZDOID, CachedBool> s_qualifiedBaseCache = new();
         private const float QualifiedBaseCacheSeconds = 10f;
+        private static readonly Func<ZDO, bool> activeWardPredicate = IsActiveBackgroundWard;
 
         private struct CachedBool
         {
@@ -36,8 +37,16 @@ namespace ProtectiveWards
         {
             ward = null;
 
-            if (!TryResolveWardCheckPoint(sourcePoint, out sourcePoint) || !TryResolveWardCheckPoint(targetPoint, out targetPoint))
+            bool samePoint = sourcePoint.x == targetPoint.x && sourcePoint.y == targetPoint.y && sourcePoint.z == targetPoint.z;
+            if (!TryResolveWardCheckPoint(sourcePoint, out sourcePoint))
                 return false;
+            if (samePoint)
+                targetPoint = sourcePoint;
+            else if (!TryResolveWardCheckPoint(targetPoint, out targetPoint))
+                return false;
+
+            if (samePoint)
+                return WardZdoUtils.TryFindActiveWardContainingPoint(sourcePoint, activeWardPredicate, out ward);
 
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
 
@@ -46,11 +55,21 @@ namespace ProtectiveWards
                 if (!IsActiveBackgroundWard(area) || !IsInsideWardXZ(area, sourcePoint))
                     continue;
 
-                if (!WardZdoUtils.ConnectedAccessWardZdos(area, mode, IsActiveBackgroundWard).AnySafe(candidate => IsInsideWardXZ(candidate, targetPoint)))
+                // The root is already active and contains sourcePoint. Most AI checks use one point.
+                if (IsInsideWardXZ(area, targetPoint))
+                {
+                    ward = area;
+                    return true;
+                }
+                if (mode == WardConnectedAccessMode.Off)
                     continue;
-
-                ward = area;
-                return true;
+                foreach (ZDO candidate in WardZdoUtils.ConnectedAccessWardZdos(area, mode, activeWardPredicate))
+                {
+                    if (!IsInsideWardXZ(candidate, targetPoint))
+                        continue;
+                    ward = area;
+                    return true;
+                }
             }
 
             return false;
@@ -67,32 +86,35 @@ namespace ProtectiveWards
             if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))
                 return false;
 
+            WardBackgroundPresenceMode presenceMode = wardBackgroundPresenceMode.Value;
             foreach (Player player in Player.GetAllPlayers())
             {
-                if (player == null)
+                if (player == null || !TryResolveWardCheckPoint(player.transform.position, out Vector3 resolvedPlayerPoint))
                     continue;
 
-                long playerID = player.GetPlayerID();
-                if (!ward.HasConnectedWardAccess(playerID, mode, IsActiveBackgroundWard))
-                    continue;
-
-                if (!TryResolveWardCheckPoint(player.transform.position, out Vector3 resolvedPlayerPoint))
-                    continue;
-
-                switch (wardBackgroundPresenceMode.Value)
+                // Reject distant players before resolving connected permissions. Access itself remains live.
+                if (presenceMode != WardBackgroundPresenceMode.PermittedOnline
+                    && presenceMode != WardBackgroundPresenceMode.PermittedInsideConnectedArea)
                 {
-                    case WardBackgroundPresenceMode.PermittedOnline:
-                        return true;
-                    case WardBackgroundPresenceMode.PermittedInsideConnectedArea:
-                        if (WardZdoUtils.ConnectedAccessWardZdos(ward, mode, IsActiveBackgroundWard).AnySafe(area => IsInsideWardXZ(area, resolvedPlayerPoint)))
-                            return true;
-                        break;
-                    case WardBackgroundPresenceMode.PermittedNearProtectedArea:
-                    default:
-                        if (Utils.DistanceXZ(resolvedPlayerPoint, resolvedPoint) <= radius)
-                            return true;
-                        break;
+                    float dx = resolvedPlayerPoint.x - resolvedPoint.x;
+                    float dz = resolvedPlayerPoint.z - resolvedPoint.z;
+                    if (!(dx * dx + dz * dz <= radius * radius))
+                        continue;
                 }
+
+                if (!ward.HasConnectedWardAccess(player.GetPlayerID(), mode, activeWardPredicate))
+                    continue;
+
+                if (presenceMode != WardBackgroundPresenceMode.PermittedInsideConnectedArea)
+                    return true;
+
+                if (IsInsideWardXZ(ward, resolvedPlayerPoint))
+                    return true;
+                if (mode == WardConnectedAccessMode.Off)
+                    continue;
+                foreach (ZDO area in WardZdoUtils.ConnectedAccessWardZdos(ward, mode, activeWardPredicate))
+                    if (IsInsideWardXZ(area, resolvedPlayerPoint))
+                        return true;
             }
 
             return false;
@@ -121,7 +143,7 @@ namespace ProtectiveWards
             HashSet<Piece> pieces = new();
             List<Piece> buffer = new();
 
-            foreach (ZDO area in WardZdoUtils.ConnectedAccessWardZdos(ward, mode, IsActiveBackgroundWard))
+            foreach (ZDO area in WardZdoUtils.ConnectedAccessWardZdos(ward, mode, activeWardPredicate))
             {
                 buffer.Clear();
                 Piece.GetAllPiecesInRadius(area.GetPosition(), area.GetWardRadius(), buffer);

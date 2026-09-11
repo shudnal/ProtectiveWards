@@ -16,6 +16,26 @@ namespace ProtectiveWards
         private static bool s_wardObjectsInitialized;
         private static bool s_wardDefaultRadiusCached;
         private static float s_wardDefaultRadius = 32f;
+        private const int MaximumPooledBuffers = 4;
+        private const int MaximumRetainedEntries = 4096;
+        private static readonly Stack<HashSet<ZDOID>> s_visitedPool = new();
+        private static readonly Stack<WardTraversal> s_traversalPool = new();
+        private static readonly int[] s_permittedPlayerIdHashes = CreatePermittedPlayerIdHashes();
+
+        private sealed class WardTraversal
+        {
+            internal readonly HashSet<ZDOID> Visited = new();
+            internal readonly List<ZDO> Queue = new();
+            internal readonly List<ZDO> Candidates = new();
+        }
+
+        private static int[] CreatePermittedPlayerIdHashes()
+        {
+            int[] hashes = new int[64];
+            for (int i = 0; i < hashes.Length; i++)
+                hashes[i] = ("pu_id" + i).GetStableHashCode();
+            return hashes;
+        }
 
         internal static bool IsWardPrefab(GameObject gameObject) => gameObject != null && Utils.GetPrefabName(gameObject) == WardPrefabName;
 
@@ -34,15 +54,53 @@ namespace ProtectiveWards
                 yield break;
             }
 
-            HashSet<ZDOID> visited = new();
+            HashSet<ZDOID> visited = s_visitedPool.Count > 0 ? s_visitedPool.Pop() : new HashSet<ZDOID>();
+            try
+            {
+                foreach (PrivateArea area in PrivateArea.m_allAreas)
+                {
+                    ZDO zdo = area?.m_nview?.IsValid() == true ? area.m_nview.GetZDO() : null;
+                    if (!IsWard(zdo) || !visited.Add(zdo.m_uid))
+                        continue;
+                    yield return zdo;
+                }
+            }
+            finally
+            {
+                bool retain = visited.Count <= MaximumRetainedEntries;
+                visited.Clear();
+                if (retain && s_visitedPool.Count < MaximumPooledBuffers)
+                    s_visitedPool.Push(visited);
+            }
+        }
+
+        internal static bool TryFindActiveWardContainingPoint(Vector3 point, Func<ZDO, bool> isActive, out ZDO ward)
+        {
+            ward = null;
+            if (ShouldTrackServerWards())
+            {
+                EnsureWardObjectsInitialized();
+                PruneWardObjects();
+                foreach (ZDO candidate in s_wardObjects)
+                {
+                    if (!isActive(candidate) || !IsInsideWardXZ(candidate, point))
+                        continue;
+                    ward = candidate;
+                    return true;
+                }
+                return false;
+            }
+
+            // A first-match lookup does not need de-duplication or an iterator allocation.
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                ZDO zdo = area?.m_nview?.IsValid() == true ? area.m_nview.GetZDO() : null;
-                if (!IsWard(zdo) || !visited.Add(zdo.m_uid))
+                ZDO candidate = area?.m_nview?.IsValid() == true ? area.m_nview.GetZDO() : null;
+                if (!IsWard(candidate) || !isActive(candidate) || !IsInsideWardXZ(candidate, point))
                     continue;
-
-                yield return zdo;
+                ward = candidate;
+                return true;
             }
+            return false;
         }
 
         internal static int CountWardsByCreator(long creatorID)
@@ -108,7 +166,16 @@ namespace ProtectiveWards
 
         internal static bool IsExplicitlyPermitted(ZDO zdo, long playerID)
         {
-            return playerID != 0L && GetPermittedPlayers(zdo).Any(player => player.Key == playerID);
+            if (playerID == 0L || !IsWard(zdo))
+                return false;
+            int count = Math.Max(zdo.GetInt(ZDOVars.s_permitted, 0), 0);
+            for (int i = 0; i < count; i++)
+            {
+                int key = i < s_permittedPlayerIdHashes.Length ? s_permittedPlayerIdHashes[i] : ("pu_id" + i).GetStableHashCode();
+                if (zdo.GetLong(key, 0L) == playerID)
+                    return true;
+            }
+            return false;
         }
 
         internal static bool AddPermitted(ZDO zdo, long playerID, string playerName)
@@ -286,40 +353,52 @@ namespace ProtectiveWards
             if (!IsWard(rootWard))
                 yield break;
 
-            HashSet<ZDOID> visited = new();
-            List<ZDO> queue = new();
-            int queueIndex = 0;
+            // A direct-root match does not need a graph or any scratch collections.
+            yield return rootWard;
+            if (mode == WardConnectedAccessMode.Off)
+                yield break;
 
-            visited.Add(rootWard.m_uid);
-            queue.Add(rootWard);
-
-            while (queueIndex < queue.Count)
+            WardTraversal traversal = s_traversalPool.Count > 0 ? s_traversalPool.Pop() : new WardTraversal();
+            try
             {
-                ZDO current = queue[queueIndex++];
-                yield return current;
-
-                if (mode == WardConnectedAccessMode.Off)
-                    continue;
-
+                traversal.Visited.Add(rootWard.m_uid);
+                traversal.Queue.Add(rootWard);
+                // Snapshot identities once per traversal, not once for every visited ward.
+                // Enabled state, overlap, trust and permissions are still evaluated from live ZDOs.
                 foreach (ZDO candidate in GetAllWards())
+                    traversal.Candidates.Add(candidate);
+
+                int queueIndex = 0;
+                while (queueIndex < traversal.Queue.Count)
                 {
-                    if (candidate == null || visited.Contains(candidate.m_uid))
-                        continue;
+                    ZDO current = traversal.Queue[queueIndex++];
+                    if (queueIndex > 1)
+                        yield return current;
 
-                    if (isActiveCandidate != null && !isActiveCandidate(candidate))
-                        continue;
-
-                    if (!AreWardZdosOverlapping(current, candidate))
-                        continue;
-
-                    // Connected sharing rules are checked against the protected/root ward,
-                    // matching the loaded PrivateArea connected-access logic.
-                    if (!CanShareConnectedWardAccess(rootWard, candidate, mode))
-                        continue;
-
-                    visited.Add(candidate.m_uid);
-                    queue.Add(candidate);
+                    foreach (ZDO candidate in traversal.Candidates)
+                    {
+                        if (!IsWard(candidate) || traversal.Visited.Contains(candidate.m_uid))
+                            continue;
+                        if (isActiveCandidate != null && !isActiveCandidate(candidate))
+                            continue;
+                        if (!AreWardZdosOverlapping(current, candidate))
+                            continue;
+                        // Sharing is relative to the protected root, not to the preceding graph edge.
+                        if (!CanShareConnectedWardAccess(rootWard, candidate, mode))
+                            continue;
+                        traversal.Visited.Add(candidate.m_uid);
+                        traversal.Queue.Add(candidate);
+                    }
                 }
+            }
+            finally
+            {
+                bool retain = traversal.Candidates.Count <= MaximumRetainedEntries && traversal.Queue.Count <= MaximumRetainedEntries;
+                traversal.Visited.Clear();
+                traversal.Queue.Clear();
+                traversal.Candidates.Clear();
+                if (retain && s_traversalPool.Count < MaximumPooledBuffers)
+                    s_traversalPool.Push(traversal);
             }
         }
 

@@ -1,3 +1,10 @@
+# 2.0.9
+* Reduced tame-protection overhead by using direct ward lookups for same-position checks and checking player distance before connected permissions.
+* Reused bounded traversal buffers, enumerated ward candidates once per connected traversal and avoided allocating permitted-player lists for access checks.
+* Kept authorization, expiration, overlap and ward state checks live rather than caching access decisions between updates.
+* Skipped irrelevant rain-wear lookups on non-simulating or not-yet-ready instances and safely restored temporary wear settings.
+* Reduced area-cache maintenance work and removed ineffective cached misses without delaying newly active wards.
+
 # 2.0.8
 * Updated for the Valheim 1.0.7 release.
 * Updated required dependencies to BepInExPack Valheim 5.4.2350

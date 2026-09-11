@@ -494,7 +494,7 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(WearNTear), nameof(WearNTear.UpdateWear))]
         public static class WearNTear_UpdateWear_RainProtection
         {
-            private static void Prefix(WearNTear __instance, ref bool ___m_noRoofWear, ref bool __state)
+            private static void Prefix(WearNTear __instance, float time, ref bool ___m_noRoofWear, ref bool __state)
             {
                 if (__instance == null || wardRainProtection == null || !wardRainProtection.Value)
                     return;
@@ -502,7 +502,10 @@ namespace ProtectiveWards
                 if (!___m_noRoofWear)
                     return;
 
-                if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
+                // Vanilla evaluates weather wear only for an owned, ready instance.
+                if (__instance.m_nview == null || !__instance.m_nview.IsValid() || !__instance.m_nview.IsOwner() || !__instance.ShouldUpdate(time))
+                    return;
+                if (!InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
                 __state = ___m_noRoofWear;
@@ -510,15 +513,15 @@ namespace ProtectiveWards
                 ___m_noRoofWear = false;
             }
 
-            private static void Postfix(ref bool ___m_noRoofWear, bool __state)
+            private static void Postfix(ref bool ___m_noRoofWear, ref bool __state) => Restore(ref ___m_noRoofWear, ref __state);
+            private static void Finalizer(ref bool ___m_noRoofWear, ref bool __state) => Restore(ref ___m_noRoofWear, ref __state);
+
+            private static void Restore(ref bool noRoofWear, ref bool state)
             {
-                if (wardRainProtection == null || !wardRainProtection.Value)
+                if (!state)
                     return;
-
-                if (__state != true)
-                    return;
-
-                ___m_noRoofWear = __state;
+                noRoofWear = true;
+                state = false;
             }
         }
 
