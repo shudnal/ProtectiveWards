@@ -9,6 +9,17 @@ namespace ProtectiveWards
 
     internal static class ComponentExtensions
     {
+        /// <summary>Ships, carts/wagons/battering rams (Vagon) and catapults: the things that can only be destroyed, never dismantled.</summary>
+        internal static bool IsVehicle(this UnityEngine.Component component)
+        {
+            if (component == null)
+                return false;
+
+            return component.GetComponent<Ship>() != null || component.GetComponentInParent<Ship>() != null
+                || component.GetComponent<Vagon>() != null || component.GetComponentInParent<Vagon>() != null
+                || component.GetComponent<Catapult>() != null || component.GetComponentInParent<Catapult>() != null;
+        }
+
         internal static ZNetView GetComponentZNetView(this UnityEngine.Component component)
         {
             if (component == null)

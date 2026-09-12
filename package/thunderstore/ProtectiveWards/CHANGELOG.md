@@ -1,3 +1,6 @@
+# Unreleased
+* Added `Ward protects / Vehicles are never protected` (default off): ships, carts, wagons, battering rams and catapults are excluded from the structure damage multiplier, ship damage protection and background boat/cart protection, so a server can make buildings indestructible while vehicles keep vanilla damage.
+
 # 2.0.9
 * Reduced tame-protection overhead by using direct ward lookups for same-position checks and checking player distance before connected permissions.
 * Reused bounded traversal buffers, enumerated ward candidates once per connected traversal and avoided allocating permitted-player lists for access checks.

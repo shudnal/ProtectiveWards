@@ -179,6 +179,9 @@ namespace ProtectiveWards
             if (!isPlayerBuiltPiece && !isShip && !isCart)
                 return false;
 
+            if (vehiclesNeverProtected.Value && wearNTear.IsVehicle())
+                return false;
+
             if (!TryFindBackgroundWard(wearNTear.transform.position, wearNTear.transform.position, out ZDO ward))
                 return false;
 
@@ -225,6 +228,9 @@ namespace ProtectiveWards
 
             Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
             if (piece == null || !piece.IsPlacedByPlayer())
+                return false;
+
+            if (vehiclesNeverProtected.Value && wearNTear.IsVehicle())
                 return false;
 
             Character attacker = hit.GetAttacker();
