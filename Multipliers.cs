@@ -68,6 +68,9 @@ namespace ProtectiveWards
                 if (___m_nview == null || !InsideEnabledPlayersArea(__instance.transform.position, checkCache: true))
                     return;
 
+                if (vehiclesNeverProtected.Value && __instance.IsVehicle())
+                    return;
+
                 if (fireplaceProtection.Value && hit.m_hitType == HitData.HitType.Self && __instance.GetComponent<Fireplace>() != null)
                 {
                     ModifyHitDamage(ref hit, 0f);

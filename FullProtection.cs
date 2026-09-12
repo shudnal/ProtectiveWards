@@ -530,7 +530,7 @@ namespace ProtectiveWards
         {
             private static bool Prefix(Ship __instance)
             {
-                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off)
+                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off || vehiclesNeverProtected.Value)
                     return true;
 
                 return !InsideEnabledPlayersArea(__instance.transform.position);
@@ -542,7 +542,7 @@ namespace ProtectiveWards
         {
             private static void Prefix(Ship __instance, ref float __state)
             {
-                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off)
+                if (__instance == null || wardShipProtection == null || wardShipProtection.Value == ShipDamageType.Off || vehiclesNeverProtected.Value)
                     return;
 
                 if (!InsideEnabledPlayersArea(__instance.transform.position))

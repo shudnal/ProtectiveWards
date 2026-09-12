@@ -9,6 +9,14 @@ namespace ProtectiveWards
 
     internal static class ComponentExtensions
     {
+        /// <summary>Ships and Vagon-based vehicles, including carts, battering rams and catapults.</summary>
+        internal static bool IsVehicle(this UnityEngine.Component component)
+        {
+            return component != null
+                   && (component.GetComponentInParent<Ship>() != null
+                       || component.GetComponentInParent<Vagon>() != null);
+        }
+
         internal static ZNetView GetComponentZNetView(this UnityEngine.Component component)
         {
             if (component == null)
