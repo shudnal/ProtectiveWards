@@ -162,6 +162,7 @@ namespace ProtectiveWards
         public static ConfigEntry<bool> boarsHensProtection;
         public static ConfigEntry<bool> wardRainProtection;
         public static ConfigEntry<ShipDamageType> wardShipProtection;
+        public static ConfigEntry<bool> vehiclesNeverProtected;
         public static ConfigEntry<bool> wardPlantProtection;
         public static ConfigEntry<bool> fireplaceProtection;
         public static ConfigEntry<bool> sittingRaidProtection;
@@ -580,6 +581,7 @@ namespace ProtectiveWards
             boarsHensProtection = config("Ward protects", "Boars and hens from damage", true, "Set whether an active Ward will protect nearby boars and hens from taken damage (players excluded)");
             wardRainProtection = config("Ward protects", "Structures from rain damage", true, "Set whether an active Ward will protect nearby structures from rain and water damage");
             wardShipProtection = config("Ward protects", "Ship from damage", ShipDamageType.WaterDamage, "Set whether an active Ward will protect nearby ships from damage (waves and upsidedown for water damage option or any structural damage)");
+            vehiclesNeverProtected = config("Ward protects", "Vehicles are never protected", defaultValue: false, "If enabled, ships, carts, wagons, battering rams and catapults inside a ward take damage exactly as in vanilla: the structure damage multiplier, ship damage protection and background boat/cart protection are not applied to them. Intended for private servers that want indestructible buildings but destroyable vehicles.");
             wardPlantProtection = config("Ward protects", "Plants from any damage", true, "Set whether an active Ward will protect nearby plants from taking damage");
             fireplaceProtection = config("Ward protects", "Fireplace from step damage", true, "Set whether an active Ward will protect nearby fire sources from taking damage from stepping on them");
             wardTrapProtection = config("Ward protects", "Players from their traps", true, "Set whether an active Ward will protect players from stepping on traps");

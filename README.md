@@ -201,6 +201,7 @@ Classic protection options include:
 - protect boars and hens from enemies and fire;
 - protect structures from rain damage;
 - protect ships from water damage or from all damage;
+- or, with `Ward protects / Vehicles are never protected`, leave ships, carts, wagons, battering rams and catapults exactly as in vanilla (no multiplier, no ship protection, no background boat/cart protection) so that buildings can be made indestructible while vehicles stay destroyable;
 - protect plants from damage;
 - protect fireplaces from players stepping on them;
 - protect players from raids while sitting near an active fire;

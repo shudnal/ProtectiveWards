@@ -166,15 +166,13 @@ namespace ProtectiveWards
             return WardExpiration.IsWardActive(zdo);
         }
 
-        internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)
+        internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit, bool isShip, bool isCart)
         {
             if (wearNTear == null || hit == null)
                 return false;
 
             Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
             bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
-            bool isShip = wearNTear.GetComponent<Ship>() != null || wearNTear.GetComponentInParent<Ship>() != null;
-            bool isCart = wearNTear.GetComponent<Vagon>() != null || wearNTear.GetComponentInParent<Vagon>() != null;
 
             if (!isPlayerBuiltPiece && !isShip && !isCart)
                 return false;
@@ -370,7 +368,16 @@ namespace ProtectiveWards
         {
             private static void Prefix(WearNTear __instance, HitData hit)
             {
-                if (ShouldSuppressWearNTearDamage(__instance, hit) || ShouldSuppressTameDamageToStructure(__instance, hit))
+                if (__instance == null || hit == null)
+                    return;
+
+                bool isShip = __instance.GetComponentInParent<Ship>() != null;
+                bool isCart = __instance.GetComponentInParent<Vagon>() != null;
+
+                if (vehiclesNeverProtected.Value && (isShip || isCart))
+                    return;
+
+                if (ShouldSuppressWearNTearDamage(__instance, hit, isShip, isCart) || ShouldSuppressTameDamageToStructure(__instance, hit))
                     hit.m_damage.Modify(0f);
             }
         }
