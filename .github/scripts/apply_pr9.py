@@ -1,0 +1,140 @@
+import os
+import pathlib
+import subprocess
+
+
+def git(*args, **kwargs):
+    return subprocess.run(['git', *args], check=True, **kwargs)
+
+
+git('fetch', 'origin', 'refs/heads/master')
+master = git('rev-parse', 'FETCH_HEAD', capture_output=True, text=True).stdout.strip()
+assert master == 'cf800aedcf001b4f2cb9c8028217704968397353', 'Master changed during integration'
+
+git('fetch', 'origin', 'refs/pull/9/head')
+fetched = git('rev-parse', 'FETCH_HEAD', capture_output=True, text=True).stdout.strip()
+assert fetched == '416d07f26abcfc6e52f2d8645675d1404e6d672b', 'PR 9 head changed unexpectedly'
+git('cherry-pick', '--no-commit', fetched)
+
+path = pathlib.Path('Utils.cs')
+text = path.read_text(encoding='utf-8')
+old = """        /// <summary>Ships, carts/wagons/battering rams (Vagon) and catapults: the things that can only be destroyed, never dismantled.</summary>
+        internal static bool IsVehicle(this UnityEngine.Component component)
+        {
+            if (component == null)
+                return false;
+
+            return component.GetComponent<Ship>() != null || component.GetComponentInParent<Ship>() != null
+                || component.GetComponent<Vagon>() != null || component.GetComponentInParent<Vagon>() != null
+                || component.GetComponent<Catapult>() != null || component.GetComponentInParent<Catapult>() != null;
+        }
+"""
+new = """        /// <summary>Ships and Vagon-based vehicles, including carts, battering rams and catapults.</summary>
+        internal static bool IsVehicle(this UnityEngine.Component component)
+        {
+            return component != null
+                   && (component.GetComponentInParent<Ship>() != null
+                       || component.GetComponentInParent<Vagon>() != null);
+        }
+"""
+assert text.count(old) == 1, 'PR 9 IsVehicle implementation was not found exactly once'
+path.write_text(text.replace(old, new), encoding='utf-8')
+
+path = pathlib.Path('BackgroundProtection.cs')
+text = path.read_text(encoding='utf-8')
+assert text.count('internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)') == 1
+text = text.replace(
+    'internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit)',
+    'internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit, bool isShip, bool isCart)',
+    1)
+
+old = """            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+            bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
+            bool isShip = wearNTear.GetComponent<Ship>() != null || wearNTear.GetComponentInParent<Ship>() != null;
+            bool isCart = wearNTear.GetComponent<Vagon>() != null || wearNTear.GetComponentInParent<Vagon>() != null;
+
+            if (!isPlayerBuiltPiece && !isShip && !isCart)
+                return false;
+
+            if (vehiclesNeverProtected.Value && wearNTear.IsVehicle())
+                return false;
+"""
+new = """            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+            bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
+
+            if (!isPlayerBuiltPiece && !isShip && !isCart)
+                return false;
+"""
+assert text.count(old) == 1, 'Background vehicle classification block was not found exactly once'
+text = text.replace(old, new, 1)
+
+old = """            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+            if (piece == null || !piece.IsPlacedByPlayer())
+                return false;
+
+            if (vehiclesNeverProtected.Value && wearNTear.IsVehicle())
+                return false;
+
+            Character attacker = hit.GetAttacker();
+"""
+new = """            Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+            if (piece == null || !piece.IsPlacedByPlayer())
+                return false;
+
+            Character attacker = hit.GetAttacker();
+"""
+assert text.count(old) == 1, 'Tame damage vehicle block was not found exactly once'
+text = text.replace(old, new, 1)
+
+old = """            private static void Prefix(WearNTear __instance, HitData hit)
+            {
+                if (ShouldSuppressWearNTearDamage(__instance, hit) || ShouldSuppressTameDamageToStructure(__instance, hit))
+                    hit.m_damage.Modify(0f);
+            }
+"""
+new = """            private static void Prefix(WearNTear __instance, HitData hit)
+            {
+                if (__instance == null || hit == null)
+                    return;
+
+                bool isShip = __instance.GetComponentInParent<Ship>() != null;
+                bool isCart = __instance.GetComponentInParent<Vagon>() != null;
+
+                if (vehiclesNeverProtected.Value && (isShip || isCart))
+                    return;
+
+                if (ShouldSuppressWearNTearDamage(__instance, hit, isShip, isCart) || ShouldSuppressTameDamageToStructure(__instance, hit))
+                    hit.m_damage.Modify(0f);
+            }
+"""
+assert text.count(old) == 1, 'Background WearNTear.Damage prefix was not found exactly once'
+path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+utils = pathlib.Path('Utils.cs').read_text(encoding='utf-8')
+background = pathlib.Path('BackgroundProtection.cs').read_text(encoding='utf-8')
+multipliers = pathlib.Path('Multipliers.cs').read_text(encoding='utf-8')
+assert 'GetComponent<Catapult>' not in utils and 'GetComponentInParent<Catapult>' not in utils
+assert utils.count('GetComponentInParent<Ship>()') == 1
+assert utils.count('GetComponentInParent<Vagon>()') == 1
+assert 'vehiclesNeverProtected.Value && __instance.IsVehicle()' in multipliers
+assert 'vehiclesNeverProtected.Value && wearNTear.IsVehicle()' not in background
+assert 'ShouldSuppressWearNTearDamage(__instance, hit, isShip, isCart)' in background
+
+pathlib.Path('.github/workflows/apply-pr9-optimized.yml').unlink()
+pathlib.Path('.github/scripts/apply_pr9.py').unlink()
+
+git('diff', '--check')
+
+check = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pw-pr9-syntax'
+check.mkdir(exist_ok=True)
+major = subprocess.check_output(['dotnet', '--version'], text=True).strip().split('.')[0]
+(check / 'Syntax.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net' + major + '.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Reference Include="Microsoft.CodeAnalysis"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll</HintPath></Reference><Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference></ItemGroup></Project>')
+(check / 'Program.cs').write_text('using Microsoft.CodeAnalysis; using Microsoft.CodeAnalysis.CSharp; var files=Directory.GetFiles(args[0],"*.cs",SearchOption.AllDirectories).Where(p=>!p.Contains(Path.DirectorySeparatorChar+".git"+Path.DirectorySeparatorChar)).ToArray(); int errors=0; foreach(var f in files){var t=CSharpSyntaxTree.ParseText(File.ReadAllText(f),new CSharpParseOptions(LanguageVersion.CSharp11),f); foreach(var d in t.GetDiagnostics().Where(d=>d.Severity==DiagnosticSeverity.Error)){Console.WriteLine(d); errors++;}} Console.WriteLine($"C# 11 syntax validation: {files.Length} files, {errors} errors."); return errors==0?0:1;')
+subprocess.run(['dotnet', 'run', '--project', str(check / 'Syntax.csproj'), '--configuration', 'Release', '--', str(pathlib.Path.cwd())], check=True)
+
+git('add', '-A')
+git('diff', '--cached', '--check')
+git('config', 'user.name', 'shudnal')
+git('config', 'user.email', '20457922+shudnal@users.noreply.github.com')
+git('commit', '-m', 'Add opt-out for vehicle ward protection', '-m', 'Integrates the feature proposed by @chris-prichard in PR #9 while classifying vehicles once in the background damage path and treating Catapult through its Vagon component.')
+git('push', 'origin', 'HEAD:refs/heads/integrate/pr9-vehicles-never-protected')
