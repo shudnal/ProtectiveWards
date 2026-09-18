@@ -12,6 +12,7 @@ namespace ProtectiveWards
         private const string RPC_PermitPlayer = "PW_PermitPlayer";
         private const string RPC_UnpermitPlayer = "PW_UnpermitPlayer";
         private const string RPC_SetWardEnabled = "PW_SetWardEnabled";
+        private const string RPC_ToggleWardPermitted = "PW_ToggleWardPermitted";
         private const string RPC_SetWardExpired = "PW_SetWardExpired";
         private const string RPC_CheckWardBuildLimit = "PW_CheckWardBuildLimit";
         private const string RPC_DestroyWardForBuildLimit = "PW_DestroyWardForBuildLimit";
@@ -31,6 +32,7 @@ namespace ProtectiveWards
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_PermitPlayer, RPC_PermitPlayerServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardEnabled, RPC_SetWardEnabledServer);
+                ZRoutedRpc.instance.Register<ZPackage>(RPC_ToggleWardPermitted, RPC_ToggleWardPermittedServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardExpired, RPC_SetWardExpiredServer);
                 ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckWardBuildLimit, RPC_CheckWardBuildLimitServer);
             }
@@ -224,6 +226,21 @@ namespace ProtectiveWards
             context.AddString($"Unpermit for {target.Value} requested.");
         }
 
+        internal static void RequestPermittedWardToggle(PrivateArea ward, long playerID)
+        {
+            if (ward?.m_nview?.IsValid() != true || playerID == 0L)
+                return;
+
+            ZPackage package = new();
+            package.Write(ward.m_nview.GetZDO().m_uid);
+            package.Write(playerID);
+
+            if (ZNet.instance?.IsServer() == true)
+                RPC_ToggleWardPermittedServer(0L, new ZPackage(package.GetArray()));
+            else if (ZRoutedRpc.instance != null)
+                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ToggleWardPermitted, package);
+        }
+
         private static void RequestSetWardEnabled(bool enabled, Terminal context)
         {
             Player player = Player.m_localPlayer;
@@ -343,6 +360,24 @@ namespace ProtectiveWards
                 return;
 
             LogInfo($"Removed {targetName} from ward {wardID} permitted list by command");
+        }
+
+        private static void RPC_ToggleWardPermittedServer(long sender, ZPackage package)
+        {
+            ZDOID wardID = package.ReadZDOID();
+            long requesterID = package.ReadLong();
+
+            if (!TryGetRoutedPlayer(sender, requesterID, out RoutedPlayerContext requester))
+                return;
+
+            ZDO zdo = WardZdoUtils.GetWard(wardID);
+            if (zdo == null || !CanPermittedPlayersToggleWard(zdo, requester.PlayerID))
+                return;
+
+            bool enabled = !zdo.GetBool(ZDOVars.s_enabled, false);
+            zdo.Set(ZDOVars.s_enabled, enabled);
+
+            LogInfo($"{(enabled ? "Enabled" : "Disabled")} ward {wardID} by permitted player");
         }
 
         private static void RPC_SetWardEnabledServer(long sender, ZPackage package)

@@ -1,3 +1,9 @@
+# 2.0.11
+* Simplified per-ward settings: new wards copy their initial values from the global config and then keep explicit independent values without `Use default` fields.
+* Added a per-ward option allowing permitted players to activate or deactivate the ward with the normal interaction.
+* Fixed custom ward radius initialization on remote clients by synchronizing runtime ward fields before `PrivateArea.Awake`.
+* Fixed harmless Harmony warnings from inherited `Interact`/`UseItem` implementations in compatibility mods such as ValheimFortress.
+
 # 2.0.10
 * Added `Ward protects / Vehicles are never protected` (default off): ships, carts, wagons, battering rams and catapults are excluded from the structure damage multiplier, ship damage protection and background boat/cart protection, so a server can make buildings indestructible while vehicles keep vanilla damage.
 

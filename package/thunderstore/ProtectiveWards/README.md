@@ -33,7 +33,7 @@ The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer 
 - **Direct access**: ward creator, directly permitted player, member of the bound guild, effective `Permit everyone`, or configured admin bypass.
 - **Connected/effective access**: access inherited through overlapping active wards according to the selected connected access mode.
 - **Ownership exemptions**: narrow exceptions for objects where a foreign ward should not trap a player's own property, such as tombstones, saddles and previously controlled vehicles.
-- **Permit everyone**: a global default that each ward may inherit or override independently.
+- **Permit everyone**: copied into each new ward and then editable independently in `PerWard` mode.
 
 Sensitive actions and console commands are validated by the server. The server checks the requester identity, target ward ZDO, access and requested state before applying changes.
 
@@ -41,10 +41,10 @@ Sensitive actions and console commands are validated by the server. The server c
 
 `Ward settings / Ward settings mode` has two values:
 
-- `PerWard` is the default. Authorized players can open the settings window and stored per-ward range, visual and access overrides are applied.
-- `ServerControlled` hides the ward settings action, blocks the UI and its server RPCs, and ignores all stored per-ward overrides in favor of global config values. Stored values are preserved and become active again after returning to `PerWard`.
+- `PerWard` is the default. Authorized players can open the settings window and stored per-ward range, visual and access values are applied.
+- `ServerControlled` hides the ward settings action, blocks the UI and its server RPCs, and uses global config values instead of the ward's stored values. Stored ward values are preserved and become active again after returning to `PerWard`.
 
-Each ward can store its own range, visual and access overrides in its ZDO while `PerWard` mode is active.
+When a ward is created, its range, visual and access values are copied from the current global config into its ZDO. In `PerWard` mode those stored values are independent afterward; global config changes affect future wards, not existing ones.
 
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default).
@@ -54,12 +54,11 @@ Each ward can store its own range, visual and access overrides in its ZDO while 
 
 | Config | Meaning |
 |---|---|
-| `Ward settings / Ward settings mode` | `PerWard` enables the ward settings UI and stored overrides. `ServerControlled` hides and blocks the UI, ignores stored overrides, and uses global config values. |
-| `Ward settings / Use default values for wards without custom settings` | Wards without saved overrides use the global range and visual defaults. Ignored in `ServerControlled` mode. |
+| `Ward settings / Ward settings mode` | `PerWard` enables the ward settings UI and uses each ward's stored values. `ServerControlled` hides and blocks the UI and uses global config values instead. |
 | `Ward settings / Only creator can edit ward settings` | Only the creator may edit the ward instead of any player with access. Ignored in `ServerControlled` mode. |
 | `Ward settings / Admins can edit ward settings` | Players accepted by `Ward admin access`, or by the ward's effective `Permit everyone` value, may edit any ward. Ignored in `ServerControlled` mode. |
 
-The **Access settings** page shows a single explicit `Permit everyone` toggle initialized from the ward's current effective value. There is no `Use default` control on this page. Applying settings saves the displayed value as a per-ward override. A ward without a saved override still uses `Ward access / Permit everyone`. When enabled, all players pass the ward's access checks and it is excluded from inactive expiration. Per-ward access overrides are ignored in `ServerControlled` mode.
+The settings UI stores every editable value explicitly; there are no `Use default` controls. The **Access settings** page includes `Permit everyone` and `Permitted players can toggle ward`. The latter is off by default and, when enabled for a ward, lets players who already have ward access activate or deactivate it with the normal Use interaction without changing who may edit the ward settings. These per-ward access values are ignored in `ServerControlled` mode.
 
 `Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, defaulting to 1 and 200. It is server-controlled and synchronized by Jotunn, like the other server configuration entries. Limits apply to UI input, server-side writes, existing saved values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
@@ -203,7 +202,7 @@ Old wards receive a current timestamp when expiration is enabled, so existing wo
 | `Admins` | Server administrators and the host bypass ward checks. |
 | `AdminsInGodMode` | Default. Administrators bypass ward checks only while god mode is active. |
 
-`Ward access / Permit everyone` supplies the default for wards without a local override. An effective value of `true` bypasses that ward's ownership restrictions for every player while preserving its stored permitted list. This config moved from `Ward admin`; existing enabled values must be enabled again in the new group.
+`Ward access / Permit everyone` is copied into newly created wards. In `PerWard` mode each ward then keeps its own value; an enabled value bypasses that ward's ownership restrictions for every player while preserving its stored permitted list. In `ServerControlled` mode the global config value is used directly. This config moved from `Ward admin`; existing enabled values must be enabled again in the new group.
 
 ### External ward commands
 

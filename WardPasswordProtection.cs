@@ -248,6 +248,7 @@ namespace ProtectiveWards
                 position: new Vector2(-105f, -72f),
                 width: 180f,
                 height: 48f);
+            submitObject.KeepClickSfxOnly();
             s_submitButton = submitObject.GetComponent<Button>();
             s_submitButton.onClick.AddListener(SubmitPassword);
 
@@ -259,6 +260,7 @@ namespace ProtectiveWards
                 position: new Vector2(115f, -72f),
                 width: 180f,
                 height: 48f);
+            cancelObject.KeepClickSfxOnly();
             cancelObject.GetComponent<Button>().onClick.AddListener(ClosePrompt);
 
             SetPromptInputBlocked(true);

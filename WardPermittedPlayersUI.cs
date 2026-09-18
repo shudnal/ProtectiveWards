@@ -13,8 +13,8 @@ namespace ProtectiveWards
     {
         private const string RPC_UpdatePermittedPlayers = "PW_UpdatePermittedPlayers";
         private const string RPC_UpdatePermittedPlayersResult = "PW_UpdatePermittedPlayersResult";
-        private const float PanelWidth = 600f;
-        private const float PanelHeight = 600f;
+        private const float PanelWidth = 558f;
+        private const float PanelHeight = 650f;
         private const float PanelPadding = 30f;
         private const int PlayersPerPage = 10;
         private const int RowFontSize = 17;
@@ -29,6 +29,9 @@ namespace ProtectiveWards
         private static bool s_inputBlocked;
         private static bool s_updatePending;
         private static ZDOID s_pendingWardID = ZDOID.None;
+        private static InputField s_addPlayerInput;
+        private static Button s_addPlayerButton;
+        private static string s_addPlayerQuery = "";
 
         internal static bool IsRequestPending => s_updatePending;
 
@@ -90,6 +93,9 @@ namespace ProtectiveWards
             s_permittedPlayers.Clear();
             s_updatePending = false;
             s_pendingWardID = ZDOID.None;
+            s_addPlayerInput = null;
+            s_addPlayerButton = null;
+            s_addPlayerQuery = "";
             SetInputBlocked(false);
         }
 
@@ -134,12 +140,69 @@ namespace ProtectiveWards
                 draggable: true);
             s_panel.SetActive(true);
 
-            CreateText("$pw_ward_permitted_title".Localize(), new Vector2(0f, 265f), 32, PanelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
+            CreateText("$pw_ward_permitted_title".Localize(), new Vector2(0f, 287f), 32, PanelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            float y = 205f;
+            float y = 235f;
+            CreateAddPlayerControls(ref y);
+            y -= 10f;
             CreatePermittedPlayerRows(ref y);
             CreatePaginationControls();
             CreateBackButton();
+        }
+
+        private static void CreateAddPlayerControls(ref float y)
+        {
+            const float inputWidth = 180f;
+            const float buttonWidth = 110f;
+            float left = -PanelWidth * 0.5f + PanelPadding;
+            float right = PanelWidth * 0.5f - PanelPadding;
+            float labelWidth = 170f;
+            float buttonX = right - buttonWidth * 0.5f;
+            float inputRight = buttonX - buttonWidth * 0.5f - 10f;
+            float inputX = inputRight - inputWidth * 0.5f;
+
+            CreateRowText("$pw_ward_permitted_add_section".Localize(), new Vector2(left + labelWidth * 0.5f, y), labelWidth, Color.white);
+
+            GameObject inputObject = GUIManager.Instance.CreateInputField(
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(inputX, y),
+                contentType: InputField.ContentType.Standard,
+                placeholderText: "$pw_ward_permitted_placeholder".Localize(),
+                fontSize: RowFontSize,
+                width: inputWidth,
+                height: 30f);
+            s_addPlayerInput = inputObject.GetComponent<InputField>();
+            s_addPlayerInput.characterLimit = 64;
+            s_addPlayerInput.text = s_addPlayerQuery;
+            s_addPlayerInput.onValueChanged.AddListener(value => s_addPlayerQuery = value ?? "");
+            if (s_addPlayerInput.textComponent != null)
+                s_addPlayerInput.textComponent.alignment = TextAnchor.MiddleLeft;
+
+            GameObject addButton = GUIManager.Instance.CreateButton(
+                text: "$pw_ward_permitted_add".Localize(),
+                parent: s_panel.transform,
+                anchorMin: new Vector2(0.5f, 0.5f),
+                anchorMax: new Vector2(0.5f, 0.5f),
+                position: new Vector2(buttonX, y),
+                width: buttonWidth,
+                height: 32f);
+            addButton.KeepClickSfxOnly();
+            s_addPlayerButton = addButton.GetComponent<Button>();
+            s_addPlayerButton.onClick.AddListener(RequestAddCurrentPlayerQuery);
+            UpdateAddControls();
+            y -= 34f;
+
+            CreateText(
+                "$pw_ward_permitted_add_note".Localize(),
+                new Vector2(0f, y - 17f),
+                15,
+                PanelWidth - PanelPadding * 2f,
+                34f,
+                new Color(0.85f, 0.85f, 0.85f),
+                TextAnchor.UpperLeft);
+            y -= 40f;
         }
 
         private static void CreatePermittedPlayerRows(ref float y)
@@ -157,7 +220,7 @@ namespace ProtectiveWards
             int last = Math.Min(first + PlayersPerPage, s_permittedPlayers.Count);
             float left = -PanelWidth * 0.5f + PanelPadding;
             float right = PanelWidth * 0.5f - PanelPadding;
-            const float buttonWidth = 120f;
+            const float buttonWidth = 110f;
             float buttonX = right - buttonWidth * 0.5f;
             float textWidth = buttonX - buttonWidth * 0.5f - 8f - left;
 
@@ -174,6 +237,7 @@ namespace ProtectiveWards
                     position: new Vector2(buttonX, y),
                     width: buttonWidth,
                     height: 32f);
+                removeButton.KeepClickSfxOnly();
                 long playerID = player.Key;
                 Button remove = removeButton.GetComponent<Button>();
                 remove.interactable = !s_updatePending;
@@ -188,7 +252,7 @@ namespace ProtectiveWards
             if (pageCount <= 1)
                 return;
 
-            const float y = -205f;
+            const float y = -245f;
             GameObject previousButton = GUIManager.Instance.CreateButton(
                 text: "<",
                 parent: s_panel.transform,
@@ -197,6 +261,7 @@ namespace ProtectiveWards
                 position: new Vector2(-80f, y),
                 width: 50f,
                 height: 34f);
+            previousButton.KeepClickSfxOnly();
             Button previous = previousButton.GetComponent<Button>();
             previous.interactable = s_page > 0;
             previous.onClick.AddListener(() => ChangePage(-1));
@@ -218,6 +283,7 @@ namespace ProtectiveWards
                 position: new Vector2(80f, y),
                 width: 50f,
                 height: 34f);
+            nextButton.KeepClickSfxOnly();
             Button next = nextButton.GetComponent<Button>();
             next.interactable = s_page + 1 < pageCount;
             next.onClick.AddListener(() => ChangePage(1));
@@ -230,9 +296,10 @@ namespace ProtectiveWards
                 parent: s_panel.transform,
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
-                position: new Vector2(0f, -255f),
+                position: new Vector2(0f, -282f),
                 width: 170f,
                 height: 50f);
+            backButton.KeepClickSfxOnly();
             backButton.GetComponent<Button>().onClick.AddListener(BackToWardSettings);
         }
 
@@ -281,6 +348,19 @@ namespace ProtectiveWards
         {
             s_page = Mathf.Clamp(s_page + direction, 0, GetPageCount() - 1);
             CreatePanel();
+        }
+
+        private static void RequestAddCurrentPlayerQuery()
+        {
+            if (RequestAddPlayer(s_wardID, s_addPlayerInput != null ? s_addPlayerInput.text : s_addPlayerQuery))
+                UpdateAddControls();
+        }
+
+        private static void UpdateAddControls()
+        {
+            bool interactable = !s_updatePending;
+            if (s_addPlayerButton != null)
+                s_addPlayerButton.interactable = interactable;
         }
 
         internal static bool RequestAddPlayer(ZDOID wardID, string query)
@@ -332,6 +412,7 @@ namespace ProtectiveWards
 
             s_updatePending = false;
             s_pendingWardID = ZDOID.None;
+            UpdateAddControls();
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
             Player.m_localPlayer?.Message(MessageHud.MessageType.Center, "$pw_ward_permitted_unavailable");
             return false;
@@ -485,6 +566,7 @@ namespace ProtectiveWards
             int count = package.ReadInt();
             s_updatePending = false;
             s_pendingWardID = ZDOID.None;
+            UpdateAddControls();
             WardSettingsUI.HandlePermittedPlayerRequestFinished(wardID);
 
             List<KeyValuePair<long, string>> permitted = new(count);
@@ -501,7 +583,12 @@ namespace ProtectiveWards
             }
 
             if (result == PermittedPlayerResult.Success && action == PermittedPlayerAction.Add)
+            {
+                s_addPlayerQuery = "";
+                if (s_addPlayerInput != null)
+                    s_addPlayerInput.text = "";
                 WardSettingsUI.HandlePermittedPlayerAdded(wardID);
+            }
 
             ShowResultMessage(action, result, detail);
         }
@@ -571,6 +658,14 @@ namespace ProtectiveWards
                 if (ZInput.GetKeyDown(KeyCode.Escape))
                 {
                     BackToWardSettings();
+                    return;
+                }
+
+                if (s_addPlayerInput != null
+                    && s_addPlayerInput.isFocused
+                    && (ZInput.GetKeyDown(KeyCode.Return) || ZInput.GetKeyDown(KeyCode.KeypadEnter)))
+                {
+                    RequestAddCurrentPlayerQuery();
                     return;
                 }
 

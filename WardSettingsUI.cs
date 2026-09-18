@@ -4,6 +4,7 @@ using ProtectiveWards.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using static ProtectiveWards.ProtectiveWards;
@@ -16,7 +17,8 @@ namespace ProtectiveWards
         private const string RPC_ApplyWardSettingsResult = "PW_ApplyWardSettingsResult";
         private const float MaxPanelWidth = 666f;
         private const float MinPanelWidth = 558f;
-        private const float PanelHeight = 600f;
+        private const float DefaultPanelHeight = 650f;
+        private const float AccessPanelHeight = 650f;
         private const int TitleFontSize = 32;
         private const int HeaderFontSize = 18;
         private const int RowFontSize = 17;
@@ -25,7 +27,6 @@ namespace ProtectiveWards
         private const float NoteTopSpacing = 6f;
         private const float PanelPadding = 30.6f;
         private const float ColumnGap = 14.4f;
-        private const float UseDefaultColumnWidth = 99f;
         private const float ValueWidth = 99f;
         private const float ValueGap = 7.2f;
         private const float ToggleSize = 26f;
@@ -35,12 +36,7 @@ namespace ProtectiveWards
         private static float s_panelWidth = MaxPanelWidth;
         private static float s_labelX = -215f;
         private static float s_labelWidth = 260f;
-        private static float s_useDefaultX = 55f;
-        private static float s_useDefaultHeaderX = 55f;
-        private static float s_useDefaultHeaderWidth = UseDefaultColumnWidth;
         private static float s_valueX = 190f;
-        private static float s_valueHeaderX = 190f;
-        private static float s_valueHeaderWidth = ValueWidth * 2f + ValueGap;
         private static float s_valueBoolX = 190f;
         private static float s_colorInputX = 170f;
         private static float s_colorButtonX = 285f;
@@ -48,6 +44,7 @@ namespace ProtectiveWards
         private static float s_sectionDividerX = 30f;
         private static float s_sectionDividerWidth = 470f;
         private static string s_layoutLanguageKey = "";
+        private static float s_currentPanelHeight = DefaultPanelHeight;
 
         private static GameObject s_panel;
         private static ZDO s_zdo;
@@ -65,7 +62,6 @@ namespace ProtectiveWards
         private static Button s_setPasswordButton;
         private static Button s_applyButton;
         private static Button s_cancelButton;
-        private static Button s_addPermittedPlayerButton;
         private static bool s_applyPending;
         private static bool s_waitingGeneralApply;
         private static bool s_waitingPasswordApply;
@@ -89,8 +85,6 @@ namespace ProtectiveWards
         private static string s_boundGuildName = "";
         private static bool s_currentGuildAvailable;
         private static bool s_suspendedForPermittedPlayers;
-        private static InputField s_permittedPlayerInput;
-        private static string s_permittedPlayerQuery = "";
 
         private enum ApplySettingsResult
         {
@@ -130,7 +124,8 @@ namespace ProtectiveWards
             CircleLength,
             CircleWidth,
             CircleAmount,
-            PermitEveryone
+            PermitEveryone,
+            PermittedPlayersCanToggle
         }
 
         private static readonly string[] s_sectionLayoutTokens =
@@ -173,6 +168,7 @@ namespace ProtectiveWards
             "$pw_ward_settings_circle_width",
             "$pw_ward_settings_circle_amount",
             "$pw_ward_settings_permit_everyone",
+            "$pw_ward_settings_permitted_toggle",
             "$pw_ward_guild_enabled",
             "$pw_ward_guild_bound",
             "$pw_ward_password_enabled",
@@ -257,7 +253,6 @@ namespace ProtectiveWards
             s_setPasswordButton = null;
             s_applyButton = null;
             s_cancelButton = null;
-            s_addPermittedPlayerButton = null;
             s_applyPending = false;
             s_waitingGeneralApply = false;
             s_waitingPasswordApply = false;
@@ -280,8 +275,6 @@ namespace ProtectiveWards
             s_boundGuildId = 0;
             s_boundGuildName = "";
             s_currentGuildAvailable = false;
-            s_permittedPlayerInput = null;
-            s_permittedPlayerQuery = "";
             SetInputBlocked(false);
         }
 
@@ -299,11 +292,9 @@ namespace ProtectiveWards
             s_setPasswordButton = null;
             s_applyButton = null;
             s_cancelButton = null;
-            s_addPermittedPlayerButton = null;
             s_guildAccessEnabledToggle = null;
             s_boundGuildText = null;
             s_guildBindingButton = null;
-            s_permittedPlayerInput = null;
         }
 
         private static void SetInputBlocked(bool blocked)
@@ -381,23 +372,16 @@ namespace ProtectiveWards
 
             float valueBlockWidth = ValueWidth * 2f + ValueGap;
             s_labelWidth = Mathf.Clamp(measuredLabelWidth, MinLabelWidth, MaxLabelWidth);
-            s_panelWidth = Mathf.Clamp(PanelPadding * 2f + s_labelWidth + UseDefaultColumnWidth + valueBlockWidth + ColumnGap * 2f, MinPanelWidth, MaxPanelWidth);
+            s_panelWidth = Mathf.Clamp(PanelPadding * 2f + s_labelWidth + valueBlockWidth + ColumnGap, MinPanelWidth, MaxPanelWidth);
 
             float left = -s_panelWidth * 0.5f + PanelPadding;
             float labelRight = left + s_labelWidth;
-            float useDefaultLeft = labelRight + ColumnGap;
-            float valueLeft = useDefaultLeft + UseDefaultColumnWidth + ColumnGap;
+            float valueLeft = labelRight + ColumnGap;
             float panelRight = s_panelWidth * 0.5f - PanelPadding;
 
             s_labelX = left + s_labelWidth * 0.5f;
             s_sectionX = s_labelX;
 
-            s_useDefaultHeaderWidth = UseDefaultColumnWidth + 30f;
-            s_useDefaultHeaderX = useDefaultLeft + UseDefaultColumnWidth - 8f - s_useDefaultHeaderWidth * 0.5f;
-            s_useDefaultX = useDefaultLeft + UseDefaultColumnWidth - ToggleSize * 0.5f;
-
-            s_valueHeaderWidth = valueBlockWidth;
-            s_valueHeaderX = valueLeft;
             s_valueX = valueLeft + ValueWidth * 0.5f;
             s_valueBoolX = valueLeft + ToggleSize * 0.5f + 8f;
             s_colorInputX = s_valueX;
@@ -446,13 +430,14 @@ namespace ProtectiveWards
         {
             EnsureLayout();
 
+            s_currentPanelHeight = GetPanelHeight(page);
             s_panel = GUIManager.Instance.CreateWoodpanel(
                 parent: GUIManager.CustomGUIFront.transform,
                 anchorMin: new Vector2(0.5f, 0.5f),
                 anchorMax: new Vector2(0.5f, 0.5f),
                 position: Vector2.zero,
                 width: s_panelWidth,
-                height: PanelHeight,
+                height: s_currentPanelHeight,
                 draggable: true);
             s_panel.SetActive(true);
 
@@ -466,13 +451,10 @@ namespace ProtectiveWards
                             ? "$pw_ward_settings_access_title"
                             : "$pw_ward_settings_title";
 
-            float halfHeight = PanelHeight * 0.5f;
+            float halfHeight = s_currentPanelHeight * 0.5f;
             CreateText(title.Localize(), new Vector2(0f, halfHeight - 35f), TitleFontSize, s_panelWidth - PanelPadding * 2f, 44f, GUIManager.Instance.ValheimOrange, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            if (page != SettingsPage.Access)
-                CreateColumnHeaders(halfHeight - 72f);
-
-            float y = halfHeight - 96f;
+            float y = halfHeight - 78f;
             switch (page)
             {
                 case SettingsPage.Visuals:
@@ -510,7 +492,7 @@ namespace ProtectiveWards
             AddSection("$pw_ward_settings_section_access", ref y);
             AddNavigationRow("$pw_ward_settings_access", "$pw_ward_settings_open", SettingsPage.Access, ref y);
             AddNavigationRow("$pw_ward_settings_permitted_players", "$pw_ward_settings_open", OpenPermittedPlayersPage, ref y);
-            CreateAddOnlinePlayerRow(ref y);
+            AddPermittedPlayersSummary(ref y);
 
         }
 
@@ -559,7 +541,11 @@ namespace ProtectiveWards
             {
                 AddAccessSection("$pw_ward_settings_section_access", ref y);
                 AddAccessBool(FieldId.PermitEveryone, "$pw_ward_settings_permit_everyone", ref y);
-                AddInfoNote("$pw_ward_settings_permit_everyone_note", ref y, 34f, new Color(0.85f, 0.85f, 0.85f), -5f);
+                AddInfoNote("$pw_ward_settings_permit_everyone_note", ref y, 30f, new Color(0.85f, 0.85f, 0.85f), -8f);
+                y -= 12f;
+                AddAccessBoolWrapped(FieldId.PermittedPlayersCanToggle, "$pw_ward_settings_permitted_toggle", ref y);
+                AddInfoNote("$pw_ward_settings_permitted_toggle_note", ref y, 30f, new Color(0.85f, 0.85f, 0.85f), -8f);
+                y -= 12f;
 
                 if (GuildsCompat.IsEnabled)
                     CreateGuildRows(ref y);
@@ -590,10 +576,12 @@ namespace ProtectiveWards
             GameObject guildTextObject = CreateRowText(
                 s_panel.transform,
                 GetBoundGuildDisplay(),
-                new Vector2(GetPasswordInputX(150f, 170f), y),
-                150f,
+                new Vector2(GetInlineValueX(165f, 170f), y),
+                165f,
                 HasBoundGuild() ? Color.white : new Color(1f, 0.72f, 0.42f));
             s_boundGuildText = guildTextObject.GetComponent<Text>();
+            if (s_boundGuildText != null)
+                s_boundGuildText.alignment = TextAnchor.MiddleRight;
 
             GameObject bindingObject = GUIManager.Instance.CreateButton(
                 text: GetGuildBindingButtonText(),
@@ -603,11 +591,12 @@ namespace ProtectiveWards
                 position: new Vector2(GetPasswordButtonX(), y),
                 width: 170f,
                 height: 32f);
+            bindingObject.KeepClickSfxOnly();
             s_guildBindingButton = bindingObject.GetComponent<Button>();
             s_guildBindingButton.onClick.AddListener(ToggleGuildBinding);
             y -= AccessRowStep;
 
-            AddInfoNote("$pw_ward_guild_note", ref y, 48f, new Color(0.85f, 0.85f, 0.85f), -2f);
+            AddInfoNote("$pw_ward_guild_note", ref y, 42f, new Color(0.85f, 0.85f, 0.85f), -2f);
             UpdateGuildControls();
         }
 
@@ -641,6 +630,8 @@ namespace ProtectiveWards
                 150f,
                 s_passwordExists ? Color.white : new Color(1f, 0.72f, 0.42f));
             s_passwordStatusText = statusObject.GetComponent<Text>();
+            if (s_passwordStatusText != null)
+                s_passwordStatusText.alignment = TextAnchor.MiddleRight;
 
             GameObject removeObject = GUIManager.Instance.CreateButton(
                 text: "$pw_ward_password_remove".Localize(),
@@ -650,6 +641,7 @@ namespace ProtectiveWards
                 position: new Vector2(GetPasswordButtonX(), y),
                 width: 170f,
                 height: 32f);
+            removeObject.KeepClickSfxOnly();
             s_removePasswordButton = removeObject.GetComponent<Button>();
             s_removePasswordButton.interactable = s_passwordExists;
             s_removePasswordButton.onClick.AddListener(RemovePassword);
@@ -666,11 +658,12 @@ namespace ProtectiveWards
                 position: new Vector2(GetPasswordButtonX(), y),
                 width: 170f,
                 height: 32f);
+            setObject.KeepClickSfxOnly();
             s_setPasswordButton = setObject.GetComponent<Button>();
             s_setPasswordButton.onClick.AddListener(SetNewPassword);
             y -= AccessRowStep;
 
-            AddInfoNote("$pw_ward_password_hash_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f), -5f);
+            AddInfoNote("$pw_ward_password_hash_note", ref y, 40f, new Color(0.85f, 0.85f, 0.85f), -4f);
         }
 
         private static void CreateEditablePasswordRow(ref float y)
@@ -682,11 +675,11 @@ namespace ProtectiveWards
             AddInfoNote("$pw_ward_password_plaintext_note", ref y, 44f, new Color(0.85f, 0.85f, 0.85f), -5f);
         }
 
-        private static void AddInfoNote(string token, ref float y, float height, Color color, float topSpacing = NoteTopSpacing)
+        private static void AddInfoNote(string tokenOrText, ref float y, float height, Color color, float topSpacing = NoteTopSpacing, bool localize = true)
         {
             y -= topSpacing;
             CreateText(
-                token.Localize(),
+                localize ? tokenOrText.Localize() : tokenOrText,
                 new Vector2(0f, y - height * 0.5f),
                 15,
                 s_panelWidth - PanelPadding * 2f,
@@ -738,20 +731,25 @@ namespace ProtectiveWards
             return right - width * 0.5f;
         }
 
+        private static float GetInlineValueX(float valueWidth, float buttonWidth, float extraGap = 0f)
+        {
+            float buttonLeft = GetPasswordButtonX() - buttonWidth * 0.5f;
+            return buttonLeft - ValueGap - extraGap - valueWidth * 0.5f;
+        }
+
+        private static float GetPanelHeight(SettingsPage page)
+        {
+            return page == SettingsPage.Access ? AccessPanelHeight : DefaultPanelHeight;
+        }
+
         private static string GetPasswordStatusToken()
         {
             return s_passwordExists ? "$pw_ward_password_is_set" : "$pw_ward_password_not_set";
         }
 
-        private static void CreateColumnHeaders(float y)
-        {
-            CreateText("$pw_ward_settings_use_default".Localize(), new Vector2(s_useDefaultHeaderX, y), HeaderFontSize, s_useDefaultHeaderWidth, 30f, Color.white, TextAnchor.MiddleRight, FontStyle.Bold);
-            CreateText("$pw_ward_settings_value".Localize(), new Vector2(s_valueHeaderX + s_valueHeaderWidth * 0.5f, y), HeaderFontSize, s_valueHeaderWidth, 30f, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
-        }
-
         private static void CreateFooterButtons(bool showBack, SettingsPage backPage = SettingsPage.Main)
         {
-            float footerY = -PanelHeight * 0.5f + 45f;
+            float footerY = -s_currentPanelHeight * 0.5f + 45f;
             if (showBack)
             {
                 GameObject backButton = GUIManager.Instance.CreateButton(
@@ -762,6 +760,7 @@ namespace ProtectiveWards
                     position: new Vector2(0f, footerY),
                     width: 170f,
                     height: 50f);
+                backButton.KeepClickSfxOnly();
                 backButton.GetComponent<Button>().onClick.AddListener(() => OpenPage(backPage));
             }
             else
@@ -774,6 +773,7 @@ namespace ProtectiveWards
                     position: new Vector2(-120f, footerY),
                     width: 220f,
                     height: 50f);
+                applyButton.KeepClickSfxOnly();
                 s_applyButton = applyButton.GetComponent<Button>();
                 s_applyButton.onClick.AddListener(Apply);
 
@@ -785,6 +785,7 @@ namespace ProtectiveWards
                     position: new Vector2(140f, footerY),
                     width: 170f,
                     height: 50f);
+                cancelButton.KeepClickSfxOnly();
                 s_cancelButton = cancelButton.GetComponent<Button>();
                 s_cancelButton.onClick.AddListener(TryClose);
                 UpdateApplyControls();
@@ -804,7 +805,7 @@ namespace ProtectiveWards
 
             CaptureCurrentRows();
 
-            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range) && !range.UseDefault)
+            if (s_values.TryGetValue(FieldId.Range, out WardSettingValue range))
                 range.FloatValue = ClampWardRange(range.FloatValue);
 
             bool replacePassword = false;
@@ -874,7 +875,6 @@ namespace ProtectiveWards
 
             UpdateGuildControls();
             UpdatePasswordStatusControls();
-            UpdatePermittedPlayerControls();
         }
 
         private static void TryCompleteApply()
@@ -1222,15 +1222,23 @@ namespace ProtectiveWards
             ZPackage package = new();
             package.Write(s_zdo.m_uid);
             package.Write(Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerID() : 0L);
-            package.Write(s_values.Count);
+            int storedFieldCount = s_values.ContainsKey(FieldId.PermittedPlayersCanToggle) ? s_values.Count - 1 : s_values.Count;
+            package.Write(storedFieldCount);
 
             foreach (KeyValuePair<FieldId, WardSettingValue> pair in s_values)
-                WriteStoredField(package, pair.Key, pair.Value);
+                if (pair.Key != FieldId.PermittedPlayersCanToggle)
+                    WriteStoredField(package, pair.Key, pair.Value);
 
             bool includeGuildAccessEnabled = GuildsCompat.IsEnabled && s_guildAccessEnabledChanged;
             package.Write(includeGuildAccessEnabled);
             if (includeGuildAccessEnabled)
                 package.Write(s_guildAccessEnabled);
+
+            // Appended after the 2.0.10 payload so older servers safely ignore the new field.
+            bool includePermittedToggle = s_values.TryGetValue(FieldId.PermittedPlayersCanToggle, out WardSettingValue permittedToggle);
+            package.Write(includePermittedToggle);
+            if (includePermittedToggle)
+                package.Write(permittedToggle.BoolValue);
 
             return package;
         }
@@ -1238,9 +1246,7 @@ namespace ProtectiveWards
         private static void WriteStoredField(ZPackage package, FieldId field, WardSettingValue value)
         {
             package.Write((int)field);
-            package.Write(value.UseDefault);
-            if (value.UseDefault)
-                return;
+            package.Write(false); // Legacy 2.0.10 wire slot: values are always stored explicitly now.
 
             switch (field)
             {
@@ -1291,6 +1297,8 @@ namespace ProtectiveWards
                 return;
             }
 
+            WardZdoUtils.EnsureWardSettingsInitialized(zdo);
+
             if (!CanApplyWardSettings(zdo, requester.PlayerID))
             {
                 SendApplySettingsResult(sender, zdoID, ApplySettingsResult.NotAuthorized);
@@ -1305,6 +1313,14 @@ namespace ProtectiveWards
             if (includeGuildAccessEnabled)
                 GuildsCompat.SetGuildAccessEnabled(zdo, package.ReadBool());
 
+            if (package.GetPos() < package.Size())
+            {
+                bool includePermittedToggle = package.ReadBool();
+                if (includePermittedToggle && package.GetPos() < package.Size())
+                    zdo.Set(s_permittedPlayersCanToggle, package.ReadBool());
+            }
+
+            WardZdoUtils.UpdateWardRuntimeFields(zdo);
             SendApplySettingsResult(sender, zdoID, ApplySettingsResult.Success);
             LogInfo($"Ward settings applied for {zdoID}");
         }
@@ -1335,71 +1351,76 @@ namespace ProtectiveWards
         {
             FieldId field = (FieldId)package.ReadInt();
             bool useDefault = package.ReadBool();
+            if (useDefault)
+            {
+                ApplyConfiguredDefaultField(zdo, field);
+                return;
+            }
 
             switch (field)
             {
                 case FieldId.BubbleEnabled:
-                    ApplyBool(zdo, s_bubbleEnabled, useDefault, package);
+                    ApplyBool(zdo, s_bubbleEnabled, package);
                     break;
                 case FieldId.BubbleColor:
-                    ApplyColor(zdo, s_bubbleColor, s_bubbleColorAlpha, useDefault, package);
+                    ApplyColor(zdo, s_bubbleColor, s_bubbleColorAlpha, package);
                     break;
                 case FieldId.BubbleRefraction:
-                    ApplyFloat(zdo, s_bubbleRefractionIntensity, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleRefractionIntensity, package);
                     break;
                 case FieldId.BubbleWave:
-                    ApplyFloat(zdo, s_bubbleWaveVel, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleWaveVel, package);
                     break;
                 case FieldId.BubbleGlossiness:
-                    ApplyFloat(zdo, s_bubbleGlossiness, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleGlossiness, package);
                     break;
                 case FieldId.BubbleMetallic:
-                    ApplyFloat(zdo, s_bubbleMetallic, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleMetallic, package);
                     break;
                 case FieldId.BubbleNormalScale:
-                    ApplyFloat(zdo, s_bubbleNormalScale, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleNormalScale, package);
                     break;
                 case FieldId.BubbleDepthFade:
-                    ApplyFloat(zdo, s_bubbleDepthFade, useDefault, package);
+                    ApplyFloat(zdo, s_bubbleDepthFade, package);
                     break;
                 case FieldId.CustomRange:
-                    ApplyBool(zdo, s_customRange, useDefault, package);
+                    ApplyBool(zdo, s_customRange, package);
                     break;
                 case FieldId.Range:
-                    ApplyFloat(zdo, s_range, useDefault, package);
+                    ApplyFloat(zdo, s_range, package);
                     break;
                 case FieldId.CustomColor:
-                    ApplyBool(zdo, s_customColor, useDefault, package);
+                    ApplyBool(zdo, s_customColor, package);
                     break;
                 case FieldId.EmissionColor:
-                    ApplyColor(zdo, s_color, 0, useDefault, package, writeAlpha: false);
+                    ApplyColor(zdo, s_color, 0, package, writeAlpha: false);
                     break;
                 case FieldId.EmissionColorMultiplier:
-                    ApplyFloat(zdo, s_colorMultiplier, useDefault, package);
+                    ApplyFloat(zdo, s_colorMultiplier, package);
                     break;
                 case FieldId.CircleEnabled:
-                    ApplyBool(zdo, s_circleEnabled, useDefault, package);
+                    ApplyBool(zdo, s_circleEnabled, package);
                     break;
                 case FieldId.CircleStartColor:
-                    ApplyString(zdo, s_circleStartColor, useDefault, package);
+                    ApplyString(zdo, s_circleStartColor, package);
                     break;
                 case FieldId.CircleEndColor:
-                    ApplyString(zdo, s_circleEndColor, useDefault, package);
+                    ApplyString(zdo, s_circleEndColor, package);
                     break;
                 case FieldId.CircleSpeed:
-                    ApplyFloat(zdo, s_circleSpeed, useDefault, package);
+                    ApplyFloat(zdo, s_circleSpeed, package);
                     break;
                 case FieldId.CircleLength:
-                    ApplyFloat(zdo, s_circleLength, useDefault, package);
+                    ApplyFloat(zdo, s_circleLength, package);
                     break;
                 case FieldId.CircleWidth:
-                    ApplyFloat(zdo, s_circleWidth, useDefault, package);
+                    ApplyFloat(zdo, s_circleWidth, package);
                     break;
                 case FieldId.CircleAmount:
-                    ApplyFloat(zdo, s_circleAmount, useDefault, package);
+                    ApplyFloat(zdo, s_circleAmount, package);
                     break;
                 case FieldId.PermitEveryone:
-                    ApplyBool(zdo, s_permitEveryone, useDefault, package);
+                    ApplyBool(zdo, s_permitEveryone, package);
                     break;
             }
         }
@@ -1420,54 +1441,59 @@ namespace ProtectiveWards
             package.Write(color.a);
         }
 
-        private static void ApplyBool(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyConfiguredDefaultField(ZDO zdo, FieldId field)
         {
-            if (useDefault)
+            switch (field)
             {
-                RemoveZdoBool(zdo, key);
-                return;
+                case FieldId.BubbleEnabled: zdo.Set(s_bubbleEnabled, wardBubbleShow.Value); break;
+                case FieldId.BubbleColor:
+                    zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
+                    zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
+                    break;
+                case FieldId.BubbleRefraction: zdo.Set(s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value); break;
+                case FieldId.BubbleWave: zdo.Set(s_bubbleWaveVel, wardBubbleWaveIntensity.Value); break;
+                case FieldId.BubbleGlossiness: zdo.Set(s_bubbleGlossiness, wardBubbleGlossiness.Value); break;
+                case FieldId.BubbleMetallic: zdo.Set(s_bubbleMetallic, wardBubbleMetallic.Value); break;
+                case FieldId.BubbleNormalScale: zdo.Set(s_bubbleNormalScale, wardBubbleNormalScale.Value); break;
+                case FieldId.BubbleDepthFade: zdo.Set(s_bubbleDepthFade, wardBubbleDepthFade.Value); break;
+                case FieldId.CustomRange: zdo.Set(s_customRange, setWardRange.Value); break;
+                case FieldId.Range: zdo.Set(s_range, ClampWardRange(wardRange.Value)); break;
+                case FieldId.CustomColor: zdo.Set(s_customColor, wardEmissionColorEnabled.Value); break;
+                case FieldId.EmissionColor: zdo.Set(s_color, new Vector3(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b)); break;
+                case FieldId.EmissionColorMultiplier: zdo.Set(s_colorMultiplier, wardEmissionColorMultiplier.Value); break;
+                case FieldId.CircleEnabled: zdo.Set(s_circleEnabled, wardAreaMarkerPatch.Value); break;
+                case FieldId.CircleStartColor: zdo.Set(s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value)); break;
+                case FieldId.CircleEndColor: zdo.Set(s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value)); break;
+                case FieldId.CircleSpeed: zdo.Set(s_circleSpeed, wardAreaMarkerSpeed.Value); break;
+                case FieldId.CircleLength: zdo.Set(s_circleLength, wardAreaMarkerLength.Value); break;
+                case FieldId.CircleWidth: zdo.Set(s_circleWidth, wardAreaMarkerWidth.Value); break;
+                case FieldId.CircleAmount: zdo.Set(s_circleAmount, wardAreaMarkerAmount.Value); break;
+                case FieldId.PermitEveryone: zdo.Set(s_permitEveryone, permitEveryone.Value); break;
+                case FieldId.PermittedPlayersCanToggle: zdo.Set(s_permittedPlayersCanToggle, wardPermittedPlayersCanToggle.Value); break;
             }
-
-            bool value = package.ReadBool();
-            zdo.Set(key, value);
         }
 
-        private static void ApplyFloat(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyBool(ZDO zdo, int key, ZPackage package)
         {
-            if (useDefault)
-            {
-                RemoveZdoFloat(zdo, key);
-                return;
-            }
+            zdo.Set(key, package.ReadBool());
+        }
 
+        private static void ApplyFloat(ZDO zdo, int key, ZPackage package)
+        {
             float value = package.ReadSingle();
             zdo.Set(key, key == s_range ? ClampWardRange(value) : value);
         }
 
-        private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, bool useDefault, ZPackage package, bool writeAlpha = true)
+        private static void ApplyColor(ZDO zdo, int colorKey, int alphaKey, ZPackage package, bool writeAlpha = true)
         {
-            if (useDefault)
-            {
-                RemoveZdoVec3(zdo, colorKey);
-                if (writeAlpha)
-                    RemoveZdoFloat(zdo, alphaKey);
-                return;
-            }
-
             Color color = ReadColor(package);
             zdo.Set(colorKey, new Vector3(color.r, color.g, color.b));
             if (writeAlpha)
                 zdo.Set(alphaKey, color.a);
         }
 
-        private static void ApplyString(ZDO zdo, int key, bool useDefault, ZPackage package)
+        private static void ApplyString(ZDO zdo, int key, ZPackage package)
         {
-            if (useDefault)
-            {
-                RemoveZdoString(zdo, key);
-                return;
-            }
-
             string value = package.ReadString();
             zdo.Set(key, string.IsNullOrEmpty(value) ? "#FFFFFFFF" : value);
         }
@@ -1501,7 +1527,7 @@ namespace ProtectiveWards
             StoreFloat(FieldId.CircleAmount, s_circleAmount, wardAreaMarkerAmount.Value);
 
             StoreBool(FieldId.PermitEveryone, s_permitEveryone, IsPermitEveryone(s_zdo));
-            s_values[FieldId.PermitEveryone].UseDefault = false;
+            StoreBool(FieldId.PermittedPlayersCanToggle, s_permittedPlayersCanToggle, wardPermittedPlayersCanToggle.Value);
         }
 
         internal static void RefreshRangeLimits()
@@ -1516,56 +1542,46 @@ namespace ProtectiveWards
 
         private static void StoreBool(FieldId field, int key, bool defaultValue)
         {
-            bool hasValue = HasZdoBool(s_zdo, key);
             s_values[field] = new WardSettingValue
             {
-                UseDefault = !hasValue,
-                BoolValue = hasValue ? s_zdo.GetBool(key, defaultValue) : defaultValue
+                BoolValue = s_zdo != null ? s_zdo.GetBool(key, defaultValue) : defaultValue
             };
         }
 
         private static void StoreFloat(FieldId field, int key, float defaultValue)
         {
-            bool hasValue = HasZdoFloat(s_zdo, key);
             s_values[field] = new WardSettingValue
             {
-                UseDefault = !hasValue,
-                FloatValue = hasValue ? s_zdo.GetFloat(key, defaultValue) : defaultValue
+                FloatValue = s_zdo != null ? s_zdo.GetFloat(key, defaultValue) : defaultValue
             };
         }
 
         private static void StoreColor(FieldId field, int colorKey, int alphaKey, Color defaultValue)
         {
-            bool hasValue = HasZdoVec3(s_zdo, colorKey) || HasZdoFloat(s_zdo, alphaKey);
             Vector3 vector = GetWardVec3Setting(s_zdo, colorKey, new Vector3(defaultValue.r, defaultValue.g, defaultValue.b));
             float alpha = GetWardFloatSetting(s_zdo, alphaKey, defaultValue.a);
             s_values[field] = new WardSettingValue
             {
-                UseDefault = !hasValue,
                 ColorValue = new Color(vector.x, vector.y, vector.z, alpha)
             };
         }
 
         private static void StoreEmissionColor()
         {
-            bool hasValue = HasZdoVec3(s_zdo, s_color);
             Vector3 vector = GetWardVec3Setting(s_zdo, s_color, new Vector3(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b));
             s_values[FieldId.EmissionColor] = new WardSettingValue
             {
-                UseDefault = !hasValue,
                 ColorValue = new Color(vector.x, vector.y, vector.z, 1f)
             };
         }
 
         private static void StoreStringColor(FieldId field, int key, Color defaultValue)
         {
-            bool hasValue = HasZdoString(s_zdo, key);
-            string html = hasValue ? s_zdo.GetString(key, ColorUtility.ToHtmlStringRGBA(defaultValue)) : ColorUtility.ToHtmlStringRGBA(defaultValue);
+            string html = s_zdo != null ? s_zdo.GetString(key, ColorUtility.ToHtmlStringRGBA(defaultValue)) : ColorUtility.ToHtmlStringRGBA(defaultValue);
             if (!ColorUtility.TryParseHtmlString("#" + html, out Color color))
                 color = defaultValue;
             s_values[field] = new WardSettingValue
             {
-                UseDefault = !hasValue,
                 ColorValue = color
             };
         }
@@ -1578,7 +1594,7 @@ namespace ProtectiveWards
         private static void AddBool(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            BoolRow row = new(field, labelToken, !value.UseDefault, value.BoolValue);
+            BoolRow row = new(field, labelToken, value.BoolValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -1587,7 +1603,7 @@ namespace ProtectiveWards
         private static void AddFloat(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            FloatRow row = new(field, labelToken, !value.UseDefault, value.FloatValue);
+            FloatRow row = new(field, labelToken, value.FloatValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -1596,7 +1612,7 @@ namespace ProtectiveWards
         private static void AddColor(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            ColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
+            ColorRow row = new(field, labelToken, value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -1605,7 +1621,7 @@ namespace ProtectiveWards
         private static void AddEmissionColor(ref float y)
         {
             WardSettingValue value = GetValue(FieldId.EmissionColor);
-            ColorRow row = new(FieldId.EmissionColor, "$pw_ward_settings_emission_color", !value.UseDefault, value.ColorValue);
+            ColorRow row = new(FieldId.EmissionColor, "$pw_ward_settings_emission_color", value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -1614,7 +1630,7 @@ namespace ProtectiveWards
         private static void AddStringColor(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            StringColorRow row = new(field, labelToken, !value.UseDefault, value.ColorValue);
+            StringColorRow row = new(field, labelToken, value.ColorValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= RowStep;
@@ -1623,10 +1639,19 @@ namespace ProtectiveWards
         private static void AddAccessBool(FieldId field, string labelToken, ref float y)
         {
             WardSettingValue value = GetValue(field);
-            BoolRow row = new(field, labelToken, true, value.BoolValue, allowDefault: false);
+            BoolRow row = new(field, labelToken, value.BoolValue);
             row.Create(s_panel.transform, y);
             s_rows.Add(row);
             y -= AccessRowStep;
+        }
+
+        private static void AddAccessBoolWrapped(FieldId field, string labelToken, ref float y)
+        {
+            WardSettingValue value = GetValue(field);
+            WrappedBoolRow row = new(field, labelToken, value.BoolValue, 42f, 40f);
+            row.Create(s_panel.transform, y);
+            s_rows.Add(row);
+            y -= 40f;
         }
 
         private static void AddAccessSection(string labelToken, ref float y)
@@ -1661,89 +1686,64 @@ namespace ProtectiveWards
                 position: new Vector2(s_valueX, y),
                 width: ValueWidth,
                 height: 32f);
+            button.KeepClickSfxOnly();
             button.GetComponent<Button>().onClick.AddListener(() => action?.Invoke());
             y -= RowStep;
         }
 
-        private static void CreateAddOnlinePlayerRow(ref float y)
+        private static void AddPermittedPlayersSummary(ref float y)
         {
-            const float inputWidth = 190f;
-            const float buttonWidth = 110f;
-            float right = s_panelWidth * 0.5f - PanelPadding;
-            float buttonX = right - buttonWidth * 0.5f;
-            float inputRight = buttonX - buttonWidth * 0.5f - ValueGap;
-            float inputX = inputRight - inputWidth * 0.5f;
-
-            CreateRowText(s_panel.transform, "$pw_ward_permitted_add_section".Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
-
-            GameObject inputObject = GUIManager.Instance.CreateInputField(
-                parent: s_panel.transform,
-                anchorMin: new Vector2(0.5f, 0.5f),
-                anchorMax: new Vector2(0.5f, 0.5f),
-                position: new Vector2(inputX, y),
-                contentType: InputField.ContentType.Standard,
-                placeholderText: "$pw_ward_permitted_placeholder".Localize(),
-                fontSize: RowFontSize,
-                width: inputWidth,
-                height: 30f);
-            s_permittedPlayerInput = inputObject.GetComponent<InputField>();
-            s_permittedPlayerInput.characterLimit = 64;
-            s_permittedPlayerInput.text = s_permittedPlayerQuery;
-            s_permittedPlayerInput.onValueChanged.AddListener(value => s_permittedPlayerQuery = value ?? "");
-            if (s_permittedPlayerInput.textComponent != null)
-                s_permittedPlayerInput.textComponent.alignment = TextAnchor.MiddleLeft;
-
-            GameObject addButton = GUIManager.Instance.CreateButton(
-                text: "$pw_ward_permitted_add".Localize(),
-                parent: s_panel.transform,
-                anchorMin: new Vector2(0.5f, 0.5f),
-                anchorMax: new Vector2(0.5f, 0.5f),
-                position: new Vector2(buttonX, y),
-                width: buttonWidth,
-                height: 32f);
-            s_addPermittedPlayerButton = addButton.GetComponent<Button>();
-            s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending;
-            s_addPermittedPlayerButton.onClick.AddListener(RequestAddOnlinePlayer);
-            y -= RowStep;
-
-            AddInfoNote("$pw_ward_permitted_add_note", ref y, 34f, new Color(0.85f, 0.85f, 0.85f), -5f);
+            string summary = GetPermittedPlayersSummary();
+            float height = summary.Length > 84 ? 52f : 34f;
+            AddInfoNote(summary, ref y, height, new Color(0.85f, 0.85f, 0.85f), -5f, localize: false);
         }
 
-        private static void RequestAddOnlinePlayer()
+        private static string GetPermittedPlayersSummary()
         {
-            if (s_zdo == null || s_applyPending || WardPermittedPlayersUI.IsRequestPending)
-                return;
+            if (s_zdo == null)
+                return "$pw_ward_permitted_empty".Localize();
 
-            string query = s_permittedPlayerInput != null
-                ? s_permittedPlayerInput.text.Trim()
-                : s_permittedPlayerQuery.Trim();
-            s_permittedPlayerQuery = query;
-            if (WardPermittedPlayersUI.RequestAddPlayer(s_zdo.m_uid, query))
-                UpdatePermittedPlayerControls();
+            List<KeyValuePair<long, string>> permitted = WardZdoUtils.GetPermittedPlayers(s_zdo)
+                .OrderBy(player => player.Value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (permitted.Count == 0)
+                return "$pw_ward_permitted_empty".Localize();
+
+            const int maxLength = 120;
+            List<string> names = new();
+            foreach (KeyValuePair<long, string> player in permitted)
+            {
+                string name = CensorShittyWords.FilterUGC(player.Value ?? "", UGCType.CharacterName, GetWardCreatorID());
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                string candidate = names.Count == 0 ? name : string.Join(", ", names) + ", " + name;
+                if (candidate.Length > maxLength)
+                {
+                    int remaining = permitted.Count - names.Count;
+                    if (remaining > 0)
+                        names.Add($"… (+{remaining})");
+                    break;
+                }
+
+                names.Add(name);
+            }
+
+            return names.Count == 0 ? "$pw_ward_permitted_empty".Localize() : string.Join(", ", names);
+        }
+
+        private static long GetWardCreatorID()
+        {
+            return s_zdo?.GetLong(ZDOVars.s_creator) ?? 0L;
         }
 
         internal static void HandlePermittedPlayerRequestFinished(ZDOID wardID)
         {
-            if (s_zdo != null && s_zdo.m_uid.Equals(wardID))
-                UpdatePermittedPlayerControls();
-        }
-
-        private static void UpdatePermittedPlayerControls()
-        {
-            if (s_addPermittedPlayerButton != null)
-                s_addPermittedPlayerButton.interactable = !WardPermittedPlayersUI.IsRequestPending && !s_applyPending;
-
             UpdateCloseControls();
         }
 
         internal static void HandlePermittedPlayerAdded(ZDOID wardID)
         {
-            if (s_zdo == null || !s_zdo.m_uid.Equals(wardID))
-                return;
-
-            s_permittedPlayerQuery = "";
-            if (s_permittedPlayerInput != null)
-                s_permittedPlayerInput.text = "";
         }
 
         internal static bool SuspendForPermittedPlayers()
@@ -1868,7 +1868,6 @@ namespace ProtectiveWards
 
         private sealed class WardSettingValue
         {
-            public bool UseDefault;
             public bool BoolValue;
             public float FloatValue;
             public Color ColorValue;
@@ -1877,56 +1876,35 @@ namespace ProtectiveWards
         private abstract class WardSettingRow
         {
             protected readonly FieldId Field;
-            private readonly string m_labelToken;
-            private readonly bool m_allowDefault;
-            protected Toggle UseDefaultToggle;
+            protected readonly string m_labelToken;
 
-            protected WardSettingRow(FieldId field, string labelToken, bool hasOverride, bool allowDefault = true)
+            protected WardSettingRow(FieldId field, string labelToken)
             {
                 Field = field;
                 m_labelToken = labelToken;
-                m_allowDefault = allowDefault;
-                UseDefault = allowDefault && !hasOverride;
             }
 
             public FieldId FieldId => Field;
 
-            protected bool UseDefault { get; private set; }
-
             public WardSettingValue Capture()
             {
-                WardSettingValue value = new() { UseDefault = UseDefault };
+                WardSettingValue value = new();
                 CaptureValue(value);
                 return value;
             }
 
-            public void Create(Transform parent, float y)
+            public virtual void Create(Transform parent, float y)
             {
                 CreateRowText(parent, m_labelToken.Localize(), new Vector2(s_labelX, y), s_labelWidth, Color.white);
-
-                if (m_allowDefault)
-                {
-                    GameObject useDefaultObject = GUIManager.Instance.CreateToggle(parent: parent, width: 26f, height: 26f);
-                    SetRect(useDefaultObject, new Vector2(s_useDefaultX, y), 26f, 26f);
-                    UseDefaultToggle = useDefaultObject.GetComponent<Toggle>();
-                    UseDefaultToggle.isOn = UseDefault;
-                    UseDefaultToggle.onValueChanged.AddListener(value =>
-                    {
-                        UseDefault = value;
-                        SetValueInteractable(!value);
-                    });
-                }
-
                 CreateValueControl(parent, y);
-                SetValueInteractable(!UseDefault);
+                SetValueInteractable(true);
             }
 
             public void Write(ZPackage package)
             {
                 package.Write((int)Field);
-                package.Write(UseDefault);
-                if (!UseDefault)
-                    WriteValue(package);
+                package.Write(false); // Legacy 2.0.10 wire slot.
+                WriteValue(package);
             }
 
             protected abstract void CreateValueControl(Transform parent, float y);
@@ -1935,13 +1913,13 @@ namespace ProtectiveWards
             protected abstract void WriteValue(ZPackage package);
         }
 
-        private sealed class BoolRow : WardSettingRow
+        private class BoolRow : WardSettingRow
         {
             private readonly bool m_initialValue;
             private Toggle m_valueToggle;
 
-            public BoolRow(FieldId field, string labelToken, bool hasOverride, bool initialValue, bool allowDefault = true)
-                : base(field, labelToken, hasOverride, allowDefault)
+            public BoolRow(FieldId field, string labelToken, bool initialValue)
+                : base(field, labelToken)
             {
                 m_initialValue = initialValue;
             }
@@ -1971,12 +1949,32 @@ namespace ProtectiveWards
             }
         }
 
+        private sealed class WrappedBoolRow : BoolRow
+        {
+            private readonly float m_labelHeight;
+            private readonly float m_toggleOffsetY;
+
+            public WrappedBoolRow(FieldId field, string labelToken, bool initialValue, float labelHeight, float toggleOffsetY)
+                : base(field, labelToken, initialValue)
+            {
+                m_labelHeight = labelHeight;
+                m_toggleOffsetY = toggleOffsetY;
+            }
+
+            public override void Create(Transform parent, float y)
+            {
+                CreateText(m_labelToken.Localize(), new Vector2(s_labelX, y), RowFontSize, s_labelWidth, m_labelHeight, Color.white, TextAnchor.MiddleLeft);
+                CreateValueControl(parent, y);
+                SetValueInteractable(true);
+            }
+        }
+
         private sealed class FloatRow : WardSettingRow
         {
             private readonly float m_initialValue;
             private InputField m_input;
 
-            public FloatRow(FieldId field, string labelToken, bool hasOverride, float initialValue) : base(field, labelToken, hasOverride)
+            public FloatRow(FieldId field, string labelToken, float initialValue) : base(field, labelToken)
             {
                 m_initialValue = initialValue;
             }
@@ -2044,7 +2042,7 @@ namespace ProtectiveWards
             protected InputField Input;
             private Button m_pickerButton;
 
-            public ColorRow(FieldId field, string labelToken, bool hasOverride, Color initialValue) : base(field, labelToken, hasOverride)
+            public ColorRow(FieldId field, string labelToken, Color initialValue) : base(field, labelToken)
             {
                 InitialValue = initialValue;
             }
@@ -2074,6 +2072,7 @@ namespace ProtectiveWards
                     position: new Vector2(s_colorButtonX, y),
                     width: ValueWidth,
                     height: 30f);
+                buttonObject.KeepClickSfxOnly();
                 m_pickerButton = buttonObject.GetComponent<Button>();
                 m_pickerButton.onClick.AddListener(OpenColorPicker);
             }
@@ -2141,7 +2140,7 @@ namespace ProtectiveWards
 
         private sealed class StringColorRow : ColorRow
         {
-            public StringColorRow(FieldId field, string labelToken, bool hasOverride, Color initialValue) : base(field, labelToken, hasOverride, initialValue)
+            public StringColorRow(FieldId field, string labelToken, Color initialValue) : base(field, labelToken, initialValue)
             {
             }
 
@@ -2173,10 +2172,6 @@ namespace ProtectiveWards
                     return;
                 }
 
-                if (s_permittedPlayerInput != null
-                    && s_permittedPlayerInput.isFocused
-                    && (ZInput.GetKeyDown(KeyCode.Return) || ZInput.GetKeyDown(KeyCode.KeypadEnter)))
-                    RequestAddOnlinePlayer();
             }
         }
 

@@ -1655,14 +1655,21 @@ namespace ProtectiveWards
                 HashSet<MethodBase> methods = new();
                 foreach (Type type in GetLoadedInteractableTypes())
                 {
-                    MethodInfo interact = AccessTools.Method(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
+                    MethodInfo interact = GetDeclaredInteractableMethod(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
                     if (ShouldPatchInteractableMethod(interact) && methods.Add(interact))
                         yield return interact;
 
-                    MethodInfo useItem = AccessTools.Method(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
+                    MethodInfo useItem = GetDeclaredInteractableMethod(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
                     if (ShouldPatchInteractableMethod(useItem) && methods.Add(useItem))
                         yield return useItem;
                 }
+            }
+
+            private static MethodInfo GetDeclaredInteractableMethod(Type type, string methodName, Type[] parameters)
+            {
+                MethodInfo method = AccessTools.Method(type, methodName, parameters);
+                Type declaringType = method?.DeclaringType;
+                return declaringType != null ? AccessTools.DeclaredMethod(declaringType, methodName, parameters) ?? method : null;
             }
 
             private static IEnumerable<Type> GetLoadedInteractableTypes()

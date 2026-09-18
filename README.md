@@ -22,10 +22,10 @@ Most features work inside an active player ward area. Some background protection
 
 `Ward settings / Ward settings mode` controls whether individual ward state is available:
 
-- `PerWard` is the default. Authorized players can open the settings window and stored per-ward range, visual and access overrides are applied.
-- `ServerControlled` removes the settings action from the ward hover, blocks opening and applying the window on both client and server, and ignores all stored per-ward overrides. Existing values remain in the ward ZDO and become active again after switching back to `PerWard`. Global config values are used while the server-controlled mode is active.
+- `PerWard` is the default. Authorized players can open the settings window and stored per-ward range, visual and access values are applied.
+- `ServerControlled` removes the settings action from the ward hover, blocks opening and applying the window on both client and server, and ignores all stored per-ward values. Existing values remain in the ward ZDO and become active again after switching back to `PerWard`. Global config values are used while the server-controlled mode is active.
 
-Each ward can store its own range, visual and access settings in the ward ZDO while `PerWard` mode is active.
+When a ward is created, its range, visual and access values are copied from the current global config into the ward ZDO. In `PerWard` mode those stored values are independent afterward; changing the global defaults affects future wards, not existing ones.
 
 To edit a ward:
 
@@ -43,10 +43,11 @@ You can customize:
 - detailed ward sphere shader properties;
 - ward circle colors, width, line amount and animation speed;
 - the ward-specific `Permit everyone` access policy;
+- whether permitted players may activate or deactivate the ward with normal interaction;
 - the explicit permitted-player list, including server-validated add and remove actions;
 - optional access for one bound guild when Guilds is installed.
 
-Most per-ward values can inherit their corresponding global config. Access settings use explicit toggles instead: `Permit everyone` displays the ward's current effective value and has no `Use default` control. Applying settings saves that displayed value as the ward's own access policy. A ward without a saved override still starts from `Ward access / Permit everyone`. Per-ward `Permit everyone`, guild access and password access are ignored in `ServerControlled` mode.
+Per-ward settings no longer have a `Use default` state. Every editable value is stored explicitly on the ward. New and migrated wards take a one-time snapshot of the current global defaults; afterward each ward changes independently in `PerWard` mode. Per-ward `Permit everyone`, permitted-player toggling, guild access and password access are ignored in `ServerControlled` mode.
 
 `Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, with defaults of 1 and 200. This setting is server-controlled and synchronized by Jotunn, like the other server configuration entries. The limits apply to UI input, server-side settings writes, saved ward values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
@@ -60,7 +61,9 @@ Disabled wards owned by another player cannot be edited. Admin bypass is control
 
 The default is `AdminsInGodMode`, so admins can play normally without accidentally bypassing protections.
 
-`Ward access / Permit everyone` is the default value for wards without an override. When effective for a ward, its access checks are bypassed for every player while its permitted list remains stored. Wards whose effective value is enabled are also excluded from inactive ward expiration. The config was moved from the `Ward admin` group; existing enabled values must be enabled again under the new group.
+`Ward access / Permit everyone` is copied into newly created wards. When enabled for a ward, its access checks are bypassed for every player while its permitted list remains stored. Wards whose effective value is enabled are also excluded from inactive ward expiration. The config was moved from the `Ward admin` group; existing enabled values must be enabled again under the new group.
+
+`Ward access / Permitted players can toggle ward` is off by default and is also copied into new wards. When enabled for a ward, non-owner players who already have direct ward access may activate or deactivate that ward with the normal Use interaction; it does not grant permission to edit ward settings.
 
 ### Guild access
 

@@ -21,6 +21,10 @@ namespace ProtectiveWards
         private static readonly Stack<HashSet<ZDOID>> s_visitedPool = new();
         private static readonly Stack<WardTraversal> s_traversalPool = new();
         private static readonly int[] s_permittedPlayerIdHashes = CreatePermittedPlayerIdHashes();
+        private const string HasFieldsKey = "HasFields";
+        private const string HasPrivateAreaFieldsKey = "HasFieldsPrivateArea";
+        internal const string PrivateAreaRadiusField = "PrivateArea.m_radius";
+        private const string PrivateAreaFlashAvailableField = "PrivateArea.m_flashAvailable";
 
         private sealed class WardTraversal
         {
@@ -40,6 +44,96 @@ namespace ProtectiveWards
         internal static bool IsWardPrefab(GameObject gameObject) => gameObject != null && Utils.GetPrefabName(gameObject) == WardPrefabName;
 
         internal static bool IsWard(ZDO zdo) => zdo != null && zdo.GetPrefab() == s_wardPrefabHash;
+
+        internal static bool HasStoredWardSettings(ZDO zdo) => IsWard(zdo) && zdo.GetInt(s_wardSettingsVersion, 0) >= CurrentWardSettingsVersion;
+
+        private static bool CanWriteWardZdo(ZDO zdo)
+        {
+            return IsWard(zdo) && ZNet.instance?.IsServer() == true;
+        }
+
+        internal static void EnsureWardSettingsInitialized(ZDO zdo)
+        {
+            if (!CanWriteWardZdo(zdo))
+                return;
+
+            if (!HasStoredWardSettings(zdo))
+            {
+                bool hadCustomEmissionColor = HasZdoVec3(zdo, s_color);
+
+                if (!HasZdoBool(zdo, s_customRange))
+                    zdo.Set(s_customRange, HasZdoFloat(zdo, s_range) || setWardRange.Value);
+                if (!HasZdoFloat(zdo, s_range))
+                    zdo.Set(s_range, ClampWardRange(wardRange.Value));
+
+                if (!HasZdoBool(zdo, s_customColor))
+                    zdo.Set(s_customColor, hadCustomEmissionColor || wardEmissionColorEnabled.Value);
+                if (!HasZdoVec3(zdo, s_color))
+                    zdo.Set(s_color, new Vector3(wardEmissionColor.Value.r, wardEmissionColor.Value.g, wardEmissionColor.Value.b));
+                if (!HasZdoFloat(zdo, s_colorMultiplier))
+                    zdo.Set(s_colorMultiplier, hadCustomEmissionColor ? 1f : wardEmissionColorMultiplier.Value);
+
+                if (!HasZdoBool(zdo, s_bubbleEnabled))
+                    zdo.Set(s_bubbleEnabled, wardBubbleShow.Value);
+                if (!HasZdoVec3(zdo, s_bubbleColor))
+                    zdo.Set(s_bubbleColor, new Vector3(wardBubbleColor.Value.r, wardBubbleColor.Value.g, wardBubbleColor.Value.b));
+                if (!HasZdoFloat(zdo, s_bubbleColorAlpha))
+                    zdo.Set(s_bubbleColorAlpha, wardBubbleColor.Value.a);
+                SetFloatIfMissing(zdo, s_bubbleRefractionIntensity, wardBubbleRefractionIntensity.Value);
+                SetFloatIfMissing(zdo, s_bubbleWaveVel, wardBubbleWaveIntensity.Value);
+                SetFloatIfMissing(zdo, s_bubbleGlossiness, wardBubbleGlossiness.Value);
+                SetFloatIfMissing(zdo, s_bubbleMetallic, wardBubbleMetallic.Value);
+                SetFloatIfMissing(zdo, s_bubbleNormalScale, wardBubbleNormalScale.Value);
+                SetFloatIfMissing(zdo, s_bubbleDepthFade, wardBubbleDepthFade.Value);
+
+                if (!HasZdoBool(zdo, s_circleEnabled))
+                    zdo.Set(s_circleEnabled, wardAreaMarkerPatch.Value);
+                SetStringIfMissing(zdo, s_circleStartColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerStartColor.Value));
+                SetStringIfMissing(zdo, s_circleEndColor, ColorUtility.ToHtmlStringRGBA(wardAreaMarkerEndColor.Value));
+                SetFloatIfMissing(zdo, s_circleSpeed, wardAreaMarkerSpeed.Value);
+                SetFloatIfMissing(zdo, s_circleLength, wardAreaMarkerLength.Value);
+                SetFloatIfMissing(zdo, s_circleWidth, wardAreaMarkerWidth.Value);
+                SetFloatIfMissing(zdo, s_circleAmount, wardAreaMarkerAmount.Value);
+
+                if (!HasZdoBool(zdo, s_permitEveryone))
+                    zdo.Set(s_permitEveryone, permitEveryone.Value);
+                if (!HasZdoBool(zdo, s_permittedPlayersCanToggle))
+                    zdo.Set(s_permittedPlayersCanToggle, wardPermittedPlayersCanToggle.Value);
+
+                zdo.Set(s_wardSettingsVersion, CurrentWardSettingsVersion);
+            }
+
+            UpdateWardRuntimeFields(zdo);
+        }
+
+        private static void SetFloatIfMissing(ZDO zdo, int key, float value)
+        {
+            if (!HasZdoFloat(zdo, key))
+                zdo.Set(key, value);
+        }
+
+        private static void SetStringIfMissing(ZDO zdo, int key, string value)
+        {
+            if (!HasZdoString(zdo, key))
+                zdo.Set(key, value ?? string.Empty);
+        }
+
+        internal static void UpdateWardRuntimeFields(ZDO zdo)
+        {
+            if (!CanWriteWardZdo(zdo))
+                return;
+
+            zdo.Set(HasFieldsKey, true);
+            zdo.Set(HasPrivateAreaFieldsKey, true);
+            zdo.Set(PrivateAreaRadiusField, GetWardRadius(zdo));
+            zdo.Set(PrivateAreaFlashAvailableField, true);
+        }
+
+        internal static void UpdateAllWardRuntimeFields()
+        {
+            foreach (ZDO zdo in GetAllWards().ToArray())
+                EnsureWardSettingsInitialized(zdo);
+        }
 
         internal static IEnumerable<ZDO> GetAllWards()
         {
@@ -262,20 +356,21 @@ namespace ProtectiveWards
             if (zdo == null)
                 return false;
 
-            bool fallback = wardSettingsUseDefaultsForAllWards.Value && setWardRange.Value;
-            if (HasZdoFloat(zdo, s_range))
-                fallback = true;
+            if (HasStoredWardSettings(zdo))
+                return zdo.GetBool(s_customRange, false);
 
-            return zdo.GetBool(s_customRange, fallback);
+            return HasZdoFloat(zdo, s_range) || zdo.GetBool(s_customRange, false);
         }
 
         internal static float GetConfiguredWardRange(ZDO zdo)
         {
-            float range = wardRange.Value;
-            if (ArePerWardSettingsEnabled() && zdo != null)
-                range = zdo.GetFloat(s_range, wardSettingsUseDefaultsForAllWards.Value ? range : GetWardDefaultRadius());
+            if (!ArePerWardSettingsEnabled())
+                return ClampWardRange(wardRange.Value);
 
-            return ClampWardRange(range);
+            if (zdo == null)
+                return GetWardDefaultRadius();
+
+            return ClampWardRange(zdo.GetFloat(s_range, GetWardDefaultRadius()));
         }
 
         internal static float GetWardDefaultRadius()
@@ -300,6 +395,9 @@ namespace ProtectiveWards
         {
             if (zdo == null)
                 return GetWardDefaultRadius();
+
+            if (ArePerWardSettingsEnabled() && !HasStoredWardSettings(zdo) && zdo.GetFloat(PrivateAreaRadiusField, out float runtimeRadius))
+                return ClampWardRange(runtimeRadius);
 
             return UseCustomWardRange(zdo) ? GetConfiguredWardRange(zdo) : GetWardDefaultRadius();
         }
@@ -426,8 +524,11 @@ namespace ProtectiveWards
 
         private static void AddIfWard(ZDO zdo)
         {
-            if (ShouldTrackServerWards() && IsWard(zdo))
-                s_wardObjects.Add(zdo);
+            if (!ShouldTrackServerWards() || !IsWard(zdo))
+                return;
+
+            s_wardObjects.Add(zdo);
+            EnsureWardSettingsInitialized(zdo);
         }
 
         private static void RemoveIfWard(ZDO zdo)
@@ -486,7 +587,11 @@ namespace ProtectiveWards
         [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
         private static class ZoneSystem_Start_WardListInit
         {
-            private static void Postfix() => EnsureWardObjectsInitialized();
+            private static void Postfix()
+            {
+                EnsureWardObjectsInitialized();
+                UpdateAllWardRuntimeFields();
+            }
         }
 
         [HarmonyPatch(typeof(ZDOMan), nameof(ZDOMan.CreateNewZDO), new Type[3] { typeof(ZDOID), typeof(Vector3), typeof(int) })]
@@ -525,7 +630,10 @@ namespace ProtectiveWards
                     return;
 
                 if (IsWard(__instance))
+                {
                     s_wardObjects.Add(__instance);
+                    EnsureWardSettingsInitialized(__instance);
+                }
                 else
                     s_wardObjects.Remove(__instance);
             }

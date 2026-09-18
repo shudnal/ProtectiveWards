@@ -65,6 +65,18 @@ namespace ProtectiveWards
         }
     }
 
+    internal static class UIExtensions
+    {
+        internal static void KeepClickSfxOnly(this UnityEngine.GameObject button)
+        {
+            if (button != null && button.TryGetComponent<ButtonSfx>(out ButtonSfx sfx))
+            {
+                sfx.m_selectSfxPrefab = null;
+                sfx.m_selectSfxPrefabVibrationOnly = null;
+            }
+        }
+    }
+
     internal static class PrivateAreaExtensions
     {
         internal static ZDO GetWardZDO(this PrivateArea ward)
