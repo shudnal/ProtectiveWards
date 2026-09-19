@@ -23,7 +23,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.12";
+        public const string pluginVersion = "2.0.13";
 
         private static Harmony _harmony;
 
@@ -115,6 +115,7 @@ namespace ProtectiveWards
         public static ConfigEntry<WardAreaShape> wardAreaShape;
         public static ConfigEntry<bool> wardProtectDungeonInteriors;
         public static ConfigEntry<bool> supressSpawnInRange;
+        public static ConfigEntry<bool> supressSpawnInInactiveWardRange;
         public static ConfigEntry<bool> permitEveryone;
 
         public static ConfigEntry<float> playerDamageDealtMultiplier;
@@ -558,7 +559,8 @@ namespace ProtectiveWards
             setWardRange = config("Range", "Change Ward range", defaultValue: false, "Initial value copied to newly created wards when Ward settings mode is PerWard. Existing wards keep their saved value.");
             wardRange = config("Range", "Ward range", defaultValue: 32f, "Initial ward range copied to newly created wards when Ward settings mode is PerWard. Existing wards keep their saved value.");
             wardRangeLimits = config("Range", "Ward range limits", new Vector2(1f, 200f), "Minimum (x) and maximum (y) effective ward radius in meters, including saved per-ward values and the default radius. This setting is server-controlled and synchronized by Jotunn. Invalid endpoints use 1 and 200 respectively; reversed limits are sorted.");
-            supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Vanilla behavior is true. Set false if you want creatures and raids spawn in ward radius. Toggle ward protection for changes to take effect");
+            supressSpawnInRange = config("Range", "Supress spawn in ward area", defaultValue: true, "Extend vanilla PlayerBase spawn suppression to the full ward radius. When false, spawn suppression is limited to the vanilla 10 m radius.");
+            supressSpawnInInactiveWardRange = config("Range", "Supress spawn in inactive ward area", defaultValue: false, "Keep full ward-radius spawn suppression while the ward is inactive. When false, inactive wards use the vanilla PlayerBase suppression radius. Has effect only when Supress spawn in ward area is enabled.");
             wardBubbleShow = config("Ward Bubble", "Show bubble", defaultValue: false, "Initial value copied to newly created wards in PerWard mode. Show ward bubble like trader's one [Not Synced with Server]", false);
             wardBubbleColor = config("Ward Bubble", "Bubble color", defaultValue: Color.black, "Initial bubble color copied to newly created wards in PerWard mode. Toggle ward protection to change color [Not Synced with Server]", false);
             wardBubbleRefractionIntensity = config("Ward Bubble", "Refraction intensity", defaultValue: 0.005f, "Intensity of light refraction caused by bubble. Toggle ward protection for changes to take effect [Not Synced with Server]", false);
@@ -695,6 +697,7 @@ namespace ProtectiveWards
             wardRange.SettingChanged += (sender, args) => RefreshServerControlledWardRuntimeFields();
             wardRangeLimits.SettingChanged += (sender, args) => RefreshWardRangeLimits();
             supressSpawnInRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
+            supressSpawnInInactiveWardRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshServerControlledWardVisuals();
             wardEmissionColor.SettingChanged += (sender, args) => RefreshServerControlledWardVisuals();
             wardEmissionColorMultiplier.SettingChanged += (sender, args) => RefreshServerControlledWardVisuals();
@@ -2056,21 +2059,30 @@ namespace ProtectiveWards
             zdo?.RemoveVec3(key);
         }
 
-        private static void ApplyRangeEffect(Component parent, EffectArea.Type includedTypes, float newRadius)
+        private static bool ApplyRangeEffect(Component parent, EffectArea.Type includedTypes, float newRadius)
         {
             if (parent == null)
-                return;
+                return false;
 
+            bool changed = false;
             foreach (EffectArea area in parent.GetComponentsInChildren<EffectArea>(includeInactive: true))
             {
                 if (area == null || (area.m_type & includedTypes) == 0)
                     continue;
 
-                if (area.GetComponent<SphereCollider>() is SphereCollider sphere)
+                if (area.GetComponent<SphereCollider>() is SphereCollider sphere && !Mathf.Approximately(sphere.radius, newRadius))
+                {
                     sphere.radius = newRadius;
-                else if (area.GetComponent<CapsuleCollider>() is CapsuleCollider capsule)
+                    changed = true;
+                }
+                else if (area.GetComponent<CapsuleCollider>() is CapsuleCollider capsule && !Mathf.Approximately(capsule.radius, newRadius))
+                {
                     capsule.radius = newRadius;
+                    changed = true;
+                }
             }
+
+            return changed;
         }
 
         private static int GetWardMarkerSegmentCount(float radius, float amount)
@@ -2084,58 +2096,99 @@ namespace ProtectiveWards
             return (int)Math.Max(0d, Math.Min(4096d, segments));
         }
 
-        private static void SetWardRange(PrivateArea __instance, float range)
-        {
-            float newRadius = ClampWardRange(range);
-            areaCache.Clear();
-            BackgroundProtection.ResetCache();
-
-            __instance.m_radius = newRadius;
-            
-            if (__instance.m_areaMarker != null)
-            {
-                __instance.m_areaMarker.m_radius = newRadius;
-                __instance.m_areaMarker.m_nrOfSegments = GetWardMarkerSegmentCount(newRadius, wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f);
-            }
-
-            ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
-        }
-
-        private static void SetWardPlayerBase(PrivateArea __instance, float range)
+        private static bool SetWardRange(PrivateArea __instance, float range)
         {
             if (__instance == null)
-                return;
+                return false;
+
+            float newRadius = ClampWardRange(range);
+            bool changed = float.IsNaN(__instance.m_radius) || Math.Abs(__instance.m_radius - newRadius) >= 0.001f;
+            __instance.m_radius = newRadius;
+
+            if (__instance.m_areaMarker != null)
+            {
+                int segmentCount = GetWardMarkerSegmentCount(newRadius, wardAreaMarkerPatch.Value ? wardAreaMarkerAmount.Value : 1f);
+                if (!Mathf.Approximately(__instance.m_areaMarker.m_radius, newRadius) || __instance.m_areaMarker.m_nrOfSegments != segmentCount)
+                    changed = true;
+
+                __instance.m_areaMarker.m_radius = newRadius;
+                __instance.m_areaMarker.m_nrOfSegments = segmentCount;
+            }
+
+            changed |= ApplyRangeEffect(__instance, EffectArea.Type.PlayerBase, newRadius);
+            if (changed)
+            {
+                areaCache.Clear();
+                BackgroundProtection.ResetCache();
+            }
+
+            return changed;
+        }
+
+        private const float VanillaPlayerBaseRadius = 10f;
+
+        private static bool ShouldUseFullWardSpawnSuppression(PrivateArea ward)
+        {
+            return supressSpawnInRange.Value
+                   && ward != null
+                   && (supressSpawnInInactiveWardRange.Value || ward.IsEnabled());
+        }
+
+        private static bool SetWardPlayerBase(PrivateArea __instance, float range)
+        {
+            if (__instance == null)
+                return false;
 
             float clampedRange = ClampWardRange(range);
-            float scale = supressSpawnInRange.Value ? 1f : Math.Min(1f, 10f / Math.Max(clampedRange, 1f));
+            float scale = ShouldUseFullWardSpawnSuppression(__instance)
+                ? 1f
+                : Math.Min(1f, VanillaPlayerBaseRadius / Math.Max(clampedRange, 1f));
+            Vector3 targetScale = Vector3.one * scale;
             bool changed = false;
 
             foreach (EffectArea area in __instance.GetComponentsInChildren<EffectArea>(includeInactive: true))
             {
-                if (area == null || (area.m_type & EffectArea.Type.PlayerBase) == 0)
+                if (area == null || (area.m_type & EffectArea.Type.PlayerBase) == 0 || area.transform.localScale == targetScale)
                     continue;
 
-                Vector3 targetScale = Vector3.one * scale;
-                if (area.transform.localScale != targetScale)
-                {
-                    area.transform.localScale = targetScale;
-                    changed = true;
-                }
+                area.transform.localScale = targetScale;
+                changed = true;
+            }
 
-                if (area.GetComponent<SphereCollider>() is SphereCollider sphere && !Mathf.Approximately(sphere.radius, clampedRange))
+            return changed;
+        }
+
+        private static bool TryGetWardSpawnSuppressionArea(Vector3 point, float extraRadius, out EffectArea effectArea)
+        {
+            effectArea = null;
+            if (!supressSpawnInRange.Value)
+                return false;
+
+            foreach (PrivateArea ward in PrivateArea.m_allAreas)
+            {
+                if (!IsPlayerWardPrefab(ward) || !ward.isActiveAndEnabled || ward.m_nview?.IsValid() != true || !ShouldUseFullWardSpawnSuppression(ward))
+                    continue;
+
+                ZDO zdo = ward.m_nview.GetZDO();
+                float radius = zdo != null ? WardZdoUtils.GetWardRadius(zdo) : ClampWardRange(ward.m_radius);
+                if (radius <= 0f || Utils.DistanceXZ(ward.transform.position, point) >= radius + extraRadius)
+                    continue;
+
+                foreach (EffectArea area in ward.GetComponentsInChildren<EffectArea>(includeInactive: true))
                 {
-                    sphere.radius = clampedRange;
-                    changed = true;
-                }
-                else if (area.GetComponent<CapsuleCollider>() is CapsuleCollider capsule && !Mathf.Approximately(capsule.radius, clampedRange))
-                {
-                    capsule.radius = clampedRange;
-                    changed = true;
+                    if (area == null || !area.isActiveAndEnabled || (area.m_type & EffectArea.Type.PlayerBase) == 0)
+                        continue;
+
+                    Collider collider = area.GetComponent<Collider>();
+                    if (collider == null || !collider.enabled)
+                        continue;
+
+                    effectArea = area;
+                    return true;
                 }
             }
 
-            if (changed)
-                Physics.SyncTransforms();
+            return false;
         }
 
         private static void FillWardProtectionLists()
@@ -3054,10 +3107,10 @@ namespace ProtectiveWards
                 return;
 
             defaultRange = ClampWardRange(defaultRange);
-            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - defaultRange) >= 0.001f)
-                SetWardRange(ward, defaultRange);
-
-            SetWardPlayerBase(ward, defaultRange);
+            bool changed = SetWardRange(ward, defaultRange);
+            changed |= SetWardPlayerBase(ward, defaultRange);
+            if (changed)
+                Physics.SyncTransforms();
         }
 
         private static void PatchRange(PrivateArea ward)
@@ -3074,7 +3127,8 @@ namespace ProtectiveWards
 
             if (ArePerWardSettingsEnabled() && !WardZdoUtils.HasStoredWardSettings(zdo))
             {
-                SetWardPlayerBase(ward, ClampWardRange(ward.m_radius));
+                if (SetWardPlayerBase(ward, ClampWardRange(ward.m_radius)))
+                    Physics.SyncTransforms();
                 return;
             }
 
@@ -3085,11 +3139,23 @@ namespace ProtectiveWards
             }
 
             float range = WardZdoUtils.GetConfiguredWardRange(zdo);
-            if (float.IsNaN(ward.m_radius) || Math.Abs(ward.m_radius - range) >= 0.001f)
+            bool changed = SetWardRange(ward, range);
+            changed |= SetWardPlayerBase(ward, range);
+            if (changed)
+                Physics.SyncTransforms();
+        }
+
+        [HarmonyPatch(typeof(EffectArea), nameof(EffectArea.IsPointInsideArea))]
+        private static class EffectArea_IsPointInsideArea_WardSpawnSuppression
+        {
+            private static void Postfix(Vector3 p, EffectArea.Type type, float radius, ref EffectArea __result)
             {
-                SetWardRange(ward, range);
+                if (__result != null || !supressSpawnInRange.Value || (type & EffectArea.Type.PlayerBase) == 0)
+                    return;
+
+                if (TryGetWardSpawnSuppressionArea(p, radius, out EffectArea area))
+                    __result = area;
             }
-            SetWardPlayerBase(ward, range);
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Awake))]

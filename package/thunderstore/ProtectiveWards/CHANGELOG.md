@@ -1,3 +1,7 @@
+# 2.0.13
+* added an option to keep full ward-radius spawn suppression while wards are inactive; disabled by default
+* fixed spawn suppression to follow custom ward radius reliably, including raid spawn points
+
 # 2.0.12
 * fixed spawn supression radius not fitting ward radius
 
