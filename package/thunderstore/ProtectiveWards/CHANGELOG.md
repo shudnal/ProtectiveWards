@@ -1,3 +1,6 @@
+# 2.0.12
+* fixed spawn supression radius not fitting ward radius
+
 # 2.0.11
 * Simplified per-ward settings: new wards copy their initial values from the global config and then keep explicit independent values without `Use default` fields.
 * Added a per-ward option allowing permitted players to activate or deactivate the ward with the normal interaction.

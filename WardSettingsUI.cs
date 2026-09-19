@@ -1321,6 +1321,10 @@ namespace ProtectiveWards
             }
 
             WardZdoUtils.UpdateWardRuntimeFields(zdo);
+            PrivateArea loadedWard = WardZdoUtils.FindLoadedWard(zdoID);
+            if (loadedWard != null)
+                RefreshWardVisuals(loadedWard);
+
             SendApplySettingsResult(sender, zdoID, ApplySettingsResult.Success);
             LogInfo($"Ward settings applied for {zdoID}");
         }

@@ -23,7 +23,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.11";
+        public const string pluginVersion = "2.0.12";
 
         private static Harmony _harmony;
 
@@ -2061,15 +2061,16 @@ namespace ProtectiveWards
             if (parent == null)
                 return;
 
-            EffectArea componentInChildren = parent.GetComponentInChildren<EffectArea>();
-            if ((componentInChildren == null) || (componentInChildren.m_type != includedTypes))
-                return;
+            foreach (EffectArea area in parent.GetComponentsInChildren<EffectArea>(includeInactive: true))
+            {
+                if (area == null || (area.m_type & includedTypes) == 0)
+                    continue;
 
-            SphereCollider component = componentInChildren.GetComponent<SphereCollider>();
-            if (component == null)
-                return;
-
-            component.radius = newRadius;
+                if (area.GetComponent<SphereCollider>() is SphereCollider sphere)
+                    sphere.radius = newRadius;
+                else if (area.GetComponent<CapsuleCollider>() is CapsuleCollider capsule)
+                    capsule.radius = newRadius;
+            }
         }
 
         private static int GetWardMarkerSegmentCount(float radius, float amount)
@@ -2102,9 +2103,39 @@ namespace ProtectiveWards
 
         private static void SetWardPlayerBase(PrivateArea __instance, float range)
         {
-            Transform playerBase = __instance.transform.Find("PlayerBase");
-            if (playerBase != null)
-                playerBase.localScale = supressSpawnInRange.Value ? Vector3.one : Vector3.one * Math.Min(1f, 10f / Math.Max(range, 1f));
+            if (__instance == null)
+                return;
+
+            float clampedRange = ClampWardRange(range);
+            float scale = supressSpawnInRange.Value ? 1f : Math.Min(1f, 10f / Math.Max(clampedRange, 1f));
+            bool changed = false;
+
+            foreach (EffectArea area in __instance.GetComponentsInChildren<EffectArea>(includeInactive: true))
+            {
+                if (area == null || (area.m_type & EffectArea.Type.PlayerBase) == 0)
+                    continue;
+
+                Vector3 targetScale = Vector3.one * scale;
+                if (area.transform.localScale != targetScale)
+                {
+                    area.transform.localScale = targetScale;
+                    changed = true;
+                }
+
+                if (area.GetComponent<SphereCollider>() is SphereCollider sphere && !Mathf.Approximately(sphere.radius, clampedRange))
+                {
+                    sphere.radius = clampedRange;
+                    changed = true;
+                }
+                else if (area.GetComponent<CapsuleCollider>() is CapsuleCollider capsule && !Mathf.Approximately(capsule.radius, clampedRange))
+                {
+                    capsule.radius = clampedRange;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+                Physics.SyncTransforms();
         }
 
         private static void FillWardProtectionLists()
