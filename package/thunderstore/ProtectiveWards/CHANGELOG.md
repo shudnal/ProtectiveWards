@@ -1,3 +1,6 @@
+# 2.0.14
+* fixed ward admin detection on dedicated servers by using Jotunn's server-synchronized local admin status and Valheim's server-side connection identity check
+
 # 2.0.13
 * added an option to keep full ward-radius spawn suppression while wards are inactive; disabled by default
 * fixed spawn suppression to follow custom ward radius reliably, including raid spawn points

@@ -1,6 +1,7 @@
 ﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
+using Jotunn.Managers;
 using Jotunn.Utils;
 using System;
 using System.Collections;
@@ -23,7 +24,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.13";
+        public const string pluginVersion = "2.0.14";
 
         private static Harmony _harmony;
 
@@ -1796,12 +1797,29 @@ namespace ProtectiveWards
                 return true;
 
             Player localPlayer = Player.m_localPlayer;
-            if (localPlayer != null && localPlayer.GetPlayerID() == playerID && ZNet.instance.LocalPlayerIsAdminOrHost())
-                return true;
+            if (localPlayer != null && localPlayer.GetPlayerID() == playerID)
+            {
+                // The host is always an admin. Dedicated clients use Jotunn's server-synchronized
+                // admin state because vanilla PlayerIsAdmin performs an exact string comparison
+                // against the client-side admin list and can disagree with the server's socket-based check.
+                return ZNet.instance.IsServer() || SynchronizationManager.Instance.PlayerIsAdmin;
+            }
 
-            return TryFindPlayerInfo(playerID, out ZNet.PlayerInfo playerInfo)
-                   && playerInfo.m_userInfo.m_id.IsValid
-                   && ZNet.instance.PlayerIsAdmin(playerInfo.m_userInfo.m_id);
+            if (!ZNet.instance.IsServer())
+                return false;
+
+            // On the server, validate the same connection identity Valheim uses for remote admin
+            // commands. This accepts all adminlist.txt ID forms handled by ZNet.ListContainsId.
+            foreach (ZNetPeer peer in ZNet.instance.GetPeers())
+            {
+                if (peer == null || peer.m_playerID != playerID || peer.m_socket == null)
+                    continue;
+
+                string hostName = peer.m_socket.GetHostName();
+                return !string.IsNullOrEmpty(hostName) && ZNet.instance.IsAdmin(hostName);
+            }
+
+            return false;
         }
 
         internal static bool IsServerRpcSender(long sender)
