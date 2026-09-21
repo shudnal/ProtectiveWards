@@ -24,7 +24,7 @@ namespace ProtectiveWards
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.14";
+        public const string pluginVersion = "2.0.15";
 
         private static Harmony _harmony;
 
@@ -694,9 +694,21 @@ namespace ProtectiveWards
             wardPasswordFieldMode.SettingChanged += (sender, args) => WardPasswordProtection.HandlePasswordFieldModeChanged();
 
             wardDemisterEnabled.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
-            setWardRange.SettingChanged += (sender, args) => RefreshServerControlledWardRuntimeFields();
-            wardRange.SettingChanged += (sender, args) => RefreshServerControlledWardRuntimeFields();
-            wardRangeLimits.SettingChanged += (sender, args) => RefreshWardRangeLimits();
+            setWardRange.SettingChanged += (sender, args) =>
+            {
+                RefreshServerControlledWardRuntimeFields();
+                RefreshLocalWardPlacementGhostRange();
+            };
+            wardRange.SettingChanged += (sender, args) =>
+            {
+                RefreshServerControlledWardRuntimeFields();
+                RefreshLocalWardPlacementGhostRange();
+            };
+            wardRangeLimits.SettingChanged += (sender, args) =>
+            {
+                RefreshWardRangeLimits();
+                RefreshLocalWardPlacementGhostRange();
+            };
             supressSpawnInRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             supressSpawnInInactiveWardRange.SettingChanged += (sender, args) => RefreshAllLoadedWardVisuals();
             wardEmissionColorEnabled.SettingChanged += (sender, args) => RefreshServerControlledWardVisuals();
@@ -793,7 +805,7 @@ namespace ProtectiveWards
 
         public static bool IsActivePlayerWard(PrivateArea ward) => ward != null && ward.IsEnabled() && ward.m_ownerFaction == Character.Faction.Players;
 
-        private static bool IsPlayerWardPrefab(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players && WardZdoUtils.IsWardPrefab(ward.gameObject);
+        internal static bool IsPlayerWardPrefab(PrivateArea ward) => ward != null && ward.m_ownerFaction == Character.Faction.Players && WardZdoUtils.IsWardPrefab(ward.gameObject);
 
         private static bool AreWardsOverlapping(PrivateArea ward, PrivateArea candidate) => ward != null && candidate != null && GetConfiguredWardDistance(ward.transform.position, candidate.transform.position) <= ward.m_radius + candidate.m_radius;
 
@@ -1207,6 +1219,27 @@ namespace ProtectiveWards
             return ConnectedAccessAreas(ward, mode).Any(area => area != ward && HasDirectAccessToWard(area, playerID));
         }
 
+        internal static bool HasEffectiveLocalPrivateAreaAccess(PrivateArea area, Player player)
+        {
+            if (area == null || player == null)
+                return false;
+
+            if (!IsPlayerWardPrefab(area))
+                return area.HaveLocalAccess();
+
+            return HasAccessToWardOrConnectedWard(area, player);
+        }
+
+        internal static bool IsPrivateAreaInsideAccessRange(PrivateArea area, Vector3 point, float radius)
+        {
+            if (area == null || !area.IsEnabled())
+                return false;
+
+            return IsPlayerWardPrefab(area)
+                ? IsPointInsideWardArea(area, point, radius)
+                : area.IsInside(point, radius);
+        }
+
         public static PrivateArea FindProtectedWard(Vector3 point)
         {
             foreach (PrivateArea area in PrivateArea.m_allAreas)
@@ -1467,35 +1500,26 @@ namespace ProtectiveWards
 
         public static bool ShouldBypassVanillaPrivateAreaCheck(Component component, Humanoid human)
         {
-            if (component == null)
+            if (component == null || human is not Player player)
                 return false;
 
-            Player player = human as Player;
-            if (player == null)
-                return false;
-
-            bool foundProtectedWard = false;
+            bool needsObjectOwnerBypass = false;
 
             foreach (PrivateArea area in PrivateArea.m_allAreas)
             {
-                if (area == null || !area.IsEnabled() || !IsPointInsideWardArea(area, component.transform.position))
+                if (!IsActivePlayerWard(area) || !IsPointInsideWardArea(area, component.transform.position))
                     continue;
-
-                if (!IsActivePlayerWard(area))
-                    return false;
-
-                foundProtectedWard = true;
 
                 if (HasAccessToWardOrConnectedWard(area, player))
                     continue;
 
-                if (IsObjectOwnedByPlayerWithWardAccess(component, player))
-                    continue;
+                if (!IsObjectOwnedByPlayerWithWardAccess(component, player))
+                    return false;
 
-                return false;
+                needsObjectOwnerBypass = true;
             }
 
-            return foundProtectedWard;
+            return needsObjectOwnerBypass;
         }
 
         public static string GetWardOwnerName(PrivateArea ward)
@@ -3038,6 +3062,20 @@ namespace ProtectiveWards
             }
         }
 
+        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.HaveLocalAccess))]
+        public static class PrivateArea_HaveLocalAccess_EffectiveWardAccess
+        {
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(PrivateArea __instance, ref bool __result)
+            {
+                if (!IsPlayerWardPrefab(__instance) || Player.m_localPlayer == null)
+                    return true;
+
+                __result = HasAccessToWardOrConnectedWard(__instance, Player.m_localPlayer);
+                return false;
+            }
+        }
+
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
         public static class PrivateArea_IsPermitted_AdditionalAccess
         {
@@ -3106,6 +3144,37 @@ namespace ProtectiveWards
                 }
 
                 return true;
+            }
+        }
+
+        private static float GetNewWardInitialRadius()
+        {
+            return setWardRange?.Value == true
+                ? ClampWardRange(wardRange?.Value ?? WardZdoUtils.GetWardDefaultRadius())
+                : WardZdoUtils.GetWardDefaultRadius();
+        }
+
+        private static void RefreshWardPlacementGhostRange(Player player)
+        {
+            PrivateArea ghostWard = player?.m_placementGhost?.GetComponent<PrivateArea>();
+            if (!IsPlayerWardPrefab(ghostWard))
+                return;
+
+            SetWardRange(ghostWard, GetNewWardInitialRadius());
+        }
+
+        private static void RefreshLocalWardPlacementGhostRange()
+        {
+            RefreshWardPlacementGhostRange(Player.m_localPlayer);
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.SetupPlacementGhost))]
+        private static class Player_SetupPlacementGhost_UseConfiguredWardRange
+        {
+            [HarmonyPostfix]
+            private static void Postfix(Player __instance)
+            {
+                RefreshWardPlacementGhostRange(__instance);
             }
         }
 

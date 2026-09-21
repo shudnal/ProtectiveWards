@@ -459,14 +459,64 @@ namespace ProtectiveWards
         }
 
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.CheckAccess))]
-        public static class PrivateArea_CheckAccess_ScopedWardAccessBypass
+        public static class PrivateArea_CheckAccess_EffectiveWardAccess
         {
-            private static bool Prefix(ref bool __result)
+            [HarmonyPriority(Priority.First)]
+            private static bool Prefix(Vector3 point, float radius, bool flash, bool wardCheck, ref bool __result)
             {
-                if (s_privateAreaCheckBypassDepth <= 0)
+                if (s_privateAreaCheckBypassDepth > 0)
+                {
+                    __result = true;
+                    return false;
+                }
+
+                Player player = Player.m_localPlayer;
+                if (player == null)
                     return true;
 
-                __result = true;
+                bool hasPlayerWard = false;
+                foreach (PrivateArea area in PrivateArea.m_allAreas)
+                {
+                    if (!IsPlayerWardPrefab(area) || !IsPrivateAreaInsideAccessRange(area, point, radius))
+                        continue;
+
+                    hasPlayerWard = true;
+                    break;
+                }
+
+                // Do not replace pure vanilla/NPC private-area checks that do not involve a player ward.
+                if (!hasPlayerWard)
+                    return true;
+
+                bool hasGrantedArea = false;
+                bool hasDeniedArea = false;
+
+                foreach (PrivateArea area in PrivateArea.m_allAreas)
+                {
+                    if (!IsPrivateAreaInsideAccessRange(area, point, radius))
+                        continue;
+
+                    if (HasEffectiveLocalPrivateAreaAccess(area, player))
+                        hasGrantedArea = true;
+                    else
+                        hasDeniedArea = true;
+                }
+
+                // Preserve vanilla semantics: placing a ward requires access to every overlapping area,
+                // while ordinary checks pass when at least one overlapping area grants access.
+                __result = wardCheck ? !hasDeniedArea : (!hasDeniedArea || hasGrantedArea);
+
+                if (!__result && flash)
+                {
+                    foreach (PrivateArea area in PrivateArea.m_allAreas)
+                    {
+                        if (!IsPrivateAreaInsideAccessRange(area, point, radius) || HasEffectiveLocalPrivateAreaAccess(area, player))
+                            continue;
+
+                        area.FlashShield(false);
+                    }
+                }
+
                 return false;
             }
         }

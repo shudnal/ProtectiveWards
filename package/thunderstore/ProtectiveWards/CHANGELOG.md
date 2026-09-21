@@ -1,3 +1,7 @@
+# 2.0.15
+* fixed ward placement and removal access checks to use ProtectiveWards effective access rules consistently
+* fixed ward placement preview and overlap checks to use the configured initial ward radius instead of the vanilla prefab radius
+
 # 2.0.14
 * fixed ward admin detection on dedicated servers by using Jotunn's server-synchronized local admin status and Valheim's server-side connection identity check
 
