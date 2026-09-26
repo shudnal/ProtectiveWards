@@ -401,6 +401,7 @@ namespace ProtectiveWards
             instance = this;
 
             ConfigInit();
+            LocalizationManager.Localizer.ApplyCurrentLocalization();
             CompatibilityHelper.CheckForCompatibility();
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
