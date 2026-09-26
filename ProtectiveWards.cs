@@ -396,14 +396,14 @@ namespace ProtectiveWards
 
         private void Awake()
         {
+            LocalizationManager.Localizer.Initialize();
+
             instance = this;
 
             ConfigInit();
             CompatibilityHelper.CheckForCompatibility();
 
             _harmony = Harmony.CreateAndPatchAll(Assembly.GetExecutingAssembly(), pluginID);
-
-            StartCoroutine(LocalizationManager.Localizer.Load());
         }
 
         private void Start()
