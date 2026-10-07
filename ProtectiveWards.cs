@@ -19,12 +19,13 @@ namespace ProtectiveWards
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(GuildsCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    // Major/minor versions define the RPC compatibility boundary; patch releases must preserve the wire format.
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.15";
+        public const string pluginVersion = "2.1.0";
 
         private static Harmony _harmony;
 

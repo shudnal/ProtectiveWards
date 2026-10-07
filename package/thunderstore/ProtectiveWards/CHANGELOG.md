@@ -1,3 +1,7 @@
+# 2.1.0
+* IMPORTANT: update the server and all clients together. The revised ward RPC protocol is not network-compatible with 2.0.x.
+* kept minor-version network compatibility enforcement so 2.0.x and 2.1.x installations are rejected during connection instead of failing ward settings and access operations.
+
 # 2.0.15
 * fixed ward placement and removal access checks to use ProtectiveWards effective access rules consistently
 * fixed ward placement preview and overlap checks to use the configured initial ward radius instead of the vanilla prefab radius
