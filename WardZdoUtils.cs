@@ -412,6 +412,15 @@ namespace ProtectiveWards
             return GetConfiguredWardDistance(protectedWard.GetPosition(), candidateWard.GetPosition()) <= protectedRadius + candidateRadius;
         }
 
+        internal static bool HasWardTrustAccess(ZDO ward, long playerID)
+        {
+            // Trust is ward policy, not a temporary administrative privilege.
+            return IsWard(ward) && playerID != 0L
+                && (ward.IsCreator(playerID) || IsPermitEveryone(ward)
+                    || IsExplicitlyPermitted(ward, playerID)
+                    || GuildsCompat.HasWardGuildAccess(ward, playerID));
+        }
+
         internal static bool CanShareConnectedWardAccess(ZDO protectedWard, ZDO candidateWard, WardConnectedAccessMode mode)
         {
             if (mode == WardConnectedAccessMode.Off)
@@ -435,8 +444,8 @@ namespace ProtectiveWards
                     candidateCreator = candidateWard.GetCreatorId();
                     return protectedCreator != 0L
                            && candidateCreator != 0L
-                           && HasDirectAccessToWardZdo(protectedWard, candidateCreator)
-                           && HasDirectAccessToWardZdo(candidateWard, protectedCreator);
+                           && HasWardTrustAccess(protectedWard, candidateCreator)
+                           && HasWardTrustAccess(candidateWard, protectedCreator);
 
                 case WardConnectedAccessMode.AnyConnected:
                     return true;

@@ -1123,6 +1123,12 @@ namespace ProtectiveWards
 
         private static long GetCreatorId(PrivateArea ward) => ward?.m_piece != null ? ward.m_piece.GetCreator() : 0L;
 
+        private static bool HasWardTrustAccess(PrivateArea ward, long playerID)
+        {
+            return ward?.m_nview?.IsValid() == true
+                && WardZdoUtils.HasWardTrustAccess(ward.m_nview.GetZDO(), playerID);
+        }
+
         public static bool CanShareConnectedAccess(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
         {
             if (mode == WardConnectedAccessMode.Off)
@@ -1145,8 +1151,8 @@ namespace ProtectiveWards
                     candidateCreator = GetCreatorId(candidateWard);
                     return protectedCreator != 0L
                            && candidateCreator != 0L
-                           && HasDirectAccessToWard(protectedWard, candidateCreator)
-                           && HasDirectAccessToWard(candidateWard, protectedCreator);
+                           && HasWardTrustAccess(protectedWard, candidateCreator)
+                           && HasWardTrustAccess(candidateWard, protectedCreator);
                 case WardConnectedAccessMode.AnyConnected:
                     return true;
                 default:
