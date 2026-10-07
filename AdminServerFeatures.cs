@@ -143,7 +143,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            List<Player> matches = FindOnlinePlayers(query);
+            List<KeyValuePair<long, string>> matches = WardPlayers.FindByName(query);
             if (matches.Count == 0)
             {
                 context.AddString("$pw_permit_no_match".Localize(query));
@@ -152,12 +152,12 @@ namespace ProtectiveWards
 
             if (matches.Count > 1)
             {
-                context.AddString("$pw_permit_multiple".Localize(string.Join(", ", matches.Select(p => p.GetPlayerName()).ToArray())));
+                context.AddString("$pw_permit_multiple".Localize(string.Join(", ", matches.Select(p => p.Value).ToArray())));
                 return;
             }
 
-            Player target = matches[0];
-            if (IsPlayerInPermittedList(ward, target.GetPlayerID()))
+            KeyValuePair<long, string> target = matches[0];
+            if (IsPlayerInPermittedList(ward, target.Key))
             {
                 context.AddString("$pw_permit_already".Localize());
                 return;
@@ -166,15 +166,15 @@ namespace ProtectiveWards
             ZPackage package = new();
             package.Write(ward.m_nview.GetZDO().m_uid);
             package.Write(player.GetPlayerID());
-            package.Write(target.GetPlayerID());
-            package.Write(target.GetPlayerName());
+            package.Write(target.Key);
+            package.Write(target.Value);
 
             if (ZNet.instance?.IsServer() == true)
                 RPC_PermitPlayerServer(0L, new(package.GetArray()));
             else
                 WardRpc.SendToServer(RPC_PermitPlayer, package);
 
-            context.AddString($"Permit for {target.GetPlayerName()} requested.");
+            context.AddString($"Permit for {target.Value} requested.");
         }
 
         private static void RequestUnpermit(string query, Terminal context)
@@ -329,9 +329,9 @@ namespace ProtectiveWards
             if (zdo == null || !CanRequesterPermit(zdo, requester.PlayerID))
                 return;
 
-            Player target = Player.GetPlayer(targetID);
-            if (target == null || target.GetPlayerName() != targetName)
+            if (!WardPlayers.TryGet(targetID, out WardPlayers.OnlinePlayer target))
                 return;
+            targetName = target.Name;
 
             if (WardZdoUtils.IsExplicitlyPermitted(zdo, targetID))
                 return;
@@ -497,20 +497,6 @@ namespace ProtectiveWards
             }
 
             return result;
-        }
-
-        private static List<Player> FindOnlinePlayers(string query)
-        {
-            string normalized = query.Trim();
-            if (normalized.Length == 0)
-                return new List<Player>();
-
-            List<Player> players = Player.GetAllPlayers();
-            List<Player> exact = players.Where(player => string.Equals(player.GetPlayerName(), normalized, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (exact.Count > 0)
-                return exact;
-
-            return players.Where(player => player.GetPlayerName().IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
         }
 
         [HarmonyPatch(typeof(Terminal), nameof(Terminal.InitTerminal))]

@@ -81,6 +81,14 @@ namespace ProtectiveWards
                 return false;
 
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
+            if (wardBackgroundPresenceMode.Value == WardBackgroundPresenceMode.PermittedOnline)
+            {
+                foreach (WardPlayers.OnlinePlayer player in WardPlayers.GetOnlinePlayers())
+                    if (ward.HasConnectedWardAccess(player.PlayerID, mode, activeWardPredicate))
+                        return true;
+                return false;
+            }
+
             float radius = Mathf.Max(wardBackgroundPresenceRadius.Value, 0f);
 
             if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))

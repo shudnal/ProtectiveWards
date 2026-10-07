@@ -504,27 +504,7 @@ namespace ProtectiveWards
 
         private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)
         {
-            string normalized = (query ?? "").Trim();
-            Dictionary<long, string> players = new();
-            if (normalized.Length == 0 || ZNet.instance == null)
-                return players.ToList();
-
-            foreach (ZDO character in ZNet.instance.GetAllCharacterZDOS())
-            {
-                if (character == null)
-                    continue;
-
-                long playerID = character.GetLong(ZDOVars.s_playerID, 0L);
-                if (playerID != 0L)
-                    players[playerID] = character.GetString(ZDOVars.s_playerName, "");
-            }
-
-            List<KeyValuePair<long, string>> exact = players
-                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            return exact.Count > 0 ? exact : players
-                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
+            return WardPlayers.FindByName(query);
         }
 
         private static void SendResult(long targetPeerID, ZDOID wardID, PermittedPlayerAction action, PermittedPlayerResult result, string detail, ZDO zdo)

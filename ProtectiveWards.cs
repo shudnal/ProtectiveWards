@@ -1804,6 +1804,9 @@ namespace ProtectiveWards
             if (wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
                 return false;
 
+            if (ZNet.instance?.IsServer() == false && Player.m_localPlayer?.GetPlayerID() != playerID)
+                return WardPlayers.HasRemoteAdminAccess(playerID);
+
             if (!IsPlayerServerAdminOrHost(playerID))
                 return false;
 
@@ -1998,10 +2001,17 @@ namespace ProtectiveWards
             if (playerID == 0L || ZNet.instance == null || ZDOMan.instance == null)
                 return false;
 
+            bool knownCharacter = WardPlayers.TryGet(playerID, out WardPlayers.OnlinePlayer onlinePlayer);
             foreach (ZNet.PlayerInfo info in ZNet.instance.GetPlayerList())
             {
                 if (info.m_characterID.IsNone())
                     continue;
+
+                if (knownCharacter && info.m_characterID == onlinePlayer.CharacterID)
+                {
+                    playerInfo = info;
+                    return true;
+                }
 
                 ZDO characterZdo = ZDOMan.instance.GetZDO(info.m_characterID);
                 if (characterZdo == null || characterZdo.GetLong(ZDOVars.s_playerID, 0L) != playerID)
