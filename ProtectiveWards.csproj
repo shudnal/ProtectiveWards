@@ -113,6 +113,7 @@
     <Compile Include="Compatibility\GuildsCompat.cs" />
     <Compile Include="Compatibility\EpicLootCompat.cs" />
     <Compile Include="AdminServerFeatures.cs" />
+    <Compile Include="WardRpc.cs" />
     <Compile Include="ItemNameTokens.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="WardZdoUtils.cs" />

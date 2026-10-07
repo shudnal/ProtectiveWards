@@ -25,16 +25,16 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_DestroyWardForBuildLimit, RPC_DestroyWardForBuildLimitClient);
+            WardRpc.Register(RPC_DestroyWardForBuildLimit, RPC_DestroyWardForBuildLimitClient);
 
             if (ZNet.instance?.IsServer() == true)
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_PermitPlayer, RPC_PermitPlayerServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardEnabled, RPC_SetWardEnabledServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ToggleWardPermitted, RPC_ToggleWardPermittedServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetWardExpired, RPC_SetWardExpiredServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckWardBuildLimit, RPC_CheckWardBuildLimitServer);
+                WardRpc.Register(RPC_PermitPlayer, RPC_PermitPlayerServer);
+                WardRpc.Register(RPC_UnpermitPlayer, RPC_UnpermitPlayerServer);
+                WardRpc.Register(RPC_SetWardEnabled, RPC_SetWardEnabledServer);
+                WardRpc.Register(RPC_ToggleWardPermitted, RPC_ToggleWardPermittedServer);
+                WardRpc.Register(RPC_SetWardExpired, RPC_SetWardExpiredServer);
+                WardRpc.Register(RPC_CheckWardBuildLimit, RPC_CheckWardBuildLimitServer);
             }
 
             s_rpcRegistered = true;
@@ -172,7 +172,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_PermitPlayerServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_PermitPlayer, package);
+                WardRpc.SendToServer(RPC_PermitPlayer, package);
 
             context.AddString($"Permit for {target.GetPlayerName()} requested.");
         }
@@ -221,7 +221,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_UnpermitPlayerServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UnpermitPlayer, package);
+                WardRpc.SendToServer(RPC_UnpermitPlayer, package);
 
             context.AddString($"Unpermit for {target.Value} requested.");
         }
@@ -238,7 +238,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_ToggleWardPermittedServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ToggleWardPermitted, package);
+                WardRpc.SendToServer(RPC_ToggleWardPermitted, package);
         }
 
         private static void RequestSetWardEnabled(bool enabled, Terminal context)
@@ -271,7 +271,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_SetWardEnabledServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardEnabled, package);
+                WardRpc.SendToServer(RPC_SetWardEnabled, package);
 
             context.AddString(enabled ? "Ward enable requested." : "Ward disable requested.");
         }
@@ -307,7 +307,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_SetWardExpiredServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SetWardExpired, package);
+                WardRpc.SendToServer(RPC_SetWardExpired, package);
 
             context.AddString(expired ? "Ward expired state requested." : "Ward unexpired state requested.");
         }
@@ -571,7 +571,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_CheckWardBuildLimitServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_CheckWardBuildLimit, package);
+                WardRpc.SendToServer(RPC_CheckWardBuildLimit, package);
         }
 
         private static void RPC_CheckWardBuildLimitServer(long sender, ZPackage package)

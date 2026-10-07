@@ -36,11 +36,11 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWardResult, RPC_ReactivateExpiredWardResultClient);
+            WardRpc.Register(RPC_ReactivateExpiredWardResult, RPC_ReactivateExpiredWardResultClient);
             if (ZNet.instance?.IsServer() == true)
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWard, RPC_ReactivateExpiredWardServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ActivateConnectedWards, RPC_ActivateConnectedWardsServer);
+                WardRpc.Register(RPC_ReactivateExpiredWard, RPC_ReactivateExpiredWardServer);
+                WardRpc.Register(RPC_ActivateConnectedWards, RPC_ActivateConnectedWardsServer);
             }
 
             s_rpcRegistered = true;
@@ -263,7 +263,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_ReactivateExpiredWardServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ReactivateExpiredWard, package);
+                WardRpc.SendToServer(RPC_ReactivateExpiredWard, package);
         }
 
         internal static void RequestConnectedActivation(ZDOID wardID, long playerID)
@@ -278,7 +278,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_ActivateConnectedWardsServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ActivateConnectedWards, package);
+                WardRpc.SendToServer(RPC_ActivateConnectedWards, package);
         }
 
         private static void RPC_ReactivateExpiredWardServer(long sender, ZPackage package)

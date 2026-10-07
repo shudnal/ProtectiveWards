@@ -81,9 +81,9 @@ namespace ProtectiveWards
                 return;
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckTeleportTargetAccess, RPC_CheckTeleportTargetAccessServer);
+                WardRpc.Register(RPC_CheckTeleportTargetAccess, RPC_CheckTeleportTargetAccessServer);
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_TeleportTargetAccessResponse, RPC_TeleportTargetAccessResponseClient);
+            WardRpc.Register(RPC_TeleportTargetAccessResponse, RPC_TeleportTargetAccessResponseClient);
             s_teleportAccessRpcRegistered = true;
         }
 
@@ -128,7 +128,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_CheckTeleportTargetAccessServer(0L, new(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckTeleportTargetAccess, package);
+                WardRpc.SendToServer(RPC_CheckTeleportTargetAccess, package);
             else
                 return false;
 
@@ -275,8 +275,8 @@ namespace ProtectiveWards
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastVehicleController, RPC_SetLastVehicleControllerServer);
+                WardRpc.Register(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
+                WardRpc.Register(RPC_SetLastVehicleController, RPC_SetLastVehicleControllerServer);
             }
 
             s_saddleRpcRegistered = true;
@@ -296,7 +296,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_SetLastSaddleUserServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastSaddleUser, package);
+                WardRpc.SendToServer(RPC_SetLastSaddleUser, package);
         }
 
         private static void RPC_SetLastSaddleUserServer(long sender, ZPackage package)
@@ -352,7 +352,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_SetLastVehicleControllerServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastVehicleController, package);
+                WardRpc.SendToServer(RPC_SetLastVehicleController, package);
         }
 
         private static void RPC_SetLastVehicleControllerServer(long sender, ZPackage package)

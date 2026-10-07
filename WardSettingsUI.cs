@@ -182,9 +182,9 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_ApplyWardSettingsResult, RPC_ApplyWardSettingsResultClient);
+            WardRpc.Register(RPC_ApplyWardSettingsResult, RPC_ApplyWardSettingsResultClient);
             if (ZNet.instance != null && ZNet.instance.IsServer())
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ApplyWardSettings, RPC_ApplyWardSettingsServer);
+                WardRpc.Register(RPC_ApplyWardSettings, RPC_ApplyWardSettingsServer);
 
             s_rpcRegistered = true;
         }
@@ -847,7 +847,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_ApplyWardSettingsServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ApplyWardSettings, package);
+                WardRpc.SendToServer(RPC_ApplyWardSettings, package);
             else
                 OnApplySettingsResult(s_zdo.m_uid, ApplySettingsResult.Unavailable);
         }

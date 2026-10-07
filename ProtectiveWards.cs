@@ -1810,12 +1810,11 @@ namespace ProtectiveWards
             if (wardAdminAccess.Value == WardAdminAccessMode.Admins)
                 return true;
 
-            Player player = Player.GetPlayer(playerID);
-            if (player != null)
-                return player.InGodMode();
-
             Player localPlayer = Player.m_localPlayer;
-            return localPlayer != null && localPlayer.GetPlayerID() == playerID && localPlayer.InGodMode();
+            if (localPlayer != null && localPlayer.GetPlayerID() == playerID)
+                return localPlayer.InGodMode();
+
+            return WardRpc.HasRemoteGodMode(playerID);
         }
 
         public static bool IsPlayerServerAdminOrHost(long playerID)

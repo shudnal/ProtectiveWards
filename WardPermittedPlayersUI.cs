@@ -406,7 +406,7 @@ namespace ProtectiveWards
 
             if (ZRoutedRpc.instance != null)
             {
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdatePermittedPlayers, package);
+                WardRpc.SendToServer(RPC_UpdatePermittedPlayers, package);
                 return true;
             }
 
@@ -423,9 +423,9 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdatePermittedPlayersResult, RPC_UpdatePermittedPlayersResultClient);
+            WardRpc.Register(RPC_UpdatePermittedPlayersResult, RPC_UpdatePermittedPlayersResultClient);
             if (ZNet.instance?.IsServer() == true)
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdatePermittedPlayers, RPC_UpdatePermittedPlayersServer);
+                WardRpc.Register(RPC_UpdatePermittedPlayers, RPC_UpdatePermittedPlayersServer);
 
             s_rpcRegistered = true;
         }

@@ -272,7 +272,7 @@ namespace ProtectiveWards.Compatibility
             if (ZNet.instance?.IsServer() == true)
                 RPC_UpdateGuildBindingServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdateGuildBinding, package);
+                WardRpc.SendToServer(RPC_UpdateGuildBinding, package);
             else
                 WardSettingsUI.OnGuildBindingResult(wardID, GuildBindingResult.Unavailable, false, 0, "");
         }
@@ -282,9 +282,9 @@ namespace ProtectiveWards.Compatibility
             if (!IsEnabled || s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateGuildBindingResult, RPC_UpdateGuildBindingResultClient);
+            WardRpc.Register(RPC_UpdateGuildBindingResult, RPC_UpdateGuildBindingResultClient);
             if (ZNet.instance?.IsServer() == true)
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateGuildBinding, RPC_UpdateGuildBindingServer);
+                WardRpc.Register(RPC_UpdateGuildBinding, RPC_UpdateGuildBindingServer);
 
             s_rpcRegistered = true;
         }

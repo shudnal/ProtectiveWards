@@ -53,13 +53,13 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_SubmitWardPasswordResult, RPC_SubmitWardPasswordResultClient);
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateWardPasswordResult, RPC_UpdateWardPasswordResultClient);
+            WardRpc.Register(RPC_SubmitWardPasswordResult, RPC_SubmitWardPasswordResultClient);
+            WardRpc.Register(RPC_UpdateWardPasswordResult, RPC_UpdateWardPasswordResultClient);
 
             if (ZNet.instance?.IsServer() == true)
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SubmitWardPassword, RPC_SubmitWardPasswordServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateWardPassword, RPC_UpdateWardPasswordServer);
+                WardRpc.Register(RPC_SubmitWardPassword, RPC_SubmitWardPasswordServer);
+                WardRpc.Register(RPC_UpdateWardPassword, RPC_UpdateWardPasswordServer);
                 HandlePasswordFieldModeChanged();
             }
 
@@ -328,7 +328,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_SubmitWardPasswordServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_SubmitWardPassword, package);
+                WardRpc.SendToServer(RPC_SubmitWardPassword, package);
             else
                 HandlePasswordEntryResult(s_promptWardID, PasswordEntryResult.Unavailable);
         }
@@ -446,7 +446,7 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_UpdateWardPasswordServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdateWardPassword, package);
+                WardRpc.SendToServer(RPC_UpdateWardPassword, package);
             else
                 WardSettingsUI.OnPasswordSettingsResult(wardID, PasswordSettingsResult.Unavailable, enabled: false, hasPassword: false);
         }
