@@ -1,248 +1,217 @@
 from support import *
 
-write('WardPlayers.cs', '''using System;
-using System.Collections.Generic;
-using System.Linq;
-using HarmonyLib;
-using UnityEngine;
-using static ProtectiveWards.ProtectiveWards;
-
-namespace ProtectiveWards
+text = read('BackgroundProtection.cs')
+text = method(text, 'internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out ZDO ward)', '''internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out ZDO ward)
 {
-    internal static class WardPlayers
+    foreach (ZDO candidate in GetBackgroundWards(point, point))
     {
-        private const string RpcRoster = "PW_OnlinePlayerRoster";
-        private const int MaximumPlayers = 512;
-        private static readonly List<OnlinePlayer> s_remotePlayers = new();
-        private static bool s_registered;
+        if (!IsQualifiedProtectedBase(candidate) || HasEffectiveAccessPresence(candidate, point))
+            continue;
+        ward = candidate;
+        return true;
+    }
+    ward = null;
+    return false;
+}''')
+text = method(text, 'internal static bool TryFindBackgroundWard(Vector3 sourcePoint, Vector3 targetPoint, out ZDO ward)', '''private static IEnumerable<ZDO> GetBackgroundWards(Vector3 sourcePoint, Vector3 targetPoint)
+{
+    bool samePoint = sourcePoint.x == targetPoint.x && sourcePoint.y == targetPoint.y && sourcePoint.z == targetPoint.z;
+    if (!TryResolveWardCheckPoint(sourcePoint, out sourcePoint))
+        yield break;
+    if (samePoint)
+        targetPoint = sourcePoint;
+    else if (!TryResolveWardCheckPoint(targetPoint, out targetPoint))
+        yield break;
 
-        internal readonly struct OnlinePlayer
+    WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
+    foreach (ZDO area in WardZdoUtils.GetAllWards())
+    {
+        if (!IsActiveBackgroundWard(area) || !IsInsideWardXZ(area, sourcePoint))
+            continue;
+
+        if (samePoint || IsInsideWardXZ(area, targetPoint))
         {
-            internal readonly long PlayerID;
-            internal readonly ZDOID CharacterID;
-            internal readonly string Name;
-            internal readonly bool AdminAccess;
-
-            internal OnlinePlayer(long playerID, ZDOID characterID, string name, bool adminAccess = false)
-            {
-                PlayerID = playerID;
-                CharacterID = characterID;
-                Name = name ?? "";
-                AdminAccess = adminAccess;
-            }
+            yield return area;
+            continue;
         }
+        if (mode == WardConnectedAccessMode.Off)
+            continue;
 
-        internal static IEnumerable<OnlinePlayer> GetOnlinePlayers()
+        foreach (ZDO candidate in WardZdoUtils.ConnectedAccessWardZdos(area, mode, activeWardPredicate))
         {
-            ZNet network = ZNet.instance;
-            if (network == null)
-                yield break;
-
-            Player local = Player.m_localPlayer;
-            long localID = local?.GetPlayerID() ?? 0L;
-            if (localID != 0L)
-                yield return new OnlinePlayer(localID, local.GetZDOID(), local.GetPlayerName());
-
-            if (!network.IsServer())
-            {
-                foreach (OnlinePlayer player in s_remotePlayers)
-                    if (player.PlayerID != localID)
-                        yield return player;
-                yield break;
-            }
-
-            foreach (ZNetPeer peer in network.GetPeers())
-            {
-                if (peer == null || !peer.IsReady() || peer.m_server || peer.m_characterID.IsNone())
-                    continue;
-
-                long playerID = peer.m_playerID;
-                if (playerID == 0L)
-                    playerID = ZDOMan.instance?.GetZDO(peer.m_characterID)?.GetLong(ZDOVars.s_playerID, 0L) ?? 0L;
-                if (playerID != 0L && playerID != localID)
-                    yield return new OnlinePlayer(playerID, peer.m_characterID, peer.m_playerName);
-            }
-        }
-
-        internal static List<KeyValuePair<long, string>> FindByName(string query)
-        {
-            string normalized = (query ?? "").Trim();
-            if (normalized.Length == 0 || normalized.Length > 64)
-                return new List<KeyValuePair<long, string>>();
-
-            List<KeyValuePair<long, string>> players = GetOnlinePlayers()
-                .GroupBy(player => player.PlayerID)
-                .Select(group => new KeyValuePair<long, string>(group.Key, group.First().Name))
-                .ToList();
-            List<KeyValuePair<long, string>> exact = players
-                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase)).ToList();
-            return exact.Count > 0 ? exact : players
-                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        }
-
-        internal static bool TryGet(long playerID, out OnlinePlayer result)
-        {
-            foreach (OnlinePlayer player in GetOnlinePlayers())
-            {
-                if (player.PlayerID != playerID)
-                    continue;
-                result = player;
-                return true;
-            }
-            result = default;
-            return false;
-        }
-
-        internal static bool HasRemoteAdminAccess(long playerID)
-        {
-            if (ZNet.instance == null || ZNet.instance.IsServer())
-                return false;
-            foreach (OnlinePlayer player in s_remotePlayers)
-                if (player.PlayerID == playerID)
-                    return player.AdminAccess;
-            return false;
-        }
-
-        private static void Publish()
-        {
-            if (!s_registered || ZNet.instance?.IsServer() != true)
-                return;
-
-            List<OnlinePlayer> players = GetOnlinePlayers().GroupBy(player => player.PlayerID)
-                .Select(group => group.First()).Take(MaximumPlayers).ToList();
-            ZPackage package = new();
-            package.Write(players.Count);
-            foreach (OnlinePlayer player in players)
-            {
-                package.Write(player.PlayerID);
-                package.Write(player.CharacterID);
-                package.Write(player.Name.Length > 64 ? player.Name.Substring(0, 64) : player.Name);
-                package.Write(HasWardAdminAccess(player.PlayerID));
-            }
-            foreach (ZNetPeer peer in ZNet.instance.GetPeers())
-                if (peer != null && peer.IsReady() && !peer.m_server)
-                    ZRoutedRpc.instance.InvokeRoutedRPC(peer.m_uid, RpcRoster, package);
-        }
-
-        private static void Receive(long sender, ZPackage package)
-        {
-            if (!IsServerRpcSender(sender) || ZNet.instance?.IsServer() != false)
-                return;
-
-            int count = package.ReadInt();
-            if (count < 0 || count > MaximumPlayers)
-                return;
-            List<OnlinePlayer> players = new(count);
-            HashSet<long> ids = new();
-            for (int i = 0; i < count; i++)
-            {
-                long id = package.ReadLong();
-                ZDOID character = package.ReadZDOID();
-                string name = package.ReadString();
-                bool adminAccess = package.ReadBool();
-                if (id == 0L || character.IsNone() || name.Length > 64 || !ids.Add(id))
-                    return;
-                players.Add(new OnlinePlayer(id, character, name, adminAccess));
-            }
-            if (package.GetPos() != package.Size())
-                return;
-            s_remotePlayers.Clear();
-            s_remotePlayers.AddRange(players);
-        }
-
-        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
-        private static class ZoneSystem_Start_RegisterRoster
-        {
-            private static void Postfix()
-            {
-                if (ZRoutedRpc.instance == null)
-                    return;
-                WardRpc.Register(RpcRoster, Receive);
-                s_registered = true;
-                Publish();
-            }
-        }
-
-        [HarmonyPatch(typeof(ZNet), nameof(ZNet.SendPlayerList))]
-        private static class ZNet_SendPlayerList_PublishRoster
-        {
-            private static void Postfix() => Publish();
-        }
-
-        [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.OnDestroy))]
-        private static class ZoneSystem_OnDestroy_ClearRoster
-        {
-            private static void Postfix()
-            {
-                s_registered = false;
-                s_remotePlayers.Clear();
-            }
+            if (!IsInsideWardXZ(candidate, targetPoint))
+                continue;
+            yield return area;
+            break;
         }
     }
-}
-''')
-add_compile('WardPlayers.cs')
-text = read('ProtectiveWards.cs')
-needle = '''            if (!IsPlayerServerAdminOrHost(playerID))
-                return false;'''
-text = replace(text, needle, '''            if (ZNet.instance?.IsServer() == false && Player.m_localPlayer?.GetPlayerID() != playerID)
-                return WardPlayers.HasRemoteAdminAccess(playerID);
+}''')
+text = method(text, 'internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit, bool isShip, bool isCart)', '''internal static bool ShouldSuppressWearNTearDamage(WearNTear wearNTear, HitData hit, bool isShip, bool isCart)
+{
+    if (wearNTear == null || hit == null)
+        return false;
 
-''' + needle)
-needle = '''            foreach (ZNet.PlayerInfo info in ZNet.instance.GetPlayerList())
+    Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+    bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
+    if (!isPlayerBuiltPiece && !isShip && !isCart)
+        return false;
+
+    Player attacker = hit.GetAttacker() as Player;
+    Vector3 point = wearNTear.transform.position;
+    // Each covering root contributes independently. A protecting root wins; load order never grants access.
+    foreach (ZDO ward in GetBackgroundWards(point, point))
+    {
+        if (!IsQualifiedProtectedBase(ward))
+            continue;
+
+        if (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockNonPermittedPlayerDamage
+            && isPlayerBuiltPiece && attacker != null
+            && !ward.HasConnectedWardAccess(attacker.GetPlayerID(), wardBackgroundConnectedAccessMode.Value, activeWardPredicate))
+            return true;
+
+        if (HasEffectiveAccessPresence(ward, point))
+            continue;
+
+        if ((wardBackgroundProtectBoats.Value && isShip) || (wardBackgroundProtectCarts.Value && isCart))
+            return true;
+
+        if (isPlayerBuiltPiece
+            && (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockAllDamageWhenNoPermittedNearby
+                || (wardBackgroundProtectFire.Value && IsFireDamage(hit))))
+            return true;
+    }
+    return false;
+}''')
+text = method(text, 'internal static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)', '''internal static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)
+{
+    if (!wardBackgroundTamesPreventDamageToStructures.Value || wearNTear == null || hit == null || !hit.HaveAttacker())
+        return false;
+
+    Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
+    if (piece == null || !piece.IsPlacedByPlayer())
+        return false;
+
+    Character attacker = hit.GetAttacker();
+    if (attacker == null || attacker.IsPlayer() || !attacker.IsTamed())
+        return false;
+
+    foreach (ZDO ward in GetBackgroundWards(attacker.transform.position, wearNTear.transform.position))
+        if (IsQualifiedProtectedBase(ward)
+            && !HasEffectiveAccessPresence(ward, attacker.transform.position)
+            && !HasEffectiveAccessPresence(ward, wearNTear.transform.position))
+            return true;
+    return false;
+}''')
+text = method(text, 'internal static bool IsBuildingRestricted(Player player, Vector3 point)', '''internal static bool IsBuildingRestricted(Player player, Vector3 point)
+{
+    if (!wardBackgroundPreventBuildingAndDemolishing.Value || player == null)
+        return false;
+
+    long playerID = player.GetPlayerID();
+    if (HasWardAdminAccess(playerID))
+        return false;
+
+    foreach (ZDO ward in GetBackgroundWards(point, point))
+        if (IsQualifiedProtectedBase(ward)
+            && !ward.HasConnectedWardAccess(playerID, wardBackgroundConnectedAccessMode.Value, activeWardPredicate)
+            && !HasEffectiveAccessPresence(ward, point))
+            return true;
+    return false;
+}''')
+assert 'TryFindBackgroundWard' not in text
+write('BackgroundProtection.cs', text)
+commit('fix: aggregate all overlapping background protection roots', 'BackgroundProtection.cs')
+
+text = read('FullProtection.cs')
+text = replace(text, '        private static int s_privateAreaCheckBypassDepth;', '''        private static readonly Stack<PrivateAreaBypassContext> s_privateAreaBypasses = new();
+
+        private readonly struct PrivateAreaBypassContext
+        {
+            internal readonly Component Target;
+            internal readonly Player Actor;
+            internal readonly int Frame;
+
+            internal PrivateAreaBypassContext(Component target, Player actor)
             {
-                if (info.m_characterID.IsNone())
-                    continue;
+                Target = target;
+                Actor = actor;
+                Frame = Time.frameCount;
+            }
+        }''')
+text = replace(text, '            s_privateAreaCheckBypassDepth++;', '            s_privateAreaBypasses.Push(new PrivateAreaBypassContext(component, human as Player));')
+text = replace(text, '            s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);', '''            if (s_privateAreaBypasses.Count > 0)
+                s_privateAreaBypasses.Pop();''')
+marker = '        private static void RegisterTeleportAccessRPC()'
+new = '''        private static bool HasMatchingObjectExemption(Player player, Vector3 point, float radius, bool wardCheck)
+        {
+            if (player == null || wardCheck || radius != 0f || s_privateAreaBypasses.Count == 0)
+                return false;
 
-                ZDO characterZdo = ZDOMan.instance.GetZDO(info.m_characterID);'''
-text = replace(text, needle, '''            bool knownCharacter = WardPlayers.TryGet(playerID, out WardPlayers.OnlinePlayer onlinePlayer);
-            foreach (ZNet.PlayerInfo info in ZNet.instance.GetPlayerList())
-            {
-                if (info.m_characterID.IsNone())
-                    continue;
+            PrivateAreaBypassContext context = s_privateAreaBypasses.Peek();
+            return context.Actor == player && context.Target != null && context.Frame == Time.frameCount
+                && (context.Target.transform.position - point).sqrMagnitude <= 0.0001f
+                && ShouldBypassVanillaPrivateAreaCheck(context.Target, player);
+        }
 
-                if (knownCharacter && info.m_characterID == onlinePlayer.CharacterID)
+'''
+text = replace(text, marker, new + marker)
+text = replace(text, '            s_teleportAccessRpcRegistered = false;', '            s_teleportAccessRpcRegistered = false;\n            s_privateAreaBypasses.Clear();')
+text = replace(text, '''                if (s_privateAreaCheckBypassDepth > 0)
                 {
-                    playerInfo = info;
-                    return true;
+                    __result = true;
+                    return false;
                 }
 
-                ZDO characterZdo = ZDOMan.instance.GetZDO(info.m_characterID);''')
-write('ProtectiveWards.cs', text)
-text = read('BackgroundProtection.cs')
-needle = '''            float radius = Mathf.Max(wardBackgroundPresenceRadius.Value, 0f);
+''', '')
+text = replace(text, '''                bool hasGrantedArea = false;
+                bool hasDeniedArea = false;''', '''                bool skipManagedContribution = HasMatchingObjectExemption(player, point, radius, wardCheck);
+                bool hasGrantedArea = false;
+                bool hasDeniedArea = false;''')
+text = replace(text, '''                    if (!IsPrivateAreaInsideAccessRange(area, point, radius))
+                        continue;
 
-            if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))'''
-text = replace(text, needle, '''            if (wardBackgroundPresenceMode.Value == WardBackgroundPresenceMode.PermittedOnline)
-            {
-                foreach (WardPlayers.OnlinePlayer player in WardPlayers.GetOnlinePlayers())
-                    if (ward.HasConnectedWardAccess(player.PlayerID, mode, activeWardPredicate))
-                        return true;
-                return false;
-            }
+                    if (HasEffectiveLocalPrivateAreaAccess(area, player))''', '''                    if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                        || (skipManagedContribution && IsPlayerWardPrefab(area)))
+                        continue;
 
-            float radius = Mathf.Max(wardBackgroundPresenceRadius.Value, 0f);
+                    if (HasEffectiveLocalPrivateAreaAccess(area, player))''')
+text = replace(text, '''                        if (!IsPrivateAreaInsideAccessRange(area, point, radius) || HasEffectiveLocalPrivateAreaAccess(area, player))''', '''                        if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                            || (skipManagedContribution && IsPlayerWardPrefab(area))
+                            || HasEffectiveLocalPrivateAreaAccess(area, player))''')
+assert 's_privateAreaCheckBypassDepth' not in text
+write('FullProtection.cs', text)
+commit('fix: scope ownership exceptions to the exact interaction target', 'FullProtection.cs')
 
-            if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))''')
-write('BackgroundProtection.cs', text)
-text = read('WardPermittedPlayersUI.cs')
-text = method(text, 'private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)', '''private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)
+text = read('WardPasswordProtection.cs')
+text = method(text, 'private static bool VerifyPassword(ZDO zdo, string password)', '''private static bool VerifyPassword(ZDO zdo, string password)
 {
-    return WardPlayers.FindByName(query);
+    if (zdo == null || string.IsNullOrEmpty(password) || password.Length > PasswordCharacterLimit)
+        return false;
+
+    string encodedSalt = zdo.GetString(s_passwordSalt, "");
+    string encodedHash = zdo.GetString(s_passwordHash, "");
+    if (!string.IsNullOrEmpty(encodedSalt) || !string.IsNullOrEmpty(encodedHash))
+    {
+        // An incomplete or malformed hash must never fall back to a readable/empty value.
+        if (encodedSalt.Length != 24 || encodedHash.Length != 44)
+            return false;
+        try
+        {
+            byte[] salt = Convert.FromBase64String(encodedSalt);
+            byte[] expected = Convert.FromBase64String(encodedHash);
+            if (salt.Length != 16 || expected.Length != 32)
+                return false;
+            using Rfc2898DeriveBytes derive = new(password, salt, PasswordHashIterations);
+            return FixedTimeEquals(expected, derive.GetBytes(32));
+        }
+        catch (FormatException) { return false; }
+        catch (ArgumentException) { return false; }
+        catch (CryptographicException) { return false; }
+    }
+
+    string legacy = zdo.GetString(s_passwordPlaintext, "");
+    return !string.IsNullOrEmpty(legacy) && legacy.Length <= PasswordCharacterLimit
+        && string.Equals(legacy, password, StringComparison.Ordinal);
 }''')
-write('WardPermittedPlayersUI.cs', text)
-text = read('AdminServerFeatures.cs')
-text = replace(text, 'List<Player> matches = FindOnlinePlayers(query);', 'List<KeyValuePair<long, string>> matches = WardPlayers.FindByName(query);')
-text = replace(text, 'matches.Select(p => p.GetPlayerName())', 'matches.Select(p => p.Value)')
-text = replace(text, 'Player target = matches[0];', 'KeyValuePair<long, string> target = matches[0];')
-text = text.replace('target.GetPlayerID()', 'target.Key').replace('target.GetPlayerName()', 'target.Value')
-text = replace(text, '''            Player target = Player.GetPlayer(targetID);
-            if (target == null || target.Value != targetName)
-                return;''', '''            if (!WardPlayers.TryGet(targetID, out WardPlayers.OnlinePlayer target))
-                return;
-            targetName = target.Name;''')
-start = text.index('        private static List<Player> FindOnlinePlayers(string query)')
-end = text.index('        [HarmonyPatch(typeof(Terminal)', start)
-text = text[:start] + text[end:]
-write('AdminServerFeatures.cs', text)
-commit('fix: resolve online ward access and command targets from server identities', 'WardPlayers.cs', 'ProtectiveWards.csproj', 'ProtectiveWards.cs', 'BackgroundProtection.cs', 'WardPermittedPlayersUI.cs', 'AdminServerFeatures.cs')
+write('WardPasswordProtection.cs', text)
+commit('fix: reject malformed ward password state without plaintext fallback', 'WardPasswordProtection.cs')
