@@ -3077,20 +3077,6 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
-        public static class PrivateArea_IsPermitted_AdditionalAccess
-        {
-            public static bool Prefix(PrivateArea __instance, long playerID, ref bool __result)
-            {
-                if (!HasWardManagementAccess(__instance, playerID)
-                    && !GuildsCompat.HasWardGuildAccess(__instance, playerID))
-                    return true;
-
-                __result = true;
-                return false;
-            }
-        }
-
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Interact))]
         public static class PrivateArea_Interact_PassiveEffectWardRepair
         {
