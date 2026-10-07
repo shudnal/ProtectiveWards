@@ -1888,31 +1888,6 @@ namespace ProtectiveWards
                 return true;
             }
 
-            Player loadedPlayer = Player.GetPlayer(claimedPlayerID);
-            if (loadedPlayer != null)
-            {
-                player = new RoutedPlayerContext(
-                    claimedPlayerID,
-                    loadedPlayer.GetPlayerName(),
-                    loadedPlayer.GetZDOID(),
-                    loadedPlayer.transform.position,
-                    hasPosition: true,
-                    sender);
-                return true;
-            }
-
-            if (TryFindPlayerCharacterZdo(claimedPlayerID, out ZDO characterZdo))
-            {
-                player = new RoutedPlayerContext(
-                    claimedPlayerID,
-                    characterZdo.GetString(ZDOVars.s_playerName),
-                    characterZdo.m_uid,
-                    characterZdo.GetPosition(),
-                    hasPosition: true,
-                    sender);
-                return true;
-            }
-
             return false;
         }
 
@@ -3118,10 +3093,18 @@ namespace ProtectiveWards
                 if (!alt)
                 {
                     long playerID = player?.GetPlayerID() ?? 0L;
-                    if (!CanPermittedPlayersToggleWard(__instance, playerID))
+                    if (!IsPlayerWardPrefab(__instance) || __instance.m_nview?.IsValid() != true || playerID == 0L)
                         return true;
 
-                    AdminServerFeatures.RequestPermittedWardToggle(__instance, playerID);
+                    bool canToggle = __instance.m_piece?.GetCreator() == playerID
+                        || HasWardManagementAccess(__instance, playerID)
+                        || CanPermittedPlayersToggleWard(__instance, playerID);
+                    if (canToggle)
+                        WardControl.Request(__instance.m_nview.GetZDO().m_uid, WardControl.Operation.Toggle);
+                    else if (!__instance.IsEnabled())
+                        WardControl.Request(__instance.m_nview.GetZDO().m_uid, WardControl.Operation.ToggleSelfPermit);
+                    else
+                        return false;
                     __result = true;
                     return false;
                 }
@@ -3472,22 +3455,5 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.RPC_ToggleEnabled))]
-        public static class PrivateArea_RPC_ToggleEnabled_InitWardBubble
-        {
-            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, long playerID)
-            {
-                if (___m_nview == null || !___m_nview.IsValid())
-                    return;
-
-                if (!IsPlayerWardPrefab(__instance))
-                    return;
-
-                RefreshWardVisuals(__instance);
-
-                if (__instance.IsEnabled())
-                    WardExpiration.RequestConnectedActivation(___m_nview.GetZDO().m_uid, playerID);
-            }
-        }
     }
 }
