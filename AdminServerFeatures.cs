@@ -454,9 +454,7 @@ namespace ProtectiveWards
 
         private static bool IsActiveWardZdoForCommandAccess(ZDO zdo)
         {
-            return WardZdoUtils.IsWard(zdo)
-                   && zdo.GetBool(ZDOVars.s_enabled, false)
-                   && !WardExpiration.IsExpired(zdo);
+            return WardExpiration.IsWardActive(zdo);
         }
 
         private static bool IsPlayerInPermittedList(PrivateArea ward, long playerID) => ward != null && ward.GetPermittedPlayers().Any(player => player.Key == playerID);
