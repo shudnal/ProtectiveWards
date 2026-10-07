@@ -137,7 +137,7 @@ namespace ProtectiveWards
                         break;
                     case Operation.Expire:
                     case Operation.Unexpire:
-                        if (!HasWardManagementAccess(ward, actor.PlayerID))
+                        if (!HasWardAdminAccess(actor.PlayerID))
                         {
                             message = "You are not allowed to change ward expiration.";
                             return;
