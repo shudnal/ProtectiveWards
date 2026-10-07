@@ -1,78 +1,58 @@
 from pathlib import Path
+import re
 import subprocess
+
+
+TARGET = 'fix/authorization-review-and-server-issues'
+EXPECTED = '9646762f3936f83df683a5a5650bfe007e037302'
 
 
 def git(*args):
     return subprocess.check_output(['git', *args], text=True).strip()
 
 
-expected = 'b0536300fa596d9a2dc4b73aff5830504fc7a363'
-if git('rev-parse', 'HEAD') != expected:
-    raise RuntimeError('Unexpected source branch head; inspect concurrent changes before applying.')
+def replace_and_commit(filename, old, new, message):
+    path = Path(filename)
+    data = path.read_bytes()
+    bom = b'\xef\xbb\xbf' if data.startswith(b'\xef\xbb\xbf') else b''
+    newline = '\r\n' if b'\r\n' in data else '\n'
+    text = data.decode('utf-8-sig').replace('\r\n', '\n')
+    if text.count(old) != 1:
+        raise RuntimeError('Expected exactly one authorization guard in ' + filename)
+    result = text.replace(old, new, 1)
+    if re.search(r'[\u0400-\u052f]', result):
+        raise RuntimeError('Unexpected Cyrillic in ' + filename)
+    path.write_bytes(bom + result.replace('\n', newline).encode('utf-8'))
+    if git('diff', '--name-only') != filename:
+        raise RuntimeError('Unexpected changed files')
+    subprocess.run(['git', 'diff', '--check'], check=True)
+    subprocess.run(['git', 'diff', '--', filename], check=True)
+    subprocess.run(['git', 'add', '--', filename], check=True)
+    subprocess.run(['git', 'commit', '-m', message], check=True)
+    subprocess.run(['git', 'push', 'origin', 'HEAD:' + TARGET], check=True)
+    print('Source commit:', git('rev-parse', 'HEAD'), flush=True)
 
-path = Path('FullProtection.cs')
-data = path.read_bytes()
-has_bom = data.startswith(b'\xef\xbb\xbf')
-newline = '\r\n' if b'\r\n' in data else '\n'
-text = data.decode('utf-8-sig').replace('\r\n', '\n')
-text = 'using BepInEx.Bootstrap;\n' + text
-old = '''                HashSet<MethodBase> methods = new();
-                foreach (Type type in GetLoadedInteractableTypes())'''
-new = '''                HashSet<Assembly> assemblies = GetInteractableAssemblies();
-                HashSet<MethodBase> methods = new();
-                foreach (Type type in GetLoadedInteractableTypes(assemblies))'''
-assert text.count(old) == 1
-text = text.replace(old, new)
-text = text.replace('ShouldPatchInteractableMethod(interact) && methods.Add(interact)', 'ShouldPatchInteractableMethod(interact, assemblies) && methods.Add(interact)')
-text = text.replace('ShouldPatchInteractableMethod(useItem) && methods.Add(useItem)', 'ShouldPatchInteractableMethod(useItem, assemblies) && methods.Add(useItem)')
-old = '''            private static IEnumerable<Type> GetLoadedInteractableTypes()
-            {
-                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())'''
-new = '''            private static HashSet<Assembly> GetInteractableAssemblies()
-            {
-                // Preserve generic vanilla protection through this explicit game assembly.
-                // Only live BepInEx plugin instances may contribute optional mod assemblies.
-                HashSet<Assembly> assemblies = new() { typeof(Interactable).Assembly };
-                foreach (BepInEx.PluginInfo pluginInfo in Chainloader.PluginInfos.Values)
-                {
-                    if (pluginInfo?.Instance == null)
-                        continue;
 
-                    Assembly assembly = pluginInfo.Instance.GetType().Assembly;
-                    if (assembly != null && !assembly.IsDynamic)
-                        assemblies.Add(assembly);
-                }
-                return assemblies;
-            }
+if git('rev-parse', 'HEAD') != EXPECTED or git('status', '--porcelain'):
+    raise RuntimeError('Unexpected source branch state; inspect concurrent changes before applying.')
 
-            private static IEnumerable<Type> GetLoadedInteractableTypes(IEnumerable<Assembly> assemblies)
+old = '''                    case Operation.Expire:
+                    case Operation.Unexpire:
+                        if (!HasWardManagementAccess(ward, actor.PlayerID))'''
+new = '''                    case Operation.Expire:
+                    case Operation.Unexpire:
+                        if (!HasWardAdminAccess(actor.PlayerID))'''
+replace_and_commit('WardControl.cs', old, new,
+                   'fix: require administrator access for ward expiration commands')
+
+old = '''            if (!CanApplyWardSettings(zdo, requester.PlayerID))
             {
-                foreach (Assembly assembly in assemblies)'''
-assert text.count(old) == 1
-text = text.replace(old, new)
-old = 'private static bool ShouldPatchInteractableMethod(MethodInfo method)'
-new = 'private static bool ShouldPatchInteractableMethod(MethodInfo method, HashSet<Assembly> assemblies)'
-assert text.count(old) == 1
-text = text.replace(old, new)
-old = '''                    || method.DeclaringType == null
-                    || method.DeclaringType == typeof(Interactable)'''
-new = '''                    || method.DeclaringType == null
-                    || !assemblies.Contains(method.DeclaringType.Assembly)
-                    || method.DeclaringType == typeof(Interactable)'''
-assert text.count(old) == 1
-text = text.replace(old, new)
-assert 'AppDomain.CurrentDomain.GetAssemblies()' not in text
-assert 'catch (ReflectionTypeLoadException ex)' in text
-assert 'SafeIsInteractableType(type)' in text
-assert 'method.GetMethodBody() != null' in text
-assert 'AccessTools.DeclaredMethod(declaringType' in text
-encoded = text.replace('\n', newline).encode('utf-8')
-path.write_bytes((b'\xef\xbb\xbf' if has_bom else b'') + encoded)
-subprocess.run(['git', 'diff', '--check'], check=True)
-subprocess.run(['git', 'diff', '--stat'], check=True)
-subprocess.run(['git', 'diff', '--', 'FullProtection.cs'], check=True)
-subprocess.run(['git', 'add', 'FullProtection.cs'], check=True)
-subprocess.run(['git', 'commit', '-m', 'fix: restrict interactable discovery to active plugin assemblies (#16)'], check=True)
-subprocess.run(['git', 'push', 'origin', 'HEAD:fix/authorization-review-and-server-issues'], check=True)
-print('Source commit:', git('rev-parse', 'HEAD'))
-print('Changed source files:', git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'))
+                SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", zdo);'''
+new = '''            if (!CanApplyWardSettings(zdo, requester.PlayerID) || !WardRpc.IsWithinReach(requester, zdo))
+            {
+                SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", zdo);'''
+replace_and_commit('WardPermittedPlayersUI.cs', old, new,
+                   'fix: enforce server-side reach for ward permitted-list requests')
+
+print('Final source head:', git('rev-parse', 'HEAD'))
+print('Changed files:', git('diff', '--name-only', EXPECTED, 'HEAD'))
