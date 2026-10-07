@@ -45,7 +45,8 @@ namespace ProtectiveWards
             MissingPassword,
             NotAuthorized,
             Unavailable,
-            PasswordTooLong
+            PasswordTooLong,
+            Conflict
         }
 
         internal static void RegisterRPCs()
@@ -442,6 +443,7 @@ namespace ProtectiveWards
             package.Write(enabled);
             package.Write(replacePassword);
             package.Write(password);
+            package.Write(WardSettingsUI.GetOpenSettingsRevision(wardID));
 
             if (ZNet.instance?.IsServer() == true)
                 RPC_UpdateWardPasswordServer(0L, new ZPackage(package.GetArray()));
@@ -458,45 +460,34 @@ namespace ProtectiveWards
             bool enabled = package.ReadBool();
             bool replacePassword = package.ReadBool();
             string password = package.ReadString() ?? "";
-
+            long expectedRevision = package.ReadLong();
+            if (package.GetPos() != package.Size())
+                throw new ArgumentException("Unexpected ward password payload.");
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
-
             if (!WardZdoUtils.TryGetWard(wardID, out ZDO zdo))
             {
                 SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Unavailable, false, false);
                 return;
             }
-
-            if (!CanChangePassword(zdo, requester.PlayerID))
+            if (!CanChangePassword(zdo, requester.PlayerID) || !WardRpc.IsWithinReach(requester, zdo))
             {
                 SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.NotAuthorized, false, false);
                 return;
             }
-
-            if (replacePassword && password.Length > PasswordCharacterLimit)
+            if (WardSettingsUI.GetSettingsRevision(zdo) != expectedRevision)
             {
-                SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.PasswordTooLong, false, false);
+                SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Conflict, false, false);
                 return;
             }
-
-            if (replacePassword)
+            if (!TryPrepareSettingsUpdate(zdo, enabled, replacePassword, password, out Action<ZDO> update, out PasswordSettingsResult error))
             {
-                StorePassword(zdo, password);
-                if (string.IsNullOrEmpty(password))
-                    enabled = false;
-            }
-
-            bool hasPassword = HasPassword(zdo);
-            if (enabled && !hasPassword)
-            {
-                SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.MissingPassword, false, false);
+                SendPasswordSettingsResult(sender, wardID, error, false, false);
                 return;
             }
-
-            zdo.Set(s_passwordProtectionEnabled, enabled);
-            LogInfo($"Ward password protection {(enabled ? "enabled" : "disabled")} for {wardID}");
-            SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Success, enabled, hasPassword);
+            update(zdo);
+            WardSettingsUI.AdvanceSettingsRevision(zdo);
+            SendPasswordSettingsResult(sender, wardID, PasswordSettingsResult.Success, zdo.GetBool(s_passwordProtectionEnabled, false), HasPassword(zdo));
         }
 
         private static void SendPasswordSettingsResult(long peerID, ZDOID wardID, PasswordSettingsResult result, bool enabled, bool hasPassword)
@@ -506,6 +497,7 @@ namespace ProtectiveWards
             response.Write((int)result);
             response.Write(enabled);
             response.Write(hasPassword);
+            response.Write(WardSettingsUI.GetSettingsRevision(WardZdoUtils.GetWard(wardID)));
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
                 WardRpc.SendResponse(peerID, RPC_UpdateWardPasswordResult, response);
@@ -522,37 +514,69 @@ namespace ProtectiveWards
             PasswordSettingsResult result = (PasswordSettingsResult)package.ReadInt();
             bool enabled = package.ReadBool();
             bool hasPassword = package.ReadBool();
+            long revision = package.ReadLong();
+            if (result == PasswordSettingsResult.Conflict)
+            {
+                WardSettingsUI.HandleSettingsConflict(wardID);
+                return;
+            }
+            if (result == PasswordSettingsResult.Success)
+                WardSettingsUI.AcceptSettingsRevision(wardID, revision);
             WardSettingsUI.OnPasswordSettingsResult(wardID, result, enabled, hasPassword);
         }
 
-        private static void StorePassword(ZDO zdo, string password)
+        internal static bool TryPrepareSettingsUpdate(ZDO zdo, bool enabled, bool replacePassword, string password,
+            out Action<ZDO> update, out PasswordSettingsResult error)
         {
-            if (zdo == null)
-                return;
-
-            if (string.IsNullOrEmpty(password))
+            update = null;
+            error = PasswordSettingsResult.Success;
+            if (zdo == null || password == null || password.Length > PasswordCharacterLimit)
             {
-                RemoveZdoString(zdo, s_passwordHash);
-                RemoveZdoString(zdo, s_passwordSalt);
-                RemoveZdoString(zdo, s_passwordPlaintext);
-                return;
+                error = PasswordSettingsResult.PasswordTooLong;
+                return false;
             }
-
-            byte[] salt = new byte[16];
-            using (RandomNumberGenerator random = RandomNumberGenerator.Create())
-                random.GetBytes(salt);
-
-            byte[] hash;
-            using (Rfc2898DeriveBytes derive = new(password, salt, PasswordHashIterations))
-                hash = derive.GetBytes(32);
-
-            zdo.Set(s_passwordSalt, Convert.ToBase64String(salt));
-            zdo.Set(s_passwordHash, Convert.ToBase64String(hash));
-
-            if (wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword)
-                zdo.Set(s_passwordPlaintext, password);
-            else
-                RemoveZdoString(zdo, s_passwordPlaintext);
+            if (replacePassword && password.Length == 0)
+                enabled = false;
+            bool hasPassword = replacePassword ? password.Length > 0 : HasPassword(zdo);
+            if (enabled && !hasPassword)
+            {
+                error = PasswordSettingsResult.MissingPassword;
+                return false;
+            }
+            string saltText = "";
+            string hashText = "";
+            if (replacePassword && password.Length > 0)
+            {
+                byte[] salt = new byte[16];
+                using (RandomNumberGenerator random = RandomNumberGenerator.Create())
+                    random.GetBytes(salt);
+                using Rfc2898DeriveBytes derive = new(password, salt, PasswordHashIterations);
+                saltText = Convert.ToBase64String(salt);
+                hashText = Convert.ToBase64String(derive.GetBytes(32));
+            }
+            bool storePlaintext = wardPasswordFieldMode.Value == WardPasswordFieldMode.EditablePassword;
+            update = target =>
+            {
+                if (replacePassword)
+                {
+                    if (password.Length == 0)
+                    {
+                        RemoveZdoString(target, s_passwordHash);
+                        RemoveZdoString(target, s_passwordSalt);
+                    }
+                    else
+                    {
+                        target.Set(s_passwordSalt, saltText);
+                        target.Set(s_passwordHash, hashText);
+                    }
+                    if (storePlaintext && password.Length > 0)
+                        target.Set(s_passwordPlaintext, password);
+                    else
+                        RemoveZdoString(target, s_passwordPlaintext);
+                }
+                target.Set(s_passwordProtectionEnabled, enabled);
+            };
+            return true;
         }
 
         private static bool VerifyPassword(ZDO zdo, string password)
