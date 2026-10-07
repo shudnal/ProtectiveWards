@@ -16,7 +16,21 @@ namespace ProtectiveWards
         private const float saddleUserRecordMaxDistance = 10f;
         private const float vehicleControllerRecordMaxDistance = 10f;
         private const float portalSourceValidationDistance = 8f;
-        private static int s_privateAreaCheckBypassDepth;
+        private static readonly Stack<PrivateAreaBypassContext> s_privateAreaBypasses = new();
+
+        private readonly struct PrivateAreaBypassContext
+        {
+            internal readonly Component Target;
+            internal readonly Player Actor;
+            internal readonly int Frame;
+
+            internal PrivateAreaBypassContext(Component target, Player actor)
+            {
+                Target = target;
+                Actor = actor;
+                Frame = Time.frameCount;
+            }
+        }
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
         private static bool s_interactablePatchesApplied;
@@ -63,7 +77,7 @@ namespace ProtectiveWards
             if (!ShouldBypassVanillaPrivateAreaCheck(component, human))
                 return;
 
-            s_privateAreaCheckBypassDepth++;
+            s_privateAreaBypasses.Push(new PrivateAreaBypassContext(component, human as Player));
             state = true;
         }
 
@@ -72,7 +86,19 @@ namespace ProtectiveWards
             if (!state)
                 return;
 
-            s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
+            if (s_privateAreaBypasses.Count > 0)
+                s_privateAreaBypasses.Pop();
+        }
+
+        private static bool HasMatchingObjectExemption(Player player, Vector3 point, float radius, bool wardCheck)
+        {
+            if (player == null || wardCheck || radius != 0f || s_privateAreaBypasses.Count == 0)
+                return false;
+
+            PrivateAreaBypassContext context = s_privateAreaBypasses.Peek();
+            return context.Actor == player && context.Target != null && context.Frame == Time.frameCount
+                && (context.Target.transform.position - point).sqrMagnitude <= 0.0001f
+                && ShouldBypassVanillaPrivateAreaCheck(context.Target, player);
         }
 
         private static void RegisterTeleportAccessRPC()
@@ -91,6 +117,7 @@ namespace ProtectiveWards
         {
             s_saddleRpcRegistered = false;
             s_teleportAccessRpcRegistered = false;
+            s_privateAreaBypasses.Clear();
         }
 
         internal static void PatchLoadedInteractables(Harmony harmony)
@@ -464,12 +491,6 @@ namespace ProtectiveWards
             [HarmonyPriority(Priority.First)]
             private static bool Prefix(Vector3 point, float radius, bool flash, bool wardCheck, ref bool __result)
             {
-                if (s_privateAreaCheckBypassDepth > 0)
-                {
-                    __result = true;
-                    return false;
-                }
-
                 Player player = Player.m_localPlayer;
                 if (player == null)
                     return true;
@@ -488,12 +509,14 @@ namespace ProtectiveWards
                 if (!hasPlayerWard)
                     return true;
 
+                bool skipManagedContribution = HasMatchingObjectExemption(player, point, radius, wardCheck);
                 bool hasGrantedArea = false;
                 bool hasDeniedArea = false;
 
                 foreach (PrivateArea area in PrivateArea.m_allAreas)
                 {
-                    if (!IsPrivateAreaInsideAccessRange(area, point, radius))
+                    if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                        || (skipManagedContribution && IsPlayerWardPrefab(area)))
                         continue;
 
                     if (HasEffectiveLocalPrivateAreaAccess(area, player))
@@ -510,7 +533,9 @@ namespace ProtectiveWards
                 {
                     foreach (PrivateArea area in PrivateArea.m_allAreas)
                     {
-                        if (!IsPrivateAreaInsideAccessRange(area, point, radius) || HasEffectiveLocalPrivateAreaAccess(area, player))
+                        if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                            || (skipManagedContribution && IsPlayerWardPrefab(area))
+                            || HasEffectiveLocalPrivateAreaAccess(area, player))
                             continue;
 
                         area.FlashShield(false);
