@@ -238,8 +238,20 @@ namespace ProtectiveWards
             OpenPage(s_canEditGeneralSettings ? SettingsPage.Main : SettingsPage.Access);
         }
 
+        internal static void CancelPendingNetworkOperation(ZDOID ward)
+        {
+            if (s_zdo != null && s_zdo.m_uid == ward)
+                Close();
+        }
+
         internal static void Close()
         {
+            if (s_zdo != null)
+            {
+                WardRequestFlow.Cancel(RPC_ApplyWardSettings, s_zdo.m_uid);
+                WardRequestFlow.Cancel("PW_UpdateWardPassword", s_zdo.m_uid);
+                WardRequestFlow.Cancel("PW_UpdateGuildBinding", s_zdo.m_uid);
+            }
             DestroyPanel();
             s_zdo = null;
             s_values.Clear();
@@ -1336,7 +1348,7 @@ namespace ProtectiveWards
             response.Write((int)result);
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_ApplyWardSettingsResult, response);
+                WardRpc.SendResponse(peerID, RPC_ApplyWardSettingsResult, response);
             else
                 RPC_ApplyWardSettingsResultClient(0L, new ZPackage(response.GetArray()));
         }

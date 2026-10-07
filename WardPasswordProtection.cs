@@ -378,7 +378,7 @@ namespace ProtectiveWards
             response.Write((int)result);
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_SubmitWardPasswordResult, response);
+                WardRpc.SendResponse(peerID, RPC_SubmitWardPasswordResult, response);
             else
                 RPC_SubmitWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
@@ -508,7 +508,7 @@ namespace ProtectiveWards
             response.Write(hasPassword);
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_UpdateWardPasswordResult, response);
+                WardRpc.SendResponse(peerID, RPC_UpdateWardPasswordResult, response);
             else
                 RPC_UpdateWardPasswordResultClient(0L, new ZPackage(response.GetArray()));
         }
@@ -613,8 +613,15 @@ namespace ProtectiveWards
                 RemoveZdoString(ward, s_passwordPlaintext);
         }
 
+        internal static void CancelPendingNetworkOperation(ZDOID ward)
+        {
+            if (s_promptWardID == ward)
+                ClosePrompt();
+        }
+
         private static void ClosePrompt()
         {
+            WardRequestFlow.Cancel(RPC_SubmitWardPassword, s_promptWardID);
             if (s_panel != null)
                 UnityEngine.Object.Destroy(s_panel);
 

@@ -308,7 +308,7 @@ namespace ProtectiveWards
             response.Write((int)result);
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_ReactivateExpiredWardResult, response);
+                WardRpc.SendResponse(peerID, RPC_ReactivateExpiredWardResult, response);
             else
                 RPC_ReactivateExpiredWardResultClient(0L, new ZPackage(response.GetArray()));
         }

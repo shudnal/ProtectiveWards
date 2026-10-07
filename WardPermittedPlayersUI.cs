@@ -81,8 +81,15 @@ namespace ProtectiveWards
                 CreatePanel();
         }
 
+        internal static void CancelPendingNetworkOperation(ZDOID ward)
+        {
+            if (s_wardID == ward || s_pendingWardID == ward)
+                Close();
+        }
+
         internal static void Close()
         {
+            WardRequestFlow.Cancel("PW_UpdatePermittedPlayers", s_pendingWardID);
             if (s_panel != null)
                 UnityEngine.Object.Destroy(s_panel);
 
@@ -528,7 +535,7 @@ namespace ProtectiveWards
             if (targetPeerID == 0L)
                 RPC_UpdatePermittedPlayersResultClient(0L, new ZPackage(response.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
+                WardRpc.SendResponse(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
         }
 
         private static void RPC_UpdatePermittedPlayersResultClient(long sender, ZPackage package)

@@ -341,7 +341,7 @@ namespace ProtectiveWards.Compatibility
             response.Write(GetBoundGuildName(zdo));
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_UpdateGuildBindingResult, response);
+                WardRpc.SendResponse(peerID, RPC_UpdateGuildBindingResult, response);
             else
                 RPC_UpdateGuildBindingResultClient(0L, new ZPackage(response.GetArray()));
         }

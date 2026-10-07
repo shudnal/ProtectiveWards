@@ -51,7 +51,7 @@ namespace ProtectiveWards
 
                 try
                 {
-                    handler(sender, package);
+                    WardRequestFlow.Dispatch(name, sender, package, handler);
                 }
                 catch (Exception error)
                 {
@@ -64,7 +64,14 @@ namespace ProtectiveWards
         internal static void SendToServer(string name, ZPackage package)
         {
             SyncLocalAdminMode();
-            ZRoutedRpc.instance?.InvokeRoutedRPC(name, package);
+            if (!WardRequestFlow.TrySend(name, package))
+                ZRoutedRpc.instance?.InvokeRoutedRPC(name, package);
+        }
+
+        internal static void SendResponse(long peerID, string name, ZPackage package)
+        {
+            if (!WardRequestFlow.TryReply(peerID, name, package))
+                ZRoutedRpc.instance?.InvokeRoutedRPC(peerID, name, package);
         }
 
         internal static bool HasRemoteGodMode(long playerID)
