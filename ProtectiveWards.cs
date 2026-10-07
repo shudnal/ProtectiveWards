@@ -277,7 +277,6 @@ namespace ProtectiveWards
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
         private static Material s_forceFieldMaterial;
-        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
         private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
         private static readonly Dictionary<PrivateArea, uint> s_wardVisualDataRevisions = new();
         private static readonly HashSet<ZDOID> s_dirtyWardVisuals = new();
@@ -2974,7 +2973,6 @@ namespace ProtectiveWards
                 wardIsRepairing.Remove(__instance);
                 wardIsClosing.Remove(__instance);
                 doorsToClose.Remove(__instance);
-                s_wardDefaultRanges.Remove(__instance);
                 s_wardEmissionDefaults.Remove(__instance);
                 s_wardVisualDataRevisions.Remove(__instance);
             }
@@ -3174,20 +3172,12 @@ namespace ProtectiveWards
 
         private static bool IsWardToSetRange(PrivateArea ward) => IsPlayerWardPrefab(ward);
 
-        private static void CacheWardDefaultRange(PrivateArea ward)
-        {
-            if (ward == null || s_wardDefaultRanges.ContainsKey(ward))
-                return;
-
-            s_wardDefaultRanges[ward] = WardZdoUtils.GetWardDefaultRadius();
-        }
-
         private static void ResetWardRange(PrivateArea ward)
         {
-            if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
+            if (ward == null)
                 return;
 
-            defaultRange = ClampWardRange(defaultRange);
+            float defaultRange = WardZdoUtils.GetWardDefaultRadius();
             bool changed = SetWardRange(ward, defaultRange);
             changed |= SetWardPlayerBase(ward, defaultRange);
             if (changed)
@@ -3250,7 +3240,6 @@ namespace ProtectiveWards
                 if (!IsPlayerWardPrefab(__instance))
                     return;
 
-                CacheWardDefaultRange(__instance);
                 WardZdoUtils.EnsureWardSettingsInitialized(___m_nview.GetZDO());
                 PatchRange(__instance);
                 s_wardVisualDataRevisions[__instance] = ___m_nview.GetZDO().DataRevision;
@@ -3455,7 +3444,6 @@ namespace ProtectiveWards
                 preLightning = null;
                 s_wardVisualDataRevisions.Clear();
                 s_dirtyWardVisuals.Clear();
-                s_wardDefaultRanges.Clear();
                 s_wardEmissionDefaults.Clear();
             }
         }
@@ -3480,7 +3468,6 @@ namespace ProtectiveWards
                 if (!IsPlayerWardPrefab(__instance))
                     return;
 
-                CacheWardDefaultRange(__instance);
                 RefreshWardVisuals(__instance);
 
                 if (__instance.IsEnabled())
