@@ -557,35 +557,33 @@ namespace ProtectiveWards
 
         private static bool VerifyPassword(ZDO zdo, string password)
         {
-            if (zdo == null || password == null)
+            if (zdo == null || string.IsNullOrEmpty(password) || password.Length > PasswordCharacterLimit)
                 return false;
 
             string encodedSalt = zdo.GetString(s_passwordSalt, "");
             string encodedHash = zdo.GetString(s_passwordHash, "");
-            if (!string.IsNullOrEmpty(encodedSalt) && !string.IsNullOrEmpty(encodedHash))
+            if (!string.IsNullOrEmpty(encodedSalt) || !string.IsNullOrEmpty(encodedHash))
             {
+                // An incomplete or malformed hash must never fall back to a readable/empty value.
+                if (encodedSalt.Length != 24 || encodedHash.Length != 44)
+                    return false;
                 try
                 {
                     byte[] salt = Convert.FromBase64String(encodedSalt);
                     byte[] expected = Convert.FromBase64String(encodedHash);
-                    byte[] actual;
-                    using (Rfc2898DeriveBytes derive = new(password, salt, PasswordHashIterations))
-                        actual = derive.GetBytes(expected.Length);
-
-                    return FixedTimeEquals(expected, actual);
+                    if (salt.Length != 16 || expected.Length != 32)
+                        return false;
+                    using Rfc2898DeriveBytes derive = new(password, salt, PasswordHashIterations);
+                    return FixedTimeEquals(expected, derive.GetBytes(32));
                 }
-                catch (FormatException)
-                {
-                }
-                catch (ArgumentException)
-                {
-                }
-                catch (CryptographicException)
-                {
-                }
+                catch (FormatException) { return false; }
+                catch (ArgumentException) { return false; }
+                catch (CryptographicException) { return false; }
             }
 
-            return string.Equals(zdo.GetString(s_passwordPlaintext, ""), password, StringComparison.Ordinal);
+            string legacy = zdo.GetString(s_passwordPlaintext, "");
+            return !string.IsNullOrEmpty(legacy) && legacy.Length <= PasswordCharacterLimit
+                && string.Equals(legacy, password, StringComparison.Ordinal);
         }
 
         private static bool FixedTimeEquals(byte[] left, byte[] right)
