@@ -1,0 +1,133 @@
+name: Authorization source maintenance
+on:
+  push:
+    branches: [work/authorization-maintenance-runner]
+    paths: [.github/workflows/authorization-maintenance.yml]
+permissions:
+  contents: write
+concurrency:
+  group: protectivewards-authorization-source-maintenance
+  cancel-in-progress: false
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/authorization-review-and-server-issues
+          fetch-depth: 0
+      - name: Apply isolated source corrections
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          def edit(name, transform):
+              path = Path(name)
+              data = path.read_bytes()
+              bom = data.startswith(b'\xef\xbb\xbf')
+              newline = '\r\n' if b'\r\n' in data else '\n'
+              text = data.decode('utf-8-sig').replace('\r\n', '\n')
+              updated = transform(text)
+              assert updated != text, name + ': no change'
+              path.write_bytes((b'\xef\xbb\xbf' if bom else b'') + updated.replace('\n', newline).encode('utf-8'))
+          def replace(text, old, new):
+              assert text.count(old) == 1, repr(old[:100]) + ': unexpected matches'
+              return text.replace(old, new)
+          def commit(message, *files):
+              subprocess.run(['git', 'diff', '--check'], check=True)
+              subprocess.run(['git', 'add', '--', *files], check=True)
+              subprocess.run(['git', 'commit', '-m', message], check=True)
+          def membership(text):
+              start = text.index('        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]')
+              end = text.index('        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Interact))]', start)
+              return text[:start] + text[end:]
+          edit('ProtectiveWards.cs', membership)
+          commit('fix: keep explicit ward membership separate from effective access', 'ProtectiveWards.cs')
+          def repair(text):
+              old = '''            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, ward) : wardPassiveRepairNonPlayer.Value)
+                           && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f;'''
+              pattern = r'            return \(piece\.IsPlacedByPlayer\(\) \? IsCraftingStationNear\(piece, ward\) : wardPassiveRepairNonPlayer\.Value\)\s*&& piece\.TryGetComponent\(out WearNTear WNT\) && WNT\.GetHealthPercentage\(\) < 1\.0f;'
+              new = '''            if (piece == null || ward == null)
+                          return false;
+
+                      if (!piece.IsPlacedByPlayer() && !wardPassiveRepairNonPlayer.Value)
+                          return false;
+
+                      return IsCraftingStationNear(piece, ward)
+                          && piece.TryGetComponent(out WearNTear wearNTear)
+                          && wearNTear.GetHealthPercentage() < 1f;'''
+              # Strip the extra indentation used for this inline script's multiline literals.
+              new = new.replace('\n          ', '\n')
+              result, count = re.subn(pattern, lambda _: new, text)
+              assert count == 1
+              return result
+          edit('ProtectiveWards.cs', repair)
+          commit('fix: require matching repair stations for non-player structures', 'ProtectiveWards.cs')
+          def radius(text):
+              text = replace(text, '        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();\n', '')
+              text = replace(text, '                s_wardDefaultRanges.Remove(__instance);\n', '')
+              text = replace(text, '                CacheWardDefaultRange(__instance);\n', '')
+              start = text.index('        private static void CacheWardDefaultRange(PrivateArea ward)')
+              end = text.index('        private static void PatchRange(PrivateArea ward)', start)
+              new = '''        private static void ResetWardRange(PrivateArea ward)
+                  {
+                      if (ward == null)
+                          return;
+
+                      float defaultRange = WardZdoUtils.GetWardDefaultRadius();
+                      bool changed = SetWardRange(ward, defaultRange);
+                      changed |= SetWardPlayerBase(ward, defaultRange);
+                      if (changed)
+                          Physics.SyncTransforms();
+                  }
+
+          '''.replace('\n          ', '\n')
+              return text[:start] + new + text[end:]
+          edit('ProtectiveWards.cs', radius)
+          commit('fix: derive loaded ward defaults from the live radius limits', 'ProtectiveWards.cs')
+          def scene_trust(text):
+              marker = '        public static bool CanShareConnectedAccess(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)'
+              new = '''        private static bool HasWardTrustAccess(PrivateArea ward, long playerID)
+                  {
+                      return ward?.m_nview?.IsValid() == true
+                          && WardZdoUtils.HasWardTrustAccess(ward.m_nview.GetZDO(), playerID);
+                  }
+
+          '''.replace('\n          ', '\n')
+              text = replace(text, marker, new + marker)
+              text = replace(text, 'HasDirectAccessToWard(protectedWard, candidateCreator)', 'HasWardTrustAccess(protectedWard, candidateCreator)')
+              return replace(text, 'HasDirectAccessToWard(candidateWard, protectedCreator)', 'HasWardTrustAccess(candidateWard, protectedCreator)')
+          def zdo_trust(text):
+              marker = '        internal static bool CanShareConnectedWardAccess(ZDO protectedWard, ZDO candidateWard, WardConnectedAccessMode mode)'
+              new = '''        internal static bool HasWardTrustAccess(ZDO ward, long playerID)
+                  {
+                      // Trust is ward policy, not a temporary administrative privilege.
+                      return IsWard(ward) && playerID != 0L
+                          && (ward.IsCreator(playerID) || IsPermitEveryone(ward)
+                              || IsExplicitlyPermitted(ward, playerID)
+                              || GuildsCompat.HasWardGuildAccess(ward, playerID));
+                  }
+
+          '''.replace('\n          ', '\n')
+              text = replace(text, marker, new + marker)
+              text = replace(text, 'HasDirectAccessToWardZdo(protectedWard, candidateCreator)', 'HasWardTrustAccess(protectedWard, candidateCreator)')
+              return replace(text, 'HasDirectAccessToWardZdo(candidateWard, protectedCreator)', 'HasWardTrustAccess(candidateWard, protectedCreator)')
+          edit('ProtectiveWards.cs', scene_trust)
+          edit('WardZdoUtils.cs', zdo_trust)
+          commit('fix: exclude administrative bypass from mutual ward trust', 'ProtectiveWards.cs', 'WardZdoUtils.cs')
+          def activity(text):
+              old = '''            return WardZdoUtils.IsWard(zdo)
+                             && zdo.GetBool(ZDOVars.s_enabled, false)
+                             && !WardExpiration.IsExpired(zdo);'''
+              pattern = r'            return WardZdoUtils\.IsWard\(zdo\)\s*&& zdo\.GetBool\(ZDOVars\.s_enabled, false\)\s*&& !WardExpiration\.IsExpired\(zdo\);'
+              result, count = re.subn(pattern, '            return WardExpiration.IsWardActive(zdo);', text)
+              assert count == 1
+              return result
+          edit('AdminServerFeatures.cs', activity)
+          commit('fix: use effective ward activity in console access checks', 'AdminServerFeatures.cs')
+          subprocess.run(['git', 'push', 'origin', 'HEAD:fix/authorization-review-and-server-issues'], check=True)
+          PY
