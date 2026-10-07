@@ -2256,8 +2256,15 @@ namespace ProtectiveWards
 
         private static bool CanBeRepaired(Piece piece, PrivateArea ward)
         {
-            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, ward) : wardPassiveRepairNonPlayer.Value)
-                 && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f;
+            if (piece == null || ward == null)
+                return false;
+
+            if (!piece.IsPlacedByPlayer() && !wardPassiveRepairNonPlayer.Value)
+                return false;
+
+            return IsCraftingStationNear(piece, ward)
+                && piece.TryGetComponent(out WearNTear wearNTear)
+                && wearNTear.GetHealthPercentage() < 1f;
         }
 
         public static IEnumerator PassiveRepairEffect(PrivateArea ward, Player initiator)
