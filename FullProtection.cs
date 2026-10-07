@@ -1,3 +1,4 @@
+using BepInEx.Bootstrap;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
@@ -1727,15 +1728,16 @@ namespace ProtectiveWards
 
             internal static IEnumerable<MethodBase> TargetMethods()
             {
+                HashSet<Assembly> assemblies = GetInteractableAssemblies();
                 HashSet<MethodBase> methods = new();
-                foreach (Type type in GetLoadedInteractableTypes())
+                foreach (Type type in GetLoadedInteractableTypes(assemblies))
                 {
                     MethodInfo interact = GetDeclaredInteractableMethod(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
-                    if (ShouldPatchInteractableMethod(interact) && methods.Add(interact))
+                    if (ShouldPatchInteractableMethod(interact, assemblies) && methods.Add(interact))
                         yield return interact;
 
                     MethodInfo useItem = GetDeclaredInteractableMethod(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
-                    if (ShouldPatchInteractableMethod(useItem) && methods.Add(useItem))
+                    if (ShouldPatchInteractableMethod(useItem, assemblies) && methods.Add(useItem))
                         yield return useItem;
                 }
             }
@@ -1747,9 +1749,26 @@ namespace ProtectiveWards
                 return declaringType != null ? AccessTools.DeclaredMethod(declaringType, methodName, parameters) ?? method : null;
             }
 
-            private static IEnumerable<Type> GetLoadedInteractableTypes()
+            private static HashSet<Assembly> GetInteractableAssemblies()
             {
-                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                // Preserve generic vanilla protection through this explicit game assembly.
+                // Only live BepInEx plugin instances may contribute optional mod assemblies.
+                HashSet<Assembly> assemblies = new() { typeof(Interactable).Assembly };
+                foreach (BepInEx.PluginInfo pluginInfo in Chainloader.PluginInfos.Values)
+                {
+                    if (pluginInfo?.Instance == null)
+                        continue;
+
+                    Assembly assembly = pluginInfo.Instance.GetType().Assembly;
+                    if (assembly != null && !assembly.IsDynamic)
+                        assemblies.Add(assembly);
+                }
+                return assemblies;
+            }
+
+            private static IEnumerable<Type> GetLoadedInteractableTypes(IEnumerable<Assembly> assemblies)
+            {
+                foreach (Assembly assembly in assemblies)
                 {
                     if (assembly == null || assembly.IsDynamic)
                         continue;
@@ -1792,10 +1811,11 @@ namespace ProtectiveWards
                 }
             }
 
-            private static bool ShouldPatchInteractableMethod(MethodInfo method)
+            private static bool ShouldPatchInteractableMethod(MethodInfo method, HashSet<Assembly> assemblies)
             {
                 if (method == null
                     || method.DeclaringType == null
+                    || !assemblies.Contains(method.DeclaringType.Assembly)
                     || method.DeclaringType == typeof(Interactable)
                     || method.IsAbstract
                     || ExcludedInteractableTypes.Contains(method.DeclaringType))
