@@ -1,2 +1,2 @@
-import control
-control.apply()
+import requests
+requests.apply()
