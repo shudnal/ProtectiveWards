@@ -268,11 +268,12 @@ namespace ProtectiveWards.Compatibility
             package.Write(wardID);
             package.Write(player.GetPlayerID());
             package.Write(bind);
+            package.Write(WardSettingsUI.GetOpenSettingsRevision(wardID));
 
             if (ZNet.instance?.IsServer() == true)
                 RPC_UpdateGuildBindingServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdateGuildBinding, package);
+                WardRpc.SendToServer(RPC_UpdateGuildBinding, package);
             else
                 WardSettingsUI.OnGuildBindingResult(wardID, GuildBindingResult.Unavailable, false, 0, "");
         }
@@ -282,9 +283,9 @@ namespace ProtectiveWards.Compatibility
             if (!IsEnabled || s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateGuildBindingResult, RPC_UpdateGuildBindingResultClient);
+            WardRpc.Register(RPC_UpdateGuildBindingResult, RPC_UpdateGuildBindingResultClient);
             if (ZNet.instance?.IsServer() == true)
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdateGuildBinding, RPC_UpdateGuildBindingServer);
+                WardRpc.Register(RPC_UpdateGuildBinding, RPC_UpdateGuildBindingServer);
 
             s_rpcRegistered = true;
         }
@@ -294,6 +295,9 @@ namespace ProtectiveWards.Compatibility
             ZDOID wardID = package.ReadZDOID();
             long claimedPlayerID = package.ReadLong();
             bool bind = package.ReadBool();
+            long expectedRevision = package.ReadLong();
+            if (package.GetPos() != package.Size())
+                throw new ArgumentException("Unexpected guild binding payload.");
 
             if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
                 return;
@@ -304,9 +308,15 @@ namespace ProtectiveWards.Compatibility
                 return;
             }
 
-            if (!CanApplyWardSettings(zdo, requester.PlayerID))
+            if (!CanApplyWardSettings(zdo, requester.PlayerID) || !WardRpc.IsWithinReach(requester, zdo))
             {
                 SendGuildBindingResult(sender, wardID, GuildBindingResult.NotAuthorized, zdo);
+                return;
+            }
+
+            if (WardSettingsUI.GetSettingsRevision(zdo) != expectedRevision)
+            {
+                SendGuildBindingResult(sender, wardID, GuildBindingResult.Unavailable, zdo);
                 return;
             }
 
@@ -328,6 +338,7 @@ namespace ProtectiveWards.Compatibility
                 LogInfo($"Removed guild binding from ward {wardID}");
             }
 
+            WardSettingsUI.AdvanceSettingsRevision(zdo);
             SendGuildBindingResult(sender, wardID, GuildBindingResult.Success, zdo);
         }
 
@@ -339,9 +350,10 @@ namespace ProtectiveWards.Compatibility
             response.Write(zdo != null && zdo.GetBool(s_guildAccessEnabled, false));
             response.Write(GetBoundGuildId(zdo));
             response.Write(GetBoundGuildName(zdo));
+            response.Write(WardSettingsUI.GetSettingsRevision(zdo));
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_UpdateGuildBindingResult, response);
+                WardRpc.SendResponse(peerID, RPC_UpdateGuildBindingResult, response);
             else
                 RPC_UpdateGuildBindingResultClient(0L, new ZPackage(response.GetArray()));
         }
@@ -356,6 +368,14 @@ namespace ProtectiveWards.Compatibility
             bool enabled = package.ReadBool();
             int guildId = package.ReadInt();
             string guildName = package.ReadString() ?? "";
+            long revision = package.ReadLong();
+            if (result == GuildBindingResult.Success)
+                WardSettingsUI.AcceptSettingsRevision(wardID, revision);
+            else if (result == GuildBindingResult.Unavailable && revision != WardSettingsUI.GetOpenSettingsRevision(wardID))
+            {
+                WardSettingsUI.HandleSettingsConflict(wardID);
+                return;
+            }
 
             WardSettingsUI.OnGuildBindingResult(wardID, result, enabled, guildId, guildName);
         }

@@ -19,12 +19,13 @@ namespace ProtectiveWards
     [BepInDependency(Jotunn.Main.ModGuid, BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(EpicLootCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency(GuildsCompat.PluginGuid, BepInDependency.DependencyFlags.SoftDependency)]
+    // Major/minor versions define the RPC compatibility boundary; patch releases must preserve the wire format.
     [NetworkCompatibility(CompatibilityLevel.EveryoneMustHaveMod, VersionStrictness.Minor)]
     public class ProtectiveWards : BaseUnityPlugin
     {
         public const string pluginID = "shudnal.ProtectiveWards";
         public const string pluginName = "Protective Wards";
-        public const string pluginVersion = "2.0.15";
+        public const string pluginVersion = "2.1.0";
 
         private static Harmony _harmony;
 
@@ -277,7 +278,6 @@ namespace ProtectiveWards
 
         private static readonly MaterialPropertyBlock s_matBlock = new();
         private static Material s_forceFieldMaterial;
-        private static readonly Dictionary<PrivateArea, float> s_wardDefaultRanges = new();
         private static readonly Dictionary<PrivateArea, WardEmissionDefaults> s_wardEmissionDefaults = new();
         private static readonly Dictionary<PrivateArea, uint> s_wardVisualDataRevisions = new();
         private static readonly HashSet<ZDOID> s_dirtyWardVisuals = new();
@@ -1124,6 +1124,12 @@ namespace ProtectiveWards
 
         private static long GetCreatorId(PrivateArea ward) => ward?.m_piece != null ? ward.m_piece.GetCreator() : 0L;
 
+        private static bool HasWardTrustAccess(PrivateArea ward, long playerID)
+        {
+            return ward?.m_nview?.IsValid() == true
+                && WardZdoUtils.HasWardTrustAccess(ward.m_nview.GetZDO(), playerID);
+        }
+
         public static bool CanShareConnectedAccess(PrivateArea protectedWard, PrivateArea candidateWard, WardConnectedAccessMode mode)
         {
             if (mode == WardConnectedAccessMode.Off)
@@ -1146,8 +1152,8 @@ namespace ProtectiveWards
                     candidateCreator = GetCreatorId(candidateWard);
                     return protectedCreator != 0L
                            && candidateCreator != 0L
-                           && HasDirectAccessToWard(protectedWard, candidateCreator)
-                           && HasDirectAccessToWard(candidateWard, protectedCreator);
+                           && HasWardTrustAccess(protectedWard, candidateCreator)
+                           && HasWardTrustAccess(candidateWard, protectedCreator);
                 case WardConnectedAccessMode.AnyConnected:
                     return true;
                 default:
@@ -1799,18 +1805,20 @@ namespace ProtectiveWards
             if (wardAdminAccess == null || wardAdminAccess.Value == WardAdminAccessMode.Off)
                 return false;
 
+            if (ZNet.instance?.IsServer() == false && Player.m_localPlayer?.GetPlayerID() != playerID)
+                return WardPlayers.HasRemoteAdminAccess(playerID);
+
             if (!IsPlayerServerAdminOrHost(playerID))
                 return false;
 
             if (wardAdminAccess.Value == WardAdminAccessMode.Admins)
                 return true;
 
-            Player player = Player.GetPlayer(playerID);
-            if (player != null)
-                return player.InGodMode();
-
             Player localPlayer = Player.m_localPlayer;
-            return localPlayer != null && localPlayer.GetPlayerID() == playerID && localPlayer.InGodMode();
+            if (localPlayer != null && localPlayer.GetPlayerID() == playerID)
+                return localPlayer.InGodMode();
+
+            return WardRpc.HasRemoteGodMode(playerID);
         }
 
         public static bool IsPlayerServerAdminOrHost(long playerID)
@@ -1876,31 +1884,6 @@ namespace ProtectiveWards
                     localPlayer.GetPlayerName(),
                     localPlayer.GetZDOID(),
                     localPlayer.transform.position,
-                    hasPosition: true,
-                    sender);
-                return true;
-            }
-
-            Player loadedPlayer = Player.GetPlayer(claimedPlayerID);
-            if (loadedPlayer != null)
-            {
-                player = new RoutedPlayerContext(
-                    claimedPlayerID,
-                    loadedPlayer.GetPlayerName(),
-                    loadedPlayer.GetZDOID(),
-                    loadedPlayer.transform.position,
-                    hasPosition: true,
-                    sender);
-                return true;
-            }
-
-            if (TryFindPlayerCharacterZdo(claimedPlayerID, out ZDO characterZdo))
-            {
-                player = new RoutedPlayerContext(
-                    claimedPlayerID,
-                    characterZdo.GetString(ZDOVars.s_playerName),
-                    characterZdo.m_uid,
-                    characterZdo.GetPosition(),
                     hasPosition: true,
                     sender);
                 return true;
@@ -1994,10 +1977,17 @@ namespace ProtectiveWards
             if (playerID == 0L || ZNet.instance == null || ZDOMan.instance == null)
                 return false;
 
+            bool knownCharacter = WardPlayers.TryGet(playerID, out WardPlayers.OnlinePlayer onlinePlayer);
             foreach (ZNet.PlayerInfo info in ZNet.instance.GetPlayerList())
             {
                 if (info.m_characterID.IsNone())
                     continue;
+
+                if (knownCharacter && info.m_characterID == onlinePlayer.CharacterID)
+                {
+                    playerInfo = info;
+                    return true;
+                }
 
                 ZDO characterZdo = ZDOMan.instance.GetZDO(info.m_characterID);
                 if (characterZdo == null || characterZdo.GetLong(ZDOVars.s_playerID, 0L) != playerID)
@@ -2256,8 +2246,15 @@ namespace ProtectiveWards
 
         private static bool CanBeRepaired(Piece piece, PrivateArea ward)
         {
-            return (piece.IsPlacedByPlayer() ? IsCraftingStationNear(piece, ward) : wardPassiveRepairNonPlayer.Value)
-                 && piece.TryGetComponent(out WearNTear WNT) && WNT.GetHealthPercentage() < 1.0f;
+            if (piece == null || ward == null)
+                return false;
+
+            if (!piece.IsPlacedByPlayer() && !wardPassiveRepairNonPlayer.Value)
+                return false;
+
+            return IsCraftingStationNear(piece, ward)
+                && piece.TryGetComponent(out WearNTear wearNTear)
+                && wearNTear.GetHealthPercentage() < 1f;
         }
 
         public static IEnumerator PassiveRepairEffect(PrivateArea ward, Player initiator)
@@ -2967,7 +2964,6 @@ namespace ProtectiveWards
                 wardIsRepairing.Remove(__instance);
                 wardIsClosing.Remove(__instance);
                 doorsToClose.Remove(__instance);
-                s_wardDefaultRanges.Remove(__instance);
                 s_wardEmissionDefaults.Remove(__instance);
                 s_wardVisualDataRevisions.Remove(__instance);
             }
@@ -3077,20 +3073,6 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.IsPermitted))]
-        public static class PrivateArea_IsPermitted_AdditionalAccess
-        {
-            public static bool Prefix(PrivateArea __instance, long playerID, ref bool __result)
-            {
-                if (!HasWardManagementAccess(__instance, playerID)
-                    && !GuildsCompat.HasWardGuildAccess(__instance, playerID))
-                    return true;
-
-                __result = true;
-                return false;
-            }
-        }
-
         [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.Interact))]
         public static class PrivateArea_Interact_PassiveEffectWardRepair
         {
@@ -3112,10 +3094,18 @@ namespace ProtectiveWards
                 if (!alt)
                 {
                     long playerID = player?.GetPlayerID() ?? 0L;
-                    if (!CanPermittedPlayersToggleWard(__instance, playerID))
+                    if (!IsPlayerWardPrefab(__instance) || __instance.m_nview?.IsValid() != true || playerID == 0L)
                         return true;
 
-                    AdminServerFeatures.RequestPermittedWardToggle(__instance, playerID);
+                    bool canToggle = __instance.m_piece?.GetCreator() == playerID
+                        || HasWardManagementAccess(__instance, playerID)
+                        || CanPermittedPlayersToggleWard(__instance, playerID);
+                    if (canToggle)
+                        WardControl.Request(__instance.m_nview.GetZDO().m_uid, WardControl.Operation.Toggle);
+                    else if (!__instance.IsEnabled())
+                        WardControl.Request(__instance.m_nview.GetZDO().m_uid, WardControl.Operation.ToggleSelfPermit);
+                    else
+                        return false;
                     __result = true;
                     return false;
                 }
@@ -3181,20 +3171,12 @@ namespace ProtectiveWards
 
         private static bool IsWardToSetRange(PrivateArea ward) => IsPlayerWardPrefab(ward);
 
-        private static void CacheWardDefaultRange(PrivateArea ward)
-        {
-            if (ward == null || s_wardDefaultRanges.ContainsKey(ward))
-                return;
-
-            s_wardDefaultRanges[ward] = WardZdoUtils.GetWardDefaultRadius();
-        }
-
         private static void ResetWardRange(PrivateArea ward)
         {
-            if (ward == null || !s_wardDefaultRanges.TryGetValue(ward, out float defaultRange))
+            if (ward == null)
                 return;
 
-            defaultRange = ClampWardRange(defaultRange);
+            float defaultRange = WardZdoUtils.GetWardDefaultRadius();
             bool changed = SetWardRange(ward, defaultRange);
             changed |= SetWardPlayerBase(ward, defaultRange);
             if (changed)
@@ -3257,7 +3239,6 @@ namespace ProtectiveWards
                 if (!IsPlayerWardPrefab(__instance))
                     return;
 
-                CacheWardDefaultRange(__instance);
                 WardZdoUtils.EnsureWardSettingsInitialized(___m_nview.GetZDO());
                 PatchRange(__instance);
                 s_wardVisualDataRevisions[__instance] = ___m_nview.GetZDO().DataRevision;
@@ -3462,7 +3443,6 @@ namespace ProtectiveWards
                 preLightning = null;
                 s_wardVisualDataRevisions.Clear();
                 s_dirtyWardVisuals.Clear();
-                s_wardDefaultRanges.Clear();
                 s_wardEmissionDefaults.Clear();
             }
         }
@@ -3476,23 +3456,5 @@ namespace ProtectiveWards
             }
         }
 
-        [HarmonyPatch(typeof(PrivateArea), nameof(PrivateArea.RPC_ToggleEnabled))]
-        public static class PrivateArea_RPC_ToggleEnabled_InitWardBubble
-        {
-            private static void Postfix(PrivateArea __instance, ZNetView ___m_nview, long playerID)
-            {
-                if (___m_nview == null || !___m_nview.IsValid())
-                    return;
-
-                if (!IsPlayerWardPrefab(__instance))
-                    return;
-
-                CacheWardDefaultRange(__instance);
-                RefreshWardVisuals(__instance);
-
-                if (__instance.IsEnabled())
-                    WardExpiration.RequestConnectedActivation(___m_nview.GetZDO().m_uid, playerID);
-            }
-        }
     }
 }

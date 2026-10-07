@@ -81,8 +81,15 @@ namespace ProtectiveWards
                 CreatePanel();
         }
 
+        internal static void CancelPendingNetworkOperation(ZDOID ward)
+        {
+            if (s_wardID == ward || s_pendingWardID == ward)
+                Close();
+        }
+
         internal static void Close()
         {
+            WardRequestFlow.Cancel("PW_UpdatePermittedPlayers", s_pendingWardID);
             if (s_panel != null)
                 UnityEngine.Object.Destroy(s_panel);
 
@@ -406,7 +413,7 @@ namespace ProtectiveWards
 
             if (ZRoutedRpc.instance != null)
             {
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_UpdatePermittedPlayers, package);
+                WardRpc.SendToServer(RPC_UpdatePermittedPlayers, package);
                 return true;
             }
 
@@ -423,9 +430,9 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdatePermittedPlayersResult, RPC_UpdatePermittedPlayersResultClient);
+            WardRpc.Register(RPC_UpdatePermittedPlayersResult, RPC_UpdatePermittedPlayersResultClient);
             if (ZNet.instance?.IsServer() == true)
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_UpdatePermittedPlayers, RPC_UpdatePermittedPlayersServer);
+                WardRpc.Register(RPC_UpdatePermittedPlayers, RPC_UpdatePermittedPlayersServer);
 
             s_rpcRegistered = true;
         }
@@ -454,7 +461,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!CanApplyWardSettings(zdo, requester.PlayerID))
+            if (!CanApplyWardSettings(zdo, requester.PlayerID) || !WardRpc.IsWithinReach(requester, zdo))
             {
                 SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", zdo);
                 return;
@@ -504,27 +511,7 @@ namespace ProtectiveWards
 
         private static List<KeyValuePair<long, string>> FindOnlinePlayers(string query)
         {
-            string normalized = (query ?? "").Trim();
-            Dictionary<long, string> players = new();
-            if (normalized.Length == 0 || ZNet.instance == null)
-                return players.ToList();
-
-            foreach (ZDO character in ZNet.instance.GetAllCharacterZDOS())
-            {
-                if (character == null)
-                    continue;
-
-                long playerID = character.GetLong(ZDOVars.s_playerID, 0L);
-                if (playerID != 0L)
-                    players[playerID] = character.GetString(ZDOVars.s_playerName, "");
-            }
-
-            List<KeyValuePair<long, string>> exact = players
-                .Where(player => string.Equals(player.Value, normalized, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            return exact.Count > 0 ? exact : players
-                .Where(player => player.Value.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0)
-                .ToList();
+            return WardPlayers.FindByName(query);
         }
 
         private static void SendResult(long targetPeerID, ZDOID wardID, PermittedPlayerAction action, PermittedPlayerResult result, string detail, ZDO zdo)
@@ -548,7 +535,7 @@ namespace ProtectiveWards
             if (targetPeerID == 0L)
                 RPC_UpdatePermittedPlayersResultClient(0L, new ZPackage(response.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
+                WardRpc.SendResponse(targetPeerID, RPC_UpdatePermittedPlayersResult, response);
         }
 
         private static void RPC_UpdatePermittedPlayersResultClient(long sender, ZPackage package)

@@ -22,57 +22,49 @@ namespace ProtectiveWards
 
         internal static bool IsBackgroundProtectionActiveAt(Vector3 point, out ZDO ward)
         {
+            foreach (ZDO candidate in GetBackgroundWards(point, point))
+            {
+                if (!IsQualifiedProtectedBase(candidate) || HasEffectiveAccessPresence(candidate, point))
+                    continue;
+                ward = candidate;
+                return true;
+            }
             ward = null;
-
-            if (!TryFindBackgroundWard(point, point, out ward))
-                return false;
-
-            if (!IsQualifiedProtectedBase(ward))
-                return false;
-
-            return !HasEffectiveAccessPresence(ward, point);
+            return false;
         }
 
-        internal static bool TryFindBackgroundWard(Vector3 sourcePoint, Vector3 targetPoint, out ZDO ward)
+        private static IEnumerable<ZDO> GetBackgroundWards(Vector3 sourcePoint, Vector3 targetPoint)
         {
-            ward = null;
-
             bool samePoint = sourcePoint.x == targetPoint.x && sourcePoint.y == targetPoint.y && sourcePoint.z == targetPoint.z;
             if (!TryResolveWardCheckPoint(sourcePoint, out sourcePoint))
-                return false;
+                yield break;
             if (samePoint)
                 targetPoint = sourcePoint;
             else if (!TryResolveWardCheckPoint(targetPoint, out targetPoint))
-                return false;
+                yield break;
 
-            if (samePoint)
-                return WardZdoUtils.TryFindActiveWardContainingPoint(sourcePoint, activeWardPredicate, out ward);
-
-            WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
-
+            WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off;
             foreach (ZDO area in WardZdoUtils.GetAllWards())
             {
                 if (!IsActiveBackgroundWard(area) || !IsInsideWardXZ(area, sourcePoint))
                     continue;
 
-                // The root is already active and contains sourcePoint. Most AI checks use one point.
-                if (IsInsideWardXZ(area, targetPoint))
+                if (samePoint || IsInsideWardXZ(area, targetPoint))
                 {
-                    ward = area;
-                    return true;
+                    yield return area;
+                    continue;
                 }
                 if (mode == WardConnectedAccessMode.Off)
                     continue;
+
                 foreach (ZDO candidate in WardZdoUtils.ConnectedAccessWardZdos(area, mode, activeWardPredicate))
                 {
                     if (!IsInsideWardXZ(candidate, targetPoint))
                         continue;
-                    ward = area;
-                    return true;
+                    yield return area;
+                    break;
                 }
             }
-
-            return false;
         }
 
         internal static bool HasEffectiveAccessPresence(ZDO ward, Vector3 point)
@@ -81,6 +73,14 @@ namespace ProtectiveWards
                 return false;
 
             WardConnectedAccessMode mode = wardBackgroundConnectedAccessMode == null ? WardConnectedAccessMode.Off : wardBackgroundConnectedAccessMode.Value;
+            if (wardBackgroundPresenceMode.Value == WardBackgroundPresenceMode.PermittedOnline)
+            {
+                foreach (WardPlayers.OnlinePlayer player in WardPlayers.GetOnlinePlayers())
+                    if (ward.HasConnectedWardAccess(player.PlayerID, mode, activeWardPredicate))
+                        return true;
+                return false;
+            }
+
             float radius = Mathf.Max(wardBackgroundPresenceRadius.Value, 0f);
 
             if (!TryResolveWardCheckPoint(point, out Vector3 resolvedPoint))
@@ -173,52 +173,39 @@ namespace ProtectiveWards
 
             Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
             bool isPlayerBuiltPiece = piece != null && piece.IsPlacedByPlayer();
-
             if (!isPlayerBuiltPiece && !isShip && !isCart)
                 return false;
 
-            if (!TryFindBackgroundWard(wearNTear.transform.position, wearNTear.transform.position, out ZDO ward))
-                return false;
-
-            if (!IsQualifiedProtectedBase(ward))
-                return false;
-
-            Character attacker = hit.GetAttacker();
-
-            if (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockNonPermittedPlayerDamage
-                && isPlayerBuiltPiece
-                && attacker != null
-                && attacker.IsPlayer()
-                && !ward.HasConnectedWardAccess((attacker as Player)?.GetPlayerID() ?? 0L, wardBackgroundConnectedAccessMode.Value, IsActiveBackgroundWard))
-                return true;
-
-            if (HasEffectiveAccessPresence(ward, wearNTear.transform.position))
-                return false;
-
-            if (wardBackgroundProtectBoats.Value && isShip)
-                return true;
-
-            if (wardBackgroundProtectCarts.Value && isCart)
-                return true;
-
-            if (isPlayerBuiltPiece)
+            Player attacker = hit.GetAttacker() as Player;
+            Vector3 point = wearNTear.transform.position;
+            // Each covering root contributes independently. A protecting root wins; load order never grants access.
+            foreach (ZDO ward in GetBackgroundWards(point, point))
             {
-                if (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockAllDamageWhenNoPermittedNearby)
+                if (!IsQualifiedProtectedBase(ward))
+                    continue;
+
+                if (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockNonPermittedPlayerDamage
+                    && isPlayerBuiltPiece && attacker != null
+                    && !ward.HasConnectedWardAccess(attacker.GetPlayerID(), wardBackgroundConnectedAccessMode.Value, activeWardPredicate))
                     return true;
 
-                if (wardBackgroundProtectFire.Value && IsFireDamage(hit))
+                if (HasEffectiveAccessPresence(ward, point))
+                    continue;
+
+                if ((wardBackgroundProtectBoats.Value && isShip) || (wardBackgroundProtectCarts.Value && isCart))
+                    return true;
+
+                if (isPlayerBuiltPiece
+                    && (wardBackgroundStructureProtection.Value == WardBackgroundStructureProtectionMode.BlockAllDamageWhenNoPermittedNearby
+                        || (wardBackgroundProtectFire.Value && IsFireDamage(hit))))
                     return true;
             }
-
             return false;
         }
 
         internal static bool ShouldSuppressTameDamageToStructure(WearNTear wearNTear, HitData hit)
         {
-            if (!wardBackgroundTamesPreventDamageToStructures.Value)
-                return false;
-
-            if (wearNTear == null || hit == null || !hit.HaveAttacker())
+            if (!wardBackgroundTamesPreventDamageToStructures.Value || wearNTear == null || hit == null || !hit.HaveAttacker())
                 return false;
 
             Piece piece = wearNTear.m_piece ?? wearNTear.GetComponent<Piece>();
@@ -229,14 +216,12 @@ namespace ProtectiveWards
             if (attacker == null || attacker.IsPlayer() || !attacker.IsTamed())
                 return false;
 
-            if (!TryFindBackgroundWard(attacker.transform.position, wearNTear.transform.position, out ZDO ward))
-                return false;
-
-            if (!IsQualifiedProtectedBase(ward))
-                return false;
-
-            return !HasEffectiveAccessPresence(ward, attacker.transform.position)
-                   && !HasEffectiveAccessPresence(ward, wearNTear.transform.position);
+            foreach (ZDO ward in GetBackgroundWards(attacker.transform.position, wearNTear.transform.position))
+                if (IsQualifiedProtectedBase(ward)
+                    && !HasEffectiveAccessPresence(ward, attacker.transform.position)
+                    && !HasEffectiveAccessPresence(ward, wearNTear.transform.position))
+                    return true;
+            return false;
         }
 
         internal static bool ShouldSuppressTameCharacterDamage(Character character)
@@ -286,26 +271,19 @@ namespace ProtectiveWards
 
         internal static bool IsBuildingRestricted(Player player, Vector3 point)
         {
-            if (!wardBackgroundPreventBuildingAndDemolishing.Value)
-                return false;
-
-            if (player == null)
+            if (!wardBackgroundPreventBuildingAndDemolishing.Value || player == null)
                 return false;
 
             long playerID = player.GetPlayerID();
             if (HasWardAdminAccess(playerID))
                 return false;
 
-            if (!TryFindBackgroundWard(point, point, out ZDO ward))
-                return false;
-
-            if (!IsQualifiedProtectedBase(ward))
-                return false;
-
-            if (ward.HasConnectedWardAccess(player.GetPlayerID(), wardBackgroundConnectedAccessMode.Value, IsActiveBackgroundWard))
-                return false;
-
-            return !HasEffectiveAccessPresence(ward, point);
+            foreach (ZDO ward in GetBackgroundWards(point, point))
+                if (IsQualifiedProtectedBase(ward)
+                    && !ward.HasConnectedWardAccess(playerID, wardBackgroundConnectedAccessMode.Value, activeWardPredicate)
+                    && !HasEffectiveAccessPresence(ward, point))
+                    return true;
+            return false;
         }
 
         private static bool IsFireDamage(HitData hit) => hit != null && (hit.m_damage.m_fire > 0f || hit.m_hitType == HitData.HitType.Burning);
