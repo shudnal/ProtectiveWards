@@ -461,7 +461,7 @@ namespace ProtectiveWards
                 return;
             }
 
-            if (!CanApplyWardSettings(zdo, requester.PlayerID))
+            if (!CanApplyWardSettings(zdo, requester.PlayerID) || !WardRpc.IsWithinReach(requester, zdo))
             {
                 SendResult(sender, wardID, action, PermittedPlayerResult.NotAuthorized, "", zdo);
                 return;
