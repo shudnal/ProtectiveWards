@@ -132,9 +132,9 @@ namespace ProtectiveWards
                 return;
 
             if (ZNet.instance.IsServer())
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ClosestLocationRequest, RPC_ClosestLocationRequestServer);
+                WardRpc.Register(RPC_ClosestLocationRequest, RPC_ClosestLocationRequestServer);
             else
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_StartTaxi, RPC_StartTaxiClient);
+                WardRpc.Register(RPC_StartTaxi, RPC_StartTaxiClient);
         }
 
         private static void ClosestLocationRequest(TaxiOffer offer, Vector3 offeringPosition)
@@ -156,7 +156,7 @@ namespace ProtectiveWards
             zPackage.Write(offer.Stack);
             zPackage.Write(offeringPosition);
 
-            ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ClosestLocationRequest, zPackage);
+            WardRpc.SendToServer(RPC_ClosestLocationRequest, zPackage);
         }
 
         private static void RPC_ClosestLocationRequestServer(long sender, ZPackage pkg)

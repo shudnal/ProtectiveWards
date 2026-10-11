@@ -1,3 +1,16 @@
+# 2.1.0
+* IMPORTANT: update the server and all clients together. Version 2.1.x cannot be used with 2.0.x in the same multiplayer session.
+* fixed dedicated-server startup with AzuAntiCheat whitelist/greylist copies of other plugins
+* fixed administrator ward control in AdminsInGodMode on dedicated servers; ward commands now report their result or rejection
+* ward expiration commands require configured administrator access, including on wards with Permit everyone enabled
+* fixed passive repair ignoring the required crafting station for non-player structures
+* fixed default ward radius not recovering correctly after server radius limits are increased
+* fixed guild access interfering with registration in a disabled ward's explicit permitted list, and admin privileges incorrectly creating mutual trust between wards
+* fixed online-presence checks and player-name lookup for permitted-list commands when players are far away
+* fixed background protection in overlapping ward areas depending on ward load order
+* improved settings saving: concurrent edits are rejected instead of silently overwritten, general and password changes can be saved together, and interrupted requests no longer leave settings windows waiting indefinitely
+* fixed ownership exceptions bypassing unrelated private-area restrictions and invalid stored password data granting access
+
 # 2.0.15
 * fixed ward placement and removal access checks to use ProtectiveWards effective access rules consistently
 * fixed ward placement preview and overlap checks to use the configured initial ward radius instead of the vanilla prefab radius

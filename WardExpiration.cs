@@ -18,7 +18,6 @@ namespace ProtectiveWards
 
         private const string RPC_ReactivateExpiredWard = "PW_ReactivateExpiredWard";
         private const string RPC_ReactivateExpiredWardResult = "PW_ReactivateExpiredWardResult";
-        private const string RPC_ActivateConnectedWards = "PW_ActivateConnectedWards";
         private static float s_nextCheckTime;
         private static bool s_rpcRegistered;
 
@@ -36,11 +35,10 @@ namespace ProtectiveWards
             if (s_rpcRegistered || ZRoutedRpc.instance == null)
                 return;
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWardResult, RPC_ReactivateExpiredWardResultClient);
+            WardRpc.Register(RPC_ReactivateExpiredWardResult, RPC_ReactivateExpiredWardResultClient);
             if (ZNet.instance?.IsServer() == true)
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ReactivateExpiredWard, RPC_ReactivateExpiredWardServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_ActivateConnectedWards, RPC_ActivateConnectedWardsServer);
+                WardRpc.Register(RPC_ReactivateExpiredWard, RPC_ReactivateExpiredWardServer);
             }
 
             s_rpcRegistered = true;
@@ -263,23 +261,10 @@ namespace ProtectiveWards
             if (ZNet.instance?.IsServer() == true)
                 RPC_ReactivateExpiredWardServer(0L, new ZPackage(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ReactivateExpiredWard, package);
+                WardRpc.SendToServer(RPC_ReactivateExpiredWard, package);
         }
 
-        internal static void RequestConnectedActivation(ZDOID wardID, long playerID)
-        {
-            if (wardID.IsNone() || playerID == 0L || (wardAccessConnectedAccessMode?.Value ?? WardConnectedAccessMode.Off) == WardConnectedAccessMode.Off)
-                return;
-
-            ZPackage package = new();
-            package.Write(wardID);
-            package.Write(playerID);
-
-            if (ZNet.instance?.IsServer() == true)
-                RPC_ActivateConnectedWardsServer(0L, new ZPackage(package.GetArray()));
-            else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_ActivateConnectedWards, package);
-        }
+        // Connected activation is committed with the authenticated root toggle.
 
         private static void RPC_ReactivateExpiredWardServer(long sender, ZPackage package)
         {
@@ -314,23 +299,7 @@ namespace ProtectiveWards
             SendReactivationResult(sender, wardID, ReactivationResult.Success);
         }
 
-        private static void RPC_ActivateConnectedWardsServer(long sender, ZPackage package)
-        {
-            ZDOID wardID = package.ReadZDOID();
-            long claimedPlayerID = package.ReadLong();
-            if (!TryGetRoutedPlayer(sender, claimedPlayerID, out RoutedPlayerContext requester))
-                return;
-
-            ZDO zdo = WardZdoUtils.GetWard(wardID);
-            if (zdo == null || !zdo.HasDirectWardAccess(requester.PlayerID) || IsEffectivelyExpired(zdo))
-                return;
-
-            // The owner notification can arrive before the enabled ZDO value reaches the server.
-            if (!zdo.GetBool(ZDOVars.s_enabled, false))
-                zdo.Set(ZDOVars.s_enabled, true);
-
-            ActivateConnectedWardZdos(zdo, requester.PlayerID, requester.PlayerName);
-        }
+        // Connected activation is committed with the authenticated root toggle.
 
         private static void SendReactivationResult(long peerID, ZDOID wardID, ReactivationResult result)
         {
@@ -339,7 +308,7 @@ namespace ProtectiveWards
             response.Write((int)result);
 
             if (ZNet.instance?.IsServer() == true && ZRoutedRpc.instance != null && peerID != 0L)
-                ZRoutedRpc.instance.InvokeRoutedRPC(peerID, RPC_ReactivateExpiredWardResult, response);
+                WardRpc.SendResponse(peerID, RPC_ReactivateExpiredWardResult, response);
             else
                 RPC_ReactivateExpiredWardResultClient(0L, new ZPackage(response.GetArray()));
         }

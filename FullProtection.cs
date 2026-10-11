@@ -1,3 +1,4 @@
+using BepInEx.Bootstrap;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
@@ -16,7 +17,21 @@ namespace ProtectiveWards
         private const float saddleUserRecordMaxDistance = 10f;
         private const float vehicleControllerRecordMaxDistance = 10f;
         private const float portalSourceValidationDistance = 8f;
-        private static int s_privateAreaCheckBypassDepth;
+        private static readonly Stack<PrivateAreaBypassContext> s_privateAreaBypasses = new();
+
+        private readonly struct PrivateAreaBypassContext
+        {
+            internal readonly Component Target;
+            internal readonly Player Actor;
+            internal readonly int Frame;
+
+            internal PrivateAreaBypassContext(Component target, Player actor)
+            {
+                Target = target;
+                Actor = actor;
+                Frame = Time.frameCount;
+            }
+        }
         private static bool s_saddleRpcRegistered;
         private static bool s_teleportAccessRpcRegistered;
         private static bool s_interactablePatchesApplied;
@@ -63,7 +78,7 @@ namespace ProtectiveWards
             if (!ShouldBypassVanillaPrivateAreaCheck(component, human))
                 return;
 
-            s_privateAreaCheckBypassDepth++;
+            s_privateAreaBypasses.Push(new PrivateAreaBypassContext(component, human as Player));
             state = true;
         }
 
@@ -72,7 +87,19 @@ namespace ProtectiveWards
             if (!state)
                 return;
 
-            s_privateAreaCheckBypassDepth = Math.Max(0, s_privateAreaCheckBypassDepth - 1);
+            if (s_privateAreaBypasses.Count > 0)
+                s_privateAreaBypasses.Pop();
+        }
+
+        private static bool HasMatchingObjectExemption(Player player, Vector3 point, float radius, bool wardCheck)
+        {
+            if (player == null || wardCheck || radius != 0f || s_privateAreaBypasses.Count == 0)
+                return false;
+
+            PrivateAreaBypassContext context = s_privateAreaBypasses.Peek();
+            return context.Actor == player && context.Target != null && context.Frame == Time.frameCount
+                && (context.Target.transform.position - point).sqrMagnitude <= 0.0001f
+                && ShouldBypassVanillaPrivateAreaCheck(context.Target, player);
         }
 
         private static void RegisterTeleportAccessRPC()
@@ -81,9 +108,9 @@ namespace ProtectiveWards
                 return;
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_CheckTeleportTargetAccess, RPC_CheckTeleportTargetAccessServer);
+                WardRpc.Register(RPC_CheckTeleportTargetAccess, RPC_CheckTeleportTargetAccessServer);
 
-            ZRoutedRpc.instance.Register<ZPackage>(RPC_TeleportTargetAccessResponse, RPC_TeleportTargetAccessResponseClient);
+            WardRpc.Register(RPC_TeleportTargetAccessResponse, RPC_TeleportTargetAccessResponseClient);
             s_teleportAccessRpcRegistered = true;
         }
 
@@ -91,6 +118,7 @@ namespace ProtectiveWards
         {
             s_saddleRpcRegistered = false;
             s_teleportAccessRpcRegistered = false;
+            s_privateAreaBypasses.Clear();
         }
 
         internal static void PatchLoadedInteractables(Harmony harmony)
@@ -128,7 +156,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_CheckTeleportTargetAccessServer(0L, new(package.GetArray()));
             else if (ZRoutedRpc.instance != null)
-                ZRoutedRpc.instance.InvokeRoutedRPC(RPC_CheckTeleportTargetAccess, package);
+                WardRpc.SendToServer(RPC_CheckTeleportTargetAccess, package);
             else
                 return false;
 
@@ -275,8 +303,8 @@ namespace ProtectiveWards
 
             if (ZNet.instance != null && ZNet.instance.IsServer())
             {
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
-                ZRoutedRpc.instance.Register<ZPackage>(RPC_SetLastVehicleController, RPC_SetLastVehicleControllerServer);
+                WardRpc.Register(RPC_SetLastSaddleUser, RPC_SetLastSaddleUserServer);
+                WardRpc.Register(RPC_SetLastVehicleController, RPC_SetLastVehicleControllerServer);
             }
 
             s_saddleRpcRegistered = true;
@@ -296,7 +324,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_SetLastSaddleUserServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastSaddleUser, package);
+                WardRpc.SendToServer(RPC_SetLastSaddleUser, package);
         }
 
         private static void RPC_SetLastSaddleUserServer(long sender, ZPackage package)
@@ -352,7 +380,7 @@ namespace ProtectiveWards
             if (ZNet.instance != null && ZNet.instance.IsServer())
                 RPC_SetLastVehicleControllerServer(0L, new(package.GetArray()));
             else
-                ZRoutedRpc.instance?.InvokeRoutedRPC(RPC_SetLastVehicleController, package);
+                WardRpc.SendToServer(RPC_SetLastVehicleController, package);
         }
 
         private static void RPC_SetLastVehicleControllerServer(long sender, ZPackage package)
@@ -464,12 +492,6 @@ namespace ProtectiveWards
             [HarmonyPriority(Priority.First)]
             private static bool Prefix(Vector3 point, float radius, bool flash, bool wardCheck, ref bool __result)
             {
-                if (s_privateAreaCheckBypassDepth > 0)
-                {
-                    __result = true;
-                    return false;
-                }
-
                 Player player = Player.m_localPlayer;
                 if (player == null)
                     return true;
@@ -488,12 +510,14 @@ namespace ProtectiveWards
                 if (!hasPlayerWard)
                     return true;
 
+                bool skipManagedContribution = HasMatchingObjectExemption(player, point, radius, wardCheck);
                 bool hasGrantedArea = false;
                 bool hasDeniedArea = false;
 
                 foreach (PrivateArea area in PrivateArea.m_allAreas)
                 {
-                    if (!IsPrivateAreaInsideAccessRange(area, point, radius))
+                    if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                        || (skipManagedContribution && IsPlayerWardPrefab(area)))
                         continue;
 
                     if (HasEffectiveLocalPrivateAreaAccess(area, player))
@@ -510,7 +534,9 @@ namespace ProtectiveWards
                 {
                     foreach (PrivateArea area in PrivateArea.m_allAreas)
                     {
-                        if (!IsPrivateAreaInsideAccessRange(area, point, radius) || HasEffectiveLocalPrivateAreaAccess(area, player))
+                        if (!IsPrivateAreaInsideAccessRange(area, point, radius)
+                            || (skipManagedContribution && IsPlayerWardPrefab(area))
+                            || HasEffectiveLocalPrivateAreaAccess(area, player))
                             continue;
 
                         area.FlashShield(false);
@@ -1702,15 +1728,16 @@ namespace ProtectiveWards
 
             internal static IEnumerable<MethodBase> TargetMethods()
             {
+                HashSet<Assembly> assemblies = GetInteractableAssemblies();
                 HashSet<MethodBase> methods = new();
-                foreach (Type type in GetLoadedInteractableTypes())
+                foreach (Type type in GetLoadedInteractableTypes(assemblies))
                 {
                     MethodInfo interact = GetDeclaredInteractableMethod(type, nameof(Interactable.Interact), new[] { typeof(Humanoid), typeof(bool), typeof(bool) });
-                    if (ShouldPatchInteractableMethod(interact) && methods.Add(interact))
+                    if (ShouldPatchInteractableMethod(interact, assemblies) && methods.Add(interact))
                         yield return interact;
 
                     MethodInfo useItem = GetDeclaredInteractableMethod(type, nameof(Interactable.UseItem), new[] { typeof(Humanoid), typeof(ItemDrop.ItemData) });
-                    if (ShouldPatchInteractableMethod(useItem) && methods.Add(useItem))
+                    if (ShouldPatchInteractableMethod(useItem, assemblies) && methods.Add(useItem))
                         yield return useItem;
                 }
             }
@@ -1722,9 +1749,26 @@ namespace ProtectiveWards
                 return declaringType != null ? AccessTools.DeclaredMethod(declaringType, methodName, parameters) ?? method : null;
             }
 
-            private static IEnumerable<Type> GetLoadedInteractableTypes()
+            private static HashSet<Assembly> GetInteractableAssemblies()
             {
-                foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                // Preserve generic vanilla protection through this explicit game assembly.
+                // Only live BepInEx plugin instances may contribute optional mod assemblies.
+                HashSet<Assembly> assemblies = new() { typeof(Interactable).Assembly };
+                foreach (BepInEx.PluginInfo pluginInfo in Chainloader.PluginInfos.Values)
+                {
+                    if (pluginInfo?.Instance == null)
+                        continue;
+
+                    Assembly assembly = pluginInfo.Instance.GetType().Assembly;
+                    if (assembly != null && !assembly.IsDynamic)
+                        assemblies.Add(assembly);
+                }
+                return assemblies;
+            }
+
+            private static IEnumerable<Type> GetLoadedInteractableTypes(IEnumerable<Assembly> assemblies)
+            {
+                foreach (Assembly assembly in assemblies)
                 {
                     if (assembly == null || assembly.IsDynamic)
                         continue;
@@ -1767,10 +1811,11 @@ namespace ProtectiveWards
                 }
             }
 
-            private static bool ShouldPatchInteractableMethod(MethodInfo method)
+            private static bool ShouldPatchInteractableMethod(MethodInfo method, HashSet<Assembly> assemblies)
             {
                 if (method == null
                     || method.DeclaringType == null
+                    || !assemblies.Contains(method.DeclaringType.Assembly)
                     || method.DeclaringType == typeof(Interactable)
                     || method.IsAbstract
                     || ExcludedInteractableTypes.Contains(method.DeclaringType))
