@@ -9,10 +9,12 @@ Protective Wards is designed primarily for public PvE servers. It helps prevent 
 ## Requirements
 
 - BepInExPack Valheim
-- Jotunn 2.29.1 or a newer compatible 2.x version
+- Jotunn 2.30.0 or a newer compatible 2.x version
 - YamlDotNet 16.3.0
 
 The mod uses Jotunn `EveryoneMustHaveMod` network compatibility. In multiplayer it must be installed on the server and every client. Gameplay settings are server-synchronized; client-only visual settings are marked `[Not Synced with Server]`.
+
+Version 2.1.x is not network-compatible with 2.0.x. Update the server and all clients together; incompatible major/minor versions are rejected during connection.
 
 ## Features
 
@@ -49,7 +51,7 @@ When a ward is created, its range, visual and access values are copied from the 
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default).
 3. Change the range, access settings, or glow, sphere and ward circle controls on the **Ward visuals** page.
-4. Use the main **Access** section to add an online player by nickname, and open the **Permitted players** page to review or remove stored entries.
+4. Open the **Permitted players** page to add an online player by nickname or review and remove stored entries. The main **Access** section shows a summary of permitted players.
 5. Apply the settings from the main page.
 
 | Config | Meaning |
@@ -62,7 +64,7 @@ The settings UI stores every editable value explicitly; there are no `Use defaul
 
 `Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, defaulting to 1 and 200. It is server-controlled and synchronized by Jotunn, like the other server configuration entries. Limits apply to UI input, server-side writes, existing saved values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
-The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester identity, target ward ZDO and edit permission before changing the list.
+The **Permitted players** page can add an online player by an exact or uniquely matching nickname. It displays the ward's explicit permitted list in pages of ten and lets authorized editors remove stored entries even if those players are offline. The server revalidates the requester identity, target ward ZDO and edit permission before changing the list.
 
 Ward hover text summarizes effective access without allowing long name lists to dominate the hover. Explicit names are shown while their combined text is at most 30 characters; longer lists are replaced with a player count. Active guild and password access are appended to the same line. Effective `Permit everyone` is shown simply as `Permitted: everyone`.
 
@@ -129,6 +131,8 @@ The `Ward access from non-permitted players` group controls interaction blocking
 Supported vanilla categories include containers, doors, plants, food and feasts, dropped items, ships, carts, tames, production and crafting stations, item and armor stands, portals, map tables, fireplaces, shield generators, obliterators, turrets, beds, catapults, archery targets, barber stations, traps and inactive wards. When EpicLoot is installed, its enchanting table is handled as a crafting station by the same crafting-station access setting.
 
 `Generic interactables` is an optional broad compatibility layer for vanilla or modded `Interactable` implementations without dedicated handling. It is disabled by default because ownership-sensitive objects are safer with dedicated patches.
+
+Generic interactable discovery is limited to the known vanilla game assembly and assemblies belonging to active BepInEx plugin instances. Inspection-only plugin copies loaded by security tools are excluded. Interactables implemented only in separate dependency assemblies require explicit compatibility support.
 
 ### Portal access mode
 
@@ -217,7 +221,9 @@ Commands are controlled by `Ward admin / Enable external ward control commands` 
 | `pw_set_expired` | `ward_set_expired` | Marks the nearest ward as expired. Admin-only. |
 | `pw_set_unexpired` | `ward_set_unexpired` | Clears the expired state. Admin-only. |
 
-All commands are revalidated on the server. Permit commands require ward access; expiration commands require `Ward admin access` or the selected ward's effective `Permit everyone` value.
+All commands are revalidated on the server. Permit commands require ward access; expiration commands require `Ward admin access`. The selected ward's `Permit everyone` value does not grant access to expiration commands.
+
+Ward commands report the server result or rejection. If no response arrives, the outcome is unknown: check the ward state before retrying.
 
 `Ward admin / Ward build limit per player` limits wards per owner. `0` disables the limit. Existing wards are never removed; only the newly placed ward is destroyed when it would exceed the limit.
 

@@ -9,10 +9,12 @@ Protective Wards is aimed at public PvE servers: it helps keep non-permitted pla
 ## Requirements
 
 - BepInExPack Valheim
-- Jotunn 2.29.1 or newer compatible 2.x version
+- Jotunn 2.30.0 or a newer compatible 2.x version
 - YamlDotNet 16.3.0
 
 The mod uses Jotunn network compatibility with `EveryoneMustHaveMod` and server-synced configuration. In client-server mode, the mod is required on both the server and all clients.
+
+Version 2.1.x is not network-compatible with 2.0.x. Update the server and all clients together; incompatible major/minor versions are rejected during connection.
 
 ## Main features
 
@@ -32,7 +34,7 @@ To edit a ward:
 1. Disable the ward.
 2. Press `AltPlace + Use` (`Left Shift + E` by default) on the ward.
 3. Change values in the settings window. Glow, sphere and ward circle controls are grouped on the `Ward visuals` page.
-4. Use the main Access section to add an online player by nickname, and open the `Permitted players` page to review or remove stored entries.
+4. Open the `Permitted players` page to add an online player by nickname or review and remove stored entries. The main Access section shows a summary of permitted players.
 5. Apply settings from the main settings page.
 
 You can customize:
@@ -51,9 +53,9 @@ Per-ward settings no longer have a `Use default` state. Every editable value is 
 
 `Range / Ward range limits` defines the minimum (x) and maximum (y) effective radius in meters, with defaults of 1 and 200. This setting is server-controlled and synchronized by Jotunn, like the other server configuration entries. The limits apply to UI input, server-side settings writes, saved ward values, default radii, connected access and background protection. Updating the limits refreshes loaded wards and coverage caches immediately. Invalid endpoints use their defaults; reversed endpoints are sorted.
 
-The main Access section can add an online player by an exact or uniquely matching nickname. The **Permitted players** page shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the tracked ward ZDO, requester identity and edit permission.
+The **Permitted players** page can add an online player by an exact or uniquely matching nickname. It shows the ward's current explicit permitted list in pages of ten and lets authorized editors remove stored players even while they are offline. Every change is revalidated by the server against the tracked ward ZDO, requester identity and edit permission.
 
-Disabled wards owned by another player cannot be edited. Admin bypass is controlled by `Ward admin / Ward admin access`:
+Who may edit a disabled ward is controlled by `Ward settings / Only creator can edit ward settings` and `Ward settings / Admins can edit ward settings`. Admin bypass is controlled by `Ward admin / Ward admin access`:
 
 - `Off` - admins do not bypass ward access checks;
 - `Admins` - server admins and host bypass ward access checks;
@@ -110,6 +112,8 @@ Supported vanilla access protection includes:
 - inactive wards inside another active ward;
 - generic interactables as an optional broad compatibility layer.
 
+Generic interactable discovery is limited to the known vanilla game assembly and assemblies belonging to active BepInEx plugin instances. Inspection-only plugin copies loaded by security tools are excluded. Interactables implemented only in separate dependency assemblies require explicit compatibility support.
+
 Ownership-sensitive objects are handled carefully. A foreign ward should not trap a player's own movable/owned objects such as portals, tombstones, saddles or tames. Ships and carts use a last-controller exemption instead of creator-only access, so the same player who drove or dragged the vehicle into another ward can still regain control or detach it without granting extra access to the vehicle creator.
 
 ### Connected ward access modes
@@ -157,7 +161,9 @@ They are creator/admin controlled: the ward creator may toggle their own ward, a
 `pw_set_unexpired` / `ward_set_unexpired` clears the expired state from the nearest ward.
 
 The commands use the same external ward control enable/range configs as the permitted-list and toggle commands.
-They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`, or by the effective `Permit everyone` value of the selected ward.
+They are admin-only: the requester must be allowed by `Ward admin / Ward admin access`. The selected ward's `Permit everyone` value does not grant access to expiration commands.
+
+Ward commands report the server result or rejection. If no response arrives, the outcome is unknown: check the ward state before retrying.
 
 #### Ward build limit
 
